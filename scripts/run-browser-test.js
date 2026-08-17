@@ -111,10 +111,15 @@ async function fillLogin(page, identifier, password) {
     const page = await context.newPage();
     const javascriptErrors = [];
     const serverErrors = [];
+    const isExpectedCloudflareCspBlock = (text) => (
+      text.includes("static.cloudflareinsights.com/beacon.min.js")
+      && text.includes("violates the following Content Security Policy directive")
+    );
     page.on("pageerror", (error) => javascriptErrors.push(error.message));
     page.on("console", (message) => {
-      if (message.type() === "error" && !message.text().startsWith("Failed to load resource:")) {
-        javascriptErrors.push(message.text());
+      const text = message.text();
+      if (message.type() === "error" && !text.startsWith("Failed to load resource:") && !isExpectedCloudflareCspBlock(text)) {
+        javascriptErrors.push(text);
       }
     });
     page.on("response", (response) => {
