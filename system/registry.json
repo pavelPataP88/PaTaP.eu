@@ -1,0 +1,62 @@
+{
+  "platform": "PlatformOS",
+  "version": "0.1.0",
+  "activeRuntime": "legacy-root-site",
+  "moduleLoadRule": "Modules are loaded only through this registry. Adding a module requires a folder and a registry entry; core code must not be changed.",
+  "roles": [
+    "Administrator",
+    "Developer",
+    "Researcher",
+    "TruckDriver",
+    "TaxiDriver",
+    "Guest"
+  ],
+  "storageTargets": [
+    "localStorage",
+    "filesystem",
+    "sqlite",
+    "postgres"
+  ],
+  "modules": [
+    {
+      "id": "lab",
+      "name": "Patap Lab",
+      "path": "modules/lab",
+      "route": "/lab",
+      "status": "active-legacy",
+      "enabled": true,
+      "roles": ["Administrator", "Developer", "Researcher", "Guest"],
+      "description": "Laboratory workspace. Current implementation still runs from root files during incremental migration."
+    },
+    {
+      "id": "transport",
+      "name": "Transport",
+      "path": "modules/transport",
+      "route": "/transport",
+      "status": "architecture-only",
+      "enabled": false,
+      "roles": ["Administrator", "Developer", "TruckDriver", "TaxiDriver"],
+      "description": "Independent future transport module with truck, taxi, cargo, parking, maps, radio, chat, and drivers areas."
+    },
+    {
+      "id": "library",
+      "name": "Library",
+      "path": "modules/library",
+      "route": "/library",
+      "status": "architecture-only",
+      "enabled": false,
+      "roles": ["Administrator", "Developer", "Researcher", "Guest"],
+      "description": "Independent knowledge and materials module."
+    },
+    {
+      "id": "research",
+      "name": "Research",
+      "path": "modules/research",
+      "route": "/research",
+      "status": "architecture-only",
+      "enabled": false,
+      "roles": ["Administrator", "Developer", "Researcher"],
+      "description": "Independent research module."
+    }
+  ]
+}

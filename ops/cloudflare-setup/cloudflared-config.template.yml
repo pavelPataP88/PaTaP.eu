@@ -1,0 +1,9 @@
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: C:\Users\Biuro\.cloudflared\REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: patap.eu
+    service: http://127.0.0.1:8090
+  - hostname: www.patap.eu
+    service: http://127.0.0.1:8090
+  - service: http_status:404

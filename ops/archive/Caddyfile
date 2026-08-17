@@ -1,0 +1,21 @@
+{
+	email admin@patap.eu
+}
+
+patap.eu, www.patap.eu {
+	root * D:/WWW.PATAP.EU
+	encode zstd gzip
+
+	@private {
+		path /.git* /.agents* /.codex* /node_modules* /dist* /scripts* /functions* /package.json /package-lock.json /wrangler.toml /CLOUDFLARE_DEPLOY.md /ChatGPT*
+	}
+	respond @private 404
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	file_server
+}

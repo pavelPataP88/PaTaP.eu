@@ -1,0 +1,4 @@
+{
+  "storageAdapter": "localStorage",
+  "legacyRootRuntime": true
+}

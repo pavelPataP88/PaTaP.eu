@@ -1,0 +1,12 @@
+{
+  "id": "lab",
+  "name": "Patap Lab",
+  "version": "0.1.0",
+  "status": "active-legacy",
+  "route": "/lab",
+  "entry": "index.html",
+  "roles": ["Administrator", "Developer", "Researcher", "Guest"],
+  "permissions": ["lab:open", "lab:projects", "lab:library", "lab:research", "lab:settings"],
+  "storage": ["users", "modules", "projects", "cache", "config"],
+  "description": "Laboratory workspace. Runtime is still the root site while migration proceeds."
+}

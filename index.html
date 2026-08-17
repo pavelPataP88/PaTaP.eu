@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Patap Lab</title>
+    <link rel="stylesheet" href="styles.css?v=20260817-guest-1">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="auth-screen" class="auth-screen" aria-labelledby="auth-title">
+        <div class="auth-overlay"></div>
+        <div class="auth-panel">
+          <p class="lab-mark">PATAP.EU</p>
+          <h1 id="auth-title">PATAP LAB</h1>
+          <p class="auth-subtitle">Лаборатория идей, проектов и AI-систем</p>
+          <p class="local-auth-note">Серверная авторизация: аккаунт хранится на ноутбуке Patap Lab. Email-подтверждение пока не включено.</p>
+
+          <div class="auth-tabs">
+            <button class="auth-tab active" type="button" data-auth-mode="login">Войти</button>
+            <button class="auth-tab" type="button" data-auth-mode="register">Зарегистрироваться</button>
+            <button class="auth-tab" type="button" data-auth-mode="recover">Сбросить локальный пароль</button>
+          </div>
+
+          <form id="login-form" class="auth-form" data-form="login">
+            <label>
+              Username или email
+              <input type="text" name="identifier" autocomplete="username" required>
+            </label>
+            <label>
+              Пароль
+              <input type="password" name="password" autocomplete="current-password" required minlength="4">
+            </label>
+            <button type="submit">Войти в лабораторию</button>
+          </form>
+
+          <form id="register-form" class="auth-form hidden" data-form="register">
+            <p class="password-warning">Не используйте пароль от других сервисов. Минимум 6 символов.</p>
+            <p class="password-warning">Email сохраняется, но email-подтверждение пока не включено.</p>
+            <label>
+              Username
+              <input type="text" name="username" autocomplete="username" required minlength="3" maxlength="32">
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" autocomplete="email" required>
+            </label>
+            <label>
+              Пароль
+              <input type="password" name="password" autocomplete="new-password" required minlength="6" maxlength="128">
+            </label>
+            <label>
+              Повторите пароль
+              <input type="password" name="confirmPassword" autocomplete="new-password" required minlength="6" maxlength="128">
+            </label>
+            <button type="submit">Зарегистрироваться</button>
+          </form>
+
+          <form id="recover-form" class="auth-form hidden" data-form="recover">
+            <p class="password-warning">Email-сброс пока не включён. Owner/Admin должен создать одноразовый reset token.</p>
+            <label>
+              Reset token
+              <input type="text" name="token" autocomplete="one-time-code" required>
+            </label>
+            <label>
+              Новый пароль
+              <input type="password" name="password" autocomplete="new-password" required minlength="6" maxlength="128">
+            </label>
+            <label>
+              Повторите новый пароль
+              <input type="password" name="confirmPassword" autocomplete="new-password" required minlength="6" maxlength="128">
+            </label>
+            <button type="submit">Сбросить локальный пароль</button>
+          </form>
+
+          <p id="auth-message" class="message hidden" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="lab-screen" class="lab-screen hidden" aria-labelledby="lab-title">
+        <header class="lab-header">
+          <div>
+            <p class="lab-mark">PATAP.EU</p>
+            <h1 id="lab-title">Patap Lab</h1>
+            <p>Лаборатория идей, проектов и AI-систем</p>
+          </div>
+          <div class="user-box">
+            <span id="current-user"></span>
+            <button id="guest-login-button" type="button" class="hidden">Войти</button>
+            <button id="logout-button" type="button">Выход</button>
+          </div>
+        </header>
+
+        <nav class="lab-nav" aria-label="Разделы лаборатории">
+          <button class="section-button active" type="button" data-section="projects">Проекты</button>
+          <button class="section-button" type="button" data-section="library">Библиотека</button>
+          <button class="section-button" type="button" data-section="research">Исследования</button>
+          <button id="admin-nav-button" class="section-button hidden" type="button" data-section="admin">Админ</button>
+          <button class="section-button" type="button" data-section="settings">Настройки</button>
+        </nav>
+
+        <div class="lab-layout">
+          <section class="workspace">
+            <article class="section-view active" data-view="projects">
+              <div class="section-heading">
+                <span>01</span>
+                <h2>Проекты</h2>
+              </div>
+              <p>Рабочее место для будущих проектов Patap Lab. Сейчас здесь можно создать локальную карточку идеи.</p>
+              <form id="project-form" class="inline-form">
+                <input type="text" name="title" placeholder="Название идеи" required>
+                <button type="submit">Добавить</button>
+              </form>
+              <div id="project-list" class="item-grid"></div>
+            </article>
+
+            <article class="section-view" data-view="library">
+              <div class="section-heading">
+                <span>02</span>
+                <h2>Библиотека</h2>
+              </div>
+              <p>Место для заметок, ссылок и материалов. Первая запись создаётся локально и остаётся в этом браузере.</p>
+              <form id="note-form" class="inline-form">
+                <input type="text" name="note" placeholder="Новая заметка" required>
+                <button type="submit">Сохранить</button>
+              </form>
+              <div id="note-list" class="item-grid"></div>
+            </article>
+
+            <article class="section-view" data-view="research">
+              <div class="section-heading">
+                <span>03</span>
+                <h2>Исследования</h2>
+              </div>
+              <p>Здесь будут гипотезы, тесты и AI-системы. Базовый режим уже позволяет фиксировать направление исследования.</p>
+              <form id="research-form" class="inline-form">
+                <input type="text" name="topic" placeholder="Тема исследования" required>
+                <button type="submit">Записать</button>
+              </form>
+              <div id="research-list" class="item-grid"></div>
+            </article>
+
+            <article class="section-view" data-view="settings">
+              <div class="section-heading">
+                <span>04</span>
+                <h2>Настройки</h2>
+              </div>
+              <form id="settings-form" class="settings-form">
+                <label>
+                  Отображаемое имя
+                  <input type="text" name="name" required minlength="2">
+                </label>
+                <label class="toggle-row">
+                  <input type="checkbox" name="compact">
+                  Компактный режим
+                </label>
+                <button type="submit">Сохранить настройки</button>
+              </form>
+            </article>
+
+            <article class="section-view" data-view="admin">
+              <div class="section-heading">
+                <span>05</span>
+                <h2>Админ</h2>
+              </div>
+              <p>Защищённая серверная зона для Owner и Administrator.</p>
+              <div id="admin-summary" class="item-grid"></div>
+              <div id="admin-users" class="item-grid"></div>
+              <div id="admin-audit" class="item-grid"></div>
+            </article>
+          </section>
+
+          <aside class="status-panel" aria-label="Статус лаборатории">
+            <h2>Статус</h2>
+            <dl>
+              <div>
+                <dt>Режим</dt>
+                <dd>Серверная авторизация</dd>
+              </div>
+              <div>
+                <dt>Данные</dt>
+                <dd>SQLite на ноутбуке</dd>
+              </div>
+              <div>
+                <dt>Аккаунты</dt>
+                <dd>Серверные cookie</dd>
+              </div>
+              <div>
+                <dt>Домен</dt>
+                <dd>patap.eu</dd>
+              </div>
+            </dl>
+          </aside>
+        </div>
+      </section>
+
+      <section id="guest-screen" class="lab-screen hidden" aria-labelledby="guest-title">
+        <header class="lab-header">
+          <div>
+            <p class="lab-mark">PATAP.EU · ОТКРЫТЫЙ ПРОСМОТР</p>
+            <h1 id="guest-title">Patap Lab</h1>
+            <p>Посмотрите устройство лаборатории. Демо-данные не связаны с реальными аккаунтами.</p>
+          </div>
+          <div class="user-box"><span>Гостевой режим</span><button id="guest-open-login" type="button">Войти</button></div>
+        </header>
+
+        <nav class="lab-nav" aria-label="Разделы демонстрации">
+          <button class="section-button active" type="button" data-guest-section="projects">Проекты</button>
+          <button class="section-button" type="button" data-guest-section="library">Библиотека</button>
+          <button class="section-button" type="button" data-guest-section="research">Исследования</button>
+          <button class="section-button" type="button" data-guest-section="about">Как это работает</button>
+        </nav>
+
+        <div class="lab-layout">
+          <section class="workspace guest-workspace">
+            <article class="section-view active" data-guest-view="projects">
+              <div class="section-heading"><span>01</span><h2>Проекты</h2></div>
+              <p>Пример рабочего пространства. После входа можно создавать собственные карточки и сохранять их в браузере.</p>
+              <div class="item-grid"><div class="item-card"><strong>Driver Patap</strong><span>Карта, контакты, чат и рация для водителей.</span></div><div class="item-card"><strong>PlatformOS</strong><span>Модульная основа для будущих сервисов Patap.</span></div></div>
+            </article>
+            <article class="section-view" data-guest-view="library">
+              <div class="section-heading"><span>02</span><h2>Библиотека</h2></div>
+              <p>Место для заметок, ссылок и материалов. В гостевом режиме отображаются только примеры.</p>
+              <div class="item-grid"><div class="item-card"><strong>Идея недели</strong><span>Как сделать путь водителя спокойнее и безопаснее.</span></div><div class="item-card"><strong>Правило данных</strong><span>Личная информация остаётся доступна только владельцу аккаунта.</span></div></div>
+            </article>
+            <article class="section-view" data-guest-view="research">
+              <div class="section-heading"><span>03</span><h2>Исследования</h2></div>
+              <p>Здесь команда фиксирует гипотезы и проверяет новые направления.</p>
+              <div class="item-grid"><div class="item-card"><strong>Маршрут без шума</strong><span>Контекстные подсказки вместо бесконечных уведомлений.</span></div><div class="item-card"><strong>Связь между водителями</strong><span>Личные контакты, когда они действительно нужны.</span></div></div>
+            </article>
+            <article class="section-view" data-guest-view="about">
+              <div class="section-heading"><span>04</span><h2>Как это работает</h2></div>
+              <p>Patap Lab — открытая витрина идей, а личные разделы открываются после входа. Driver Patap доступен по отдельному адресу и в гостевом режиме показывает только демонстрационные данные.</p>
+              <button class="guest-cta" type="button" data-guest-login>Войти или создать аккаунт</button>
+            </article>
+          </section>
+          <aside class="status-panel" aria-label="О гостевом режиме"><h2>Гостевой режим</h2><dl><div><dt>Данные</dt><dd>Только демо</dd></div><div><dt>Изменения</dt><dd>Недоступны</dd></div><div><dt>Администрирование</dt><dd>Недоступно</dd></div><div><dt>Driver</dt><dd><a href="https://driver.patap.eu">Открыть демо</a></dd></div></dl></aside>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js?v=20260817-guest-1"></script>
+  </body>
+</html>

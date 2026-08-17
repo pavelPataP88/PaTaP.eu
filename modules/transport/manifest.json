@@ -1,0 +1,13 @@
+{
+  "id": "transport",
+  "name": "Transport",
+  "version": "0.1.0",
+  "status": "architecture-only",
+  "route": "/transport",
+  "futureRoutes": ["/transport", "/truck", "/taxi"],
+  "entry": "index.html",
+  "roles": ["Administrator", "Developer", "TruckDriver", "TaxiDriver"],
+  "permissions": ["transport:open"],
+  "storage": ["modules", "projects", "cache", "uploads", "config"],
+  "description": "Independent future transport module. No implementation yet."
+}

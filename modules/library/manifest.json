@@ -1,0 +1,12 @@
+{
+  "id": "library",
+  "name": "Library",
+  "version": "0.1.0",
+  "status": "architecture-only",
+  "route": "/library",
+  "entry": "index.html",
+  "roles": ["Administrator", "Developer", "Researcher", "Guest"],
+  "permissions": ["library:open"],
+  "storage": ["modules", "cache", "uploads", "config"],
+  "description": "Independent future library module."
+}

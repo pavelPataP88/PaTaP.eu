@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10231e">
+  <title>Driver Patap</title>
+  <link rel="stylesheet" href="/vendor/maplibre/maplibre-gl.css?v=20260714-8">
+  <link rel="stylesheet" href="/styles.css?v=20260817-guest-1">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Driver Patap">
+      <span class="brand-mark">P</span>
+      <span><strong>Driver</strong><small>Patap</small></span>
+    </a>
+    <button id="logout" class="quiet" type="button" hidden>Выйти</button>
+  </header>
+
+  <main>
+    <section id="loading" class="card status-card" aria-live="polite">Проверяем аккаунт Patap…</section>
+
+    <section id="login-view" class="card" hidden>
+      <p class="eyebrow">Один аккаунт Patap</p>
+      <h1>Вход в Driver</h1>
+      <p class="intro">Используйте логин или email существующего аккаунта Patap.</p>
+      <form id="login-form">
+        <label>Логин или email<input name="identifier" autocomplete="username" required></label>
+        <label>Пароль<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">Войти</button>
+      </form>
+      <p class="help">Нет аккаунта? <button id="show-driver-register" class="text-button" type="button">Зарегистрироваться как водитель</button>.</p>
+      <form id="driver-register-form" hidden>
+        <p class="help">Создаётся аккаунт Patap и профиль Driver. Пароль — минимум 6 символов.</p>
+        <label>Логин<input name="username" autocomplete="username" required minlength="3" maxlength="32"></label>
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+        <label>Пароль<input name="password" type="password" autocomplete="new-password" required minlength="6" maxlength="128"></label>
+        <label>Повторите пароль<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="6" maxlength="128"></label>
+        <label>Никнейм водителя<input name="nickname" autocomplete="nickname" required minlength="3" maxlength="32"></label>
+        <label>Тип водителя<select name="driverType" required><option value="">Выберите тип</option><option value="TIR">TIR — грузовой транспорт</option><option value="TAXI">Taxi</option><option value="DELIVERY">Доставка</option><option value="GENERAL">Общий</option></select></label>
+        <button class="primary" type="submit">Создать аккаунт водителя</button>
+        <button id="show-driver-login" class="quiet" type="button">У меня уже есть аккаунт</button>
+      </form>
+    </section>
+
+    <section id="profile-view" class="driver-shell" hidden>
+      <div class="welcome">
+        <p class="eyebrow">Driver Patap</p>
+        <h1>Дорога начинается с карты</h1>
+        <p id="account-line" class="intro"></p>
+      </div>
+
+    <nav id="driver-nav" class="driver-nav" aria-label="Разделы Driver Patap"></nav>
+
+      <section id="map-view" data-driver-view="map" aria-labelledby="map-title" hidden>
+        <div class="map-card card">
+          <div class="map-heading">
+            <div><p class="eyebrow">DP-002</p><h2 id="map-title">Карта и GPS</h2></div>
+            <label class="radius-control">Радиус
+              <select id="nearby-radius">
+                <option value="5">5 км</option><option value="25" selected>25 км</option>
+                <option value="50">50 км</option><option value="100">100 км</option>
+              </select>
+            </label>
+          </div>
+          <div class="privacy-controls">
+            <label class="switch-row">
+              <input id="gps-toggle" type="checkbox" role="switch" disabled>
+              <span><strong>Driver и GPS</strong><small>Включено: вы видите водителей с GPS и видимы им. Состояние сохраняется.</small></span>
+            </label>
+          </div>
+          <form id="driver-search-form" class="driver-search">
+            <label class="sr-only" for="driver-search-input">Поиск водителя по нику</label>
+            <input id="driver-search-input" name="query" minlength="2" maxlength="32" placeholder="Найти водителя по нику">
+            <button type="submit">Найти</button>
+          </form>
+          <div id="driver-search-results" class="driver-search-results" aria-live="polite"></div>
+          <aside id="driver-card" class="driver-card" hidden aria-live="polite">
+            <button id="driver-card-close" class="driver-card-close" type="button" aria-label="Закрыть карточку">×</button>
+            <p id="driver-card-status" class="eyebrow"></p><h3 id="driver-card-name"></h3>
+            <dl id="driver-card-details"></dl>
+            <div class="actions"><button id="driver-card-contact" type="button">В контакты</button><button id="driver-card-chat" class="primary" type="button">Написать</button><button id="driver-card-radio" type="button">Рация</button><button id="driver-card-block" type="button">Блокировать</button></div>
+          </aside>
+          <p id="gps-state" class="gps-state" role="status" aria-live="polite">Driver выключен. Координаты не передаются, другие водители скрыты.</p>
+          <div id="driver-map" class="driver-map" aria-label="Карта ближайших водителей"></div>
+          <p class="map-attribution">Источник карты: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>. Интерактивный просмотр без offline-скачивания.</p>
+        </div>
+      </section>
+
+      <section id="chat-view" data-driver-view="chat" hidden>
+        <div class="chat-card card">
+          <div class="chat-heading">
+            <div><p class="eyebrow">DP-003</p><h2 id="chat-room-title">Общий чат</h2></div>
+            <span id="chat-state" class="chat-state" role="status" aria-live="polite">Чат отключён</span>
+          </div>
+          <div id="chat-rooms" class="chat-rooms" aria-label="Диалоги"></div>
+          <p id="chat-direct-help" class="chat-direct-help">Личный диалог создаётся кнопкой «Написать» на маркере водителя на карте. Здесь он появится отдельной вкладкой.</p>
+          <div id="chat-messages" class="chat-messages" aria-live="polite" aria-label="Сообщения общего чата"></div>
+          <p id="chat-typing" class="chat-typing" aria-live="polite"></p>
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="chat-message-input">Сообщение</label>
+            <textarea id="chat-message-input" name="message" maxlength="2000" rows="2" placeholder="Сообщение водителям…" required></textarea>
+            <button class="primary" type="submit">Отправить</button>
+          </form>
+        </div>
+      </section>
+      <section id="radio-view" data-driver-view="radio" hidden>
+        <div class="radio-card card">
+          <div class="radio-heading">
+            <div><p class="eyebrow">DP-003</p><h2 id="radio-channel-title">Прямая рация</h2></div>
+            <span id="radio-state" class="radio-state" role="status" aria-live="polite">Рация отключена</span>
+          </div>
+          <div id="radio-channels" class="radio-channels" aria-label="Каналы рации"></div>
+          <p id="radio-help" class="radio-help">Прямой канал доступен только с подтверждённым контактом. Откройте карточку контакта и нажмите «Рация».</p>
+          <div id="radio-transmissions" class="radio-transmissions" aria-live="polite"></div>
+          <button id="radio-ptt" class="radio-ptt" type="button" disabled>Удерживайте, чтобы говорить</button>
+          <p class="radio-note">Передача отправляется после отпускания кнопки. Максимум 60 секунд и 3 МиБ.</p>
+        </div>
+      </section>
+      <section id="contacts-view" data-driver-view="contacts" hidden><div class="card"><div class="section-heading"><p class="eyebrow">Связи</p><h2>Контакты</h2></div><div id="contacts-list" class="driver-search-results"></div></div></section>
+
+      <section id="driver-profile-view" data-driver-view="profile" hidden>
+        <form id="profile-form" class="card">
+          <div class="section-heading"><p class="eyebrow">Профиль водителя</p><h2>Данные для карты и общения</h2></div>
+          <div class="required-grid">
+            <label>Уникальный никнейм
+              <input name="nickname" minlength="3" maxlength="32" autocomplete="nickname" required>
+              <small>3–32 символа: буквы, цифры, «_» или «-».</small>
+            </label>
+            <label>Тип водителя
+              <select name="driverType" required>
+                <option value="">Выберите тип</option><option value="TIR">TIR — грузовой транспорт</option>
+                <option value="TAXI">Taxi</option><option value="DELIVERY">Доставка</option><option value="GENERAL">Общий</option>
+              </select>
+            </label>
+          </div>
+          <h2>Дополнительные данные</h2>
+          <div class="optional-grid">
+            <label>Настоящее имя<input name="realName" maxlength="80" autocomplete="name"></label>
+            <label>Автомобиль<input name="vehicle" maxlength="80"></label>
+            <label>Флаг страны<select name="countryCode" autocomplete="country"><option value="">Не выбран</option></select></label>
+          </div>
+          <div class="actions">
+            <button class="primary" type="submit">Сохранить профиль</button>
+            <span id="profile-state" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+    </section>
+
+    <section id="guest-view" class="driver-shell" hidden aria-labelledby="guest-driver-title">
+      <div class="welcome">
+        <p class="eyebrow">Driver Patap · Открытый просмотр</p>
+        <h1 id="guest-driver-title">Дорога начинается с связи</h1>
+        <p class="intro">Это безопасная демонстрация интерфейса. Здесь нет реальных водителей, координат или сообщений.</p>
+      </div>
+
+      <nav id="guest-driver-nav" class="driver-nav" aria-label="Разделы демонстрации">
+        <button class="active" type="button" data-guest-driver-view="map">Карта</button>
+        <button type="button" data-guest-driver-view="chat">Чат</button>
+        <button type="button" data-guest-driver-view="contacts">Контакты</button>
+        <button type="button" data-guest-driver-view="profile">Профиль</button>
+      </nav>
+
+      <section class="guest-driver-panel" data-guest-driver-panel="map">
+        <div class="map-card card">
+          <div class="map-heading"><div><p class="eyebrow">Демо</p><h2>Карта и GPS</h2></div><span class="guest-badge">GPS выключен</span></div>
+          <div class="guest-map" role="img" aria-label="Демонстрационная карта с тремя условными водителями"><span class="guest-pin pin-one">A</span><span class="guest-pin pin-two">M</span><span class="guest-pin pin-three">K</span><p>Демонстрационная карта · реальные координаты не показываются</p></div>
+          <p class="gps-state">В гостевом режиме нельзя включить GPS или увидеть настоящих водителей.</p>
+          <div class="actions"><button id="guest-map-login" class="primary" type="button">Войти как водитель</button></div>
+        </div>
+      </section>
+
+      <section class="guest-driver-panel" data-guest-driver-panel="chat" hidden>
+        <div class="chat-card card">
+          <div class="chat-heading"><div><p class="eyebrow">Демо</p><h2>Общий чат</h2></div><span class="chat-state">Только просмотр</span></div>
+          <div class="chat-rooms"><button class="active" type="button" disabled>Общий чат</button><button type="button" disabled>Личные диалоги</button></div>
+          <div class="chat-messages"><article class="guest-chat-message"><div class="guest-chat-message-meta"><strong>Марина · Demo</strong><time>10:24</time></div><p>Доброе утро! В демо-режиме можно читать примеры интерфейса.</p></article><article class="guest-chat-message"><div class="guest-chat-message-meta"><strong>Алексей · Demo</strong><time>10:27</time></div><p>Чтобы писать сообщения и создавать личные чаты, войдите в аккаунт.</p></article></div>
+          <p class="chat-direct-help">Реальные сообщения и история доступны только участникам после входа.</p>
+          <div class="actions"><button id="guest-chat-login" class="primary" type="button">Войти, чтобы написать</button></div>
+        </div>
+      </section>
+
+      <section class="guest-driver-panel" data-guest-driver-panel="contacts" hidden>
+        <div class="card"><div class="section-heading"><p class="eyebrow">Демо</p><h2>Контакты</h2></div><p class="intro">Контакты строятся только между авторизованными водителями. Гости не могут видеть реальные списки.</p><div class="guest-contacts-items"><div class="guest-contacts-driver"><strong>Алексей · Demo</strong><span>Пример контакта</span></div><div class="guest-contacts-driver"><strong>Марина · Demo</strong><span>Пример запроса</span></div></div><div class="actions"><button id="guest-contacts-login" class="primary" type="button">Войти как водитель</button></div></div>
+      </section>
+
+      <section class="guest-driver-panel" data-guest-driver-panel="profile" hidden>
+        <div class="card"><div class="section-heading"><p class="eyebrow">Демо</p><h2>Профиль водителя</h2></div><p class="intro">Профиль нужен, чтобы быть видимым на карте, добавлять контакты и пользоваться чатом или рацией.</p><div class="required-grid"><label>Никнейм<input value="Только после входа" disabled></label><label>Тип водителя<input value="Выберите после входа" disabled></label></div><div class="actions"><button id="guest-profile-login" class="primary" type="button">Войти или зарегистрироваться</button></div></div>
+      </section>
+    </section>
+  </main>
+  <div id="message" class="message" role="alert" hidden></div>
+  <script id="driver-map-config" type="application/json">{"center":[19.1451,51.9194],"zoom":5,"maxZoom":19,"tiles":["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],"attribution":"© OpenStreetMap contributors"}</script>
+  <script src="/vendor/maplibre/maplibre-gl.js?v=20260714-8" defer></script>
+  <script type="module" src="/app.js?v=20260817-guest-1"></script>
+</body>
+</html>

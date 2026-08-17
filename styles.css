@@ -1,0 +1,500 @@
+:root {
+  color-scheme: dark;
+  --bg: #061119;
+  --panel: rgba(6, 18, 28, 0.78);
+  --panel-strong: rgba(8, 22, 34, 0.94);
+  --line: rgba(150, 219, 255, 0.26);
+  --text: #eef8ff;
+  --muted: #b3c8d8;
+  --accent: #64d8ff;
+  --accent-strong: #18a9df;
+  --warning: #ffd38b;
+  --ok: #8fffc2;
+  font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+html {
+  overflow-x: clip;
+  scrollbar-gutter: stable;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+  border: 1px solid rgba(130, 218, 255, 0.42);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(100, 216, 255, 0.22), rgba(24, 169, 223, 0.18));
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+button:hover,
+button:focus-visible {
+  border-color: rgba(143, 255, 194, 0.75);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(150, 219, 255, 0.28);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: rgba(2, 11, 18, 0.72);
+  color: var(--text);
+}
+
+input:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(100, 216, 255, 0.16);
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.app-shell {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.auth-screen {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  place-items: center;
+  padding: 28px;
+  overflow: hidden;
+  isolation: isolate;
+  background-image: url("assets/patap-lab-bg.png?v=natural-2");
+  background-position: center;
+  background-size: cover;
+}
+
+.auth-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(84, 208, 255, 0.08), transparent 30%),
+    linear-gradient(90deg, rgba(2, 7, 12, 0.22), rgba(2, 7, 12, 0.04) 45%, rgba(2, 7, 12, 0.28));
+}
+
+.auth-panel {
+  position: relative;
+  width: min(430px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 28px;
+  background: rgba(3, 12, 20, 0.7);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+}
+
+.lab-mark {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.auth-panel h1,
+.lab-header h1 {
+  margin: 0;
+  font-size: clamp(42px, 7vw, 76px);
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.auth-subtitle,
+.lab-header p {
+  margin: 14px 0 0;
+  color: var(--muted);
+}
+
+.local-auth-note {
+  margin: 14px 0 0;
+  border: 1px solid rgba(255, 211, 139, 0.24);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 211, 139, 0.08);
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.password-warning {
+  margin: 0;
+  border: 1px solid rgba(255, 211, 139, 0.24);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: rgba(255, 211, 139, 0.08);
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-actions button,
+.admin-actions select {
+  min-height: 38px;
+  border-radius: 8px;
+}
+
+.admin-actions select {
+  border: 1px solid rgba(150, 219, 255, 0.28);
+  background: rgba(2, 11, 18, 0.72);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 26px 0 18px;
+}
+
+.auth-tab {
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: rgba(7, 21, 32, 0.68);
+}
+
+.auth-tab.active,
+.section-button.active {
+  border-color: var(--ok);
+  background: rgba(57, 210, 159, 0.18);
+}
+
+.auth-form,
+.settings-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form button,
+.settings-form button,
+.inline-form button {
+  font-weight: 700;
+}
+
+.message {
+  min-height: 22px;
+  margin: 16px 0 0;
+  color: var(--warning);
+  font-size: 14px;
+}
+
+.message.success {
+  color: var(--ok);
+}
+
+.lab-screen {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 28px;
+  background: transparent;
+}
+
+.lab-screen::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background:
+    linear-gradient(180deg, rgba(4, 12, 18, 0.22), rgba(6, 17, 25, 0.46)),
+    url("assets/patap-lab-bg.png?v=natural-2") center / cover;
+  backface-visibility: hidden;
+  contain: paint;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+.lab-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  max-width: 1180px;
+  margin: 0 auto 22px;
+}
+
+.lab-header h1 {
+  font-size: clamp(38px, 5vw, 68px);
+}
+
+.user-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.user-box span {
+  max-width: 190px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-box button {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.lab-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+}
+
+.section-button {
+  min-height: 54px;
+  background: var(--panel);
+  font-weight: 700;
+}
+
+.lab-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 18px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.workspace,
+.status-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.28);
+}
+
+.workspace {
+  min-height: 430px;
+  padding: 26px;
+}
+
+.guest-workspace .item-card {
+  min-height: 128px;
+}
+
+.guest-cta {
+  margin-top: 18px;
+  padding: 0 18px;
+  font-weight: 700;
+}
+
+.section-view {
+  display: none;
+}
+
+.section-view.active {
+  display: block;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.section-heading span {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.section-heading h2,
+.status-panel h2 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.section-view p {
+  max-width: 720px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 10px;
+  margin: 22px 0;
+}
+
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.item-card {
+  min-height: 82px;
+  border: 1px solid rgba(150, 219, 255, 0.2);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.item-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.item-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-panel {
+  align-self: start;
+  padding: 22px;
+}
+
+.status-panel dl {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0 0;
+}
+
+.status-panel div {
+  border-top: 1px solid rgba(150, 219, 255, 0.18);
+  padding-top: 12px;
+}
+
+.status-panel dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-panel dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-row input {
+  width: 18px;
+  min-height: 18px;
+}
+
+body.compact .workspace {
+  min-height: 340px;
+  padding: 18px;
+}
+
+body.compact .item-card {
+  min-height: 62px;
+}
+
+@media (max-width: 860px) {
+  .lab-header,
+  .lab-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .lab-header {
+    display: grid;
+  }
+
+  .lab-nav,
+  .item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .status-panel {
+    order: 2;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-screen,
+  .lab-screen {
+    padding: 16px;
+  }
+
+  .auth-panel,
+  .workspace,
+  .status-panel {
+    padding: 18px;
+  }
+
+  .auth-tabs,
+  .lab-nav,
+  .inline-form,
+  .item-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-panel h1 {
+    font-size: 40px;
+  }
+
+  .user-box {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  button:hover,
+  button:focus-visible {
+    transform: none;
+  }
+}

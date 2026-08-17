@@ -1,0 +1,12 @@
+{
+  "id": "research",
+  "name": "Research",
+  "version": "0.1.0",
+  "status": "architecture-only",
+  "route": "/research",
+  "entry": "index.html",
+  "roles": ["Administrator", "Developer", "Researcher"],
+  "permissions": ["research:open"],
+  "storage": ["modules", "projects", "cache", "uploads", "config"],
+  "description": "Independent future research module."
+}

@@ -1,0 +1,64 @@
+{
+	admin off
+}
+
+:8090 {
+	root * D:/WWW.PATAP.EU/var/build/dist
+	encode zstd gzip
+
+	@driverHost {
+		host driver.patap.eu
+	}
+	@nonDriverHost {
+		not host driver.patap.eu
+	}
+
+	@httpForwarded {
+		header X-Forwarded-Proto http
+	}
+	redir @httpForwarded https://patap.eu{uri} 308
+
+	@wwwHost {
+		host www.patap.eu
+	}
+	redir @wwwHost https://patap.eu{uri} 308
+
+	@secrets {
+		path /.cloudflared-patap-lab-token.txt /.cloudflared* /*.token /*.secret
+	}
+	respond @secrets 404
+
+	@private {
+		path /.git* /.agents* /.codex* /node_modules* /dist* /docs* /features* /core* /services* /modules* /system* /data* /scripts* /ops* /var* /functions* /package.json /package-lock.json /README.md /wrangler.toml /CLOUDFLARE_DEPLOY.md /ChatGPT* /cloudflared* /Caddyfile* /*.cmd /*.ps1 /*.md /*.token /*.secret /LOCAL_SERVER_SETUP.md /TMOBILE_INBOUND_CHECK.md /CLOUDFLARE_TUNNEL.md /patap-visual-check* /patap-lab-after-login-check* /assets/patap-lab-bg-original.png /assets/source*
+	}
+	respond @private 404
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	header @driverHost Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://tile.openstreetmap.org; worker-src 'self' blob:; form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
+	header @nonDriverHost Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
+	header @nonDriverHost Cache-Control "no-cache, no-store, must-revalidate"
+	header @driverHost Permissions-Policy "camera=(), microphone=(self), geolocation=(self)"
+	header @nonDriverHost Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+	handle @driverHost {
+		handle /api/* {
+			reverse_proxy 127.0.0.1:8091
+		}
+
+		header Cache-Control "no-cache, no-store, must-revalidate"
+		root * D:/WWW.PATAP.EU/var/build/driver
+		file_server
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8091
+	}
+
+	handle {
+		file_server
+	}
+}
