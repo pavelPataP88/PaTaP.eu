@@ -1,0 +1,81 @@
+.driver-map-marker {
+  position: relative;
+  display: grid;
+  min-width: 46px;
+  min-height: 46px;
+  place-items: center;
+  padding: 0;
+  border: 3px solid #07110e;
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .34);
+  color: #07110e;
+  cursor: pointer;
+  transform: rotate(-45deg);
+  transform-origin: 50% 100%;
+}
+.driver-map-marker:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+.driver-map-marker__badge {
+  display: block;
+  font-size: .68rem;
+  font-weight: 950;
+  letter-spacing: -.02em;
+  line-height: 1;
+  transform: rotate(45deg);
+}
+.driver-map-marker__distance {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  min-width: max-content;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  background: rgba(7, 17, 14, .94);
+  color: #f4f8f6;
+  font-size: .62rem;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateX(-50%) rotate(45deg);
+}
+.driver-map-marker--taxi { background: #ffd65c; }
+.driver-map-marker--tir { background: #72b7ff; }
+.driver-map-marker--delivery { background: #c58cff; }
+.driver-map-marker--general { background: #68e0ad; }
+.driver-map-marker--self { background: #fff; color: #10231e; cursor: default; }
+.driver-map-legend {
+  display: grid;
+  gap: 5px;
+  max-width: 142px;
+  padding: 7px 9px;
+  border: 1px solid rgba(176, 222, 204, .2);
+  border-radius: 10px;
+  background: rgba(7, 17, 14, .88);
+  color: #f4f8f6;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .22);
+  backdrop-filter: blur(10px);
+}
+.driver-map-legend > span { display: flex; align-items: center; gap: 6px; }
+.driver-map-legend__badge {
+  display: inline-grid;
+  min-width: 31px;
+  height: 21px;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 6px;
+  color: #07110e;
+  font-size: .6rem;
+  font-weight: 950;
+}
+.driver-map-legend__badge--taxi { background: #ffd65c; }
+.driver-map-legend__badge--tir { background: #72b7ff; }
+.driver-map-legend__badge--delivery { background: #c58cff; }
+.driver-map-legend__badge--general { background: #68e0ad; }
+.driver-map-legend i { overflow: hidden; color: #d8e4df; font-size: .66rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  .driver-map-legend { max-width: 108px; padding: 6px; }
+  .driver-map-legend i { display: none; }
+  .driver-map-marker { min-width: 42px; min-height: 42px; }
+}
