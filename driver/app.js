@@ -6,6 +6,14 @@ import {
   validateDriverModuleRegistry
 } from "./core/module-loader.mjs?v=20260714-8";
 
+if (!document.querySelector('link[data-driver-map-markers]')) {
+  const markerStyles = document.createElement("link");
+  markerStyles.rel = "stylesheet";
+  markerStyles.href = "/map/markers.css?v=20260817-map-1";
+  markerStyles.dataset.driverMapMarkers = "true";
+  document.head.append(markerStyles);
+}
+
 const views = {
   loading: document.querySelector("#loading"),
   login: document.querySelector("#login-view"),
