@@ -61,6 +61,11 @@ export function createMapController({ setState, onDriverCard }) {
     }
   }
 
+  function clearRadiusOverlay() {
+    if (!map || !mapLoaded) return;
+    map.getSource?.(radiusSourceId)?.setData({ type: "FeatureCollection", features: [] });
+  }
+
   function radiusZoom(location, radius) {
     const mapSize = map?.getContainer?.().getBoundingClientRect?.() || { width: 360, height: 360 };
     const pixels = Math.max(120, Math.min(mapSize.width || 360, mapSize.height || 360) * 0.72);
@@ -153,6 +158,7 @@ export function createMapController({ setState, onDriverCard }) {
     if (ownMarker) ownMarker.remove();
     ownMarker = null;
     ownLocation = null;
+    clearRadiusOverlay();
     updateLocationControl();
   }
 
