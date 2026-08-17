@@ -60,7 +60,12 @@ const targetAssets = path.join(dist, "assets");
 fs.mkdirSync(targetAssets, { recursive: true });
 
 for (const entry of assetEntries) {
-  copyRequiredFile(path.join(sourceAssets, entry), path.join(targetAssets, entry), `assets/${entry}`);
+  const source = path.join(sourceAssets, entry);
+  // Visual source assets are optional in the public engineering repository.
+  // The production workspace keeps them locally and copies them as before.
+  if (fs.existsSync(source)) {
+    copyRequiredFile(source, path.join(targetAssets, entry), `assets/${entry}`);
+  }
 }
 
 console.log(`Built Patap Lab into ${path.relative(root, dist)}`);

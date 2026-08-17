@@ -10,7 +10,6 @@ const requiredFiles = [
   "index.html",
   "styles.css",
   "app.js",
-  "assets/patap-lab-bg.png",
   "Caddyfile.tunnel",
   "start-origin.cmd",
   "start-origin.ps1",
@@ -56,7 +55,7 @@ const requiredFiles = [
   "services/README.md",
 ];
 
-const requiredDistFiles = ["index.html", "styles.css", "app.js", "assets/patap-lab-bg.png"];
+const requiredDistFiles = ["index.html", "styles.css", "app.js"];
 const driverRegistryManifest = JSON.parse(fs.readFileSync(path.join(root, "driver", "module-registry.json"), "utf8"));
 const requiredDriverModuleEntries = driverRegistryManifest.modules
   .filter((module) => module.enabled)
@@ -113,6 +112,9 @@ try {
 
 for (const file of requiredFiles) if (!exists(file)) fail(`Missing required file: ${file}`);
 for (const file of requiredDistFiles) if (!fs.existsSync(path.join(dist, file))) fail(`Missing dist file: var/build/dist/${file}`);
+if (exists("assets/patap-lab-bg.png") && !fs.existsSync(path.join(dist, "assets", "patap-lab-bg.png"))) {
+  fail("Patap Lab background exists locally but was not copied to the build");
+}
 for (const file of requiredDriverDistFiles) if (!fs.existsSync(path.join(driverDist, file))) fail(`Missing Driver dist file: var/build/driver/${file}`);
 for (const file of forbiddenRootArtifacts) if (exists(file)) fail(`Unexpected leftover artifact in project root: ${file}`);
 for (const entry of forbiddenDistEntries) if (fs.existsSync(path.join(dist, entry))) fail(`Private/internal entry leaked into dist: ${entry}`);
