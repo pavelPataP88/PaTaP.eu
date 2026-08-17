@@ -230,7 +230,13 @@ async function readBody(req) {
     chunks.push(chunk);
   }
   if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    const error = new Error("invalid_json");
+    error.status = 400;
+    throw error;
+  }
 }
 
 async function readBinaryBody(req, maxBytes) {

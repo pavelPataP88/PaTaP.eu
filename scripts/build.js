@@ -4,7 +4,7 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const dist = path.join(root, "var", "build", "dist");
 const driverDist = path.join(root, "var", "build", "driver");
-const entries = ["index.html", "styles.css", "app.js"];
+const entries = ["index.html", "styles.css", "app.js", "favicon.svg"];
 const driverRegistry = JSON.parse(fs.readFileSync(path.join(root, "driver", "module-registry.json"), "utf8"));
 const driverModuleDirectories = [...new Set(driverRegistry.modules.map((module) => {
   const entry = String(module.entry || "").split("?")[0];
@@ -48,6 +48,7 @@ for (const entry of entries) {
 for (const entry of driverEntries) {
   copyRequiredFile(path.join(root, "driver", entry), path.join(driverDist, entry), `driver/${entry}`);
 }
+copyRequiredFile(path.join(root, "favicon.svg"), path.join(driverDist, "favicon.svg"), "favicon.svg");
 
 const mapLibreSource = path.join(root, "node_modules", "maplibre-gl", "dist");
 const mapLibreTarget = path.join(driverDist, "vendor", "maplibre");

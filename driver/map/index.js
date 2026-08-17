@@ -1,5 +1,27 @@
 import { countryFlag } from "../shared/countries.js?v=20260714-10";
 
+let mapLibrePromise = null;
+
+function ensureMapLibre() {
+  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  if (mapLibrePromise) return mapLibrePromise;
+  mapLibrePromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/vendor/maplibre/maplibre-gl.js?v=20260714-8";
+    script.defer = true;
+    script.addEventListener("load", () => {
+      if (window.maplibregl) resolve(window.maplibregl);
+      else reject(new Error("maplibre_unavailable"));
+    }, { once: true });
+    script.addEventListener("error", () => reject(new Error("maplibre_load_failed")), { once: true });
+    document.head.append(script);
+  }).catch((error) => {
+    mapLibrePromise = null;
+    throw error;
+  });
+  return mapLibrePromise;
+}
+
 export function createMapController({ setState, onDriverCard }) {
   const config = JSON.parse(document.querySelector("#driver-map-config").textContent);
   let map = null;
@@ -80,11 +102,15 @@ export function createMapController({ setState, onDriverCard }) {
     };
   }
 
-  function init() {
+  async function init() {
     if (map) return true;
     if (!window.maplibregl) {
-      setState("Не удалось загрузить карту.", "error");
-      return false;
+      try {
+        await ensureMapLibre();
+      } catch {
+        setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error");
+        return false;
+      }
     }
     try {
       map = new window.maplibregl.Map({
@@ -201,8 +227,8 @@ export function createDriverModule(context) {
   });
   return {
     controller,
-    activate() {
-      controller.init();
+    async activate() {
+      await controller.init();
       window.setTimeout(() => controller.resize(), 0);
     }
   };
