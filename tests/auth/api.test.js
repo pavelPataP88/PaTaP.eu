@@ -525,7 +525,228 @@ test("persistent Driver GPS enforces reciprocal visibility, freshness, radius, v
   assert.notEqual(result.data.location.updatedAt, "1970-01-01T00:00:00.000Z");
   result = await second.request("/api/driver/location", {
     method: "PUT",
-    body: { latitude: 52.25, longitude: 21.02, accuracy: 18 …3113 tokens truncated…ord-123", confirmPassword: "chat-password-123" }
+    body: { latitude: 52.25, longitude: 21.02, accuracy: 18 }
+  });
+  assert.equal(result.response.status, 200);
+
+  result = await first.request("/api/driver/nearby", {
+    method: "POST",
+    body: { radius: 5, latitude: 0, longitude: 0 }
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.locationReady, true);
+  assert.equal(result.data.drivers.length, 1);
+  assert.equal(result.data.drivers[0].nickname, `LocTwo_${runId}`);
+  assert.ok(result.data.drivers[0].distanceKm > 0 && result.data.drivers[0].distanceKm < 5);
+  assert.ok(!("userId" in result.data.drivers[0]));
+  assert.deepEqual(Object.keys(result.data.drivers[0]).sort(), [
+    "accuracy", "countryCode", "distanceKm", "driverType", "latitude",
+    "longitude", "nickname", "updatedAt", "vehicle"
+  ]);
+
+  const db = openDb();
+  const firstId = db.prepare("SELECT id FROM users WHERE username = ?").get(names.locationOne).id;
+  const secondId = db.prepare("SELECT id FROM users WHERE username = ?").get(names.locationTwo).id;
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM driver_locations WHERE user_id = ?").get(firstId).n, 1);
+  db.prepare("DELETE FROM rate_limits WHERE key = ?").run(`driver-location:user:${firstId}`);
+  result = await first.request("/api/driver/location", {
+    method: "PUT",
+    body: { latitude: 52.23, longitude: 21.01, accuracy: 9 }
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM driver_locations WHERE user_id = ?").get(firstId).n, 1);
+  assert.equal(db.prepare("SELECT accuracy_m FROM driver_locations WHERE user_id = ?").get(firstId).accuracy_m, 9);
+  db.prepare("UPDATE driver_locations SET latitude = ?, longitude = ?, updated_at = ? WHERE user_id = ?")
+    .run(52.32, 21.0122, nowIso(), secondId);
+  result = await first.request("/api/driver/nearby", {
+    method: "POST",
+    body: { radius: 5 }
+  });
+  assert.equal(result.data.drivers.length, 0);
+  result = await first.request("/api/driver/nearby", {
+    method: "POST",
+    body: { radius: 25 }
+  });
+  assert.equal(result.data.drivers.length, 1);
+
+  result = await first.request("/api/driver/location", { method: "DELETE", body: {} });
+  assert.equal(result.response.status, 200);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM driver_locations WHERE user_id = ?").get(firstId).n, 0);
+  assert.equal(db.prepare("SELECT gps_enabled FROM driver_profiles WHERE user_id = ?").get(firstId).gps_enabled, 1);
+  result = await first.request("/api/driver/nearby", {
+    method: "POST",
+    body: { radius: 25 }
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.locationReady, false);
+  assert.equal(result.data.drivers.length, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM driver_locations WHERE user_id = ?").get(firstId).n, 0);
+  result = await first.request("/api/driver/nearby?radius=25");
+  assert.equal(result.response.status, 404);
+
+  db.prepare("DELETE FROM rate_limits WHERE key = ?").run(`driver-location:user:${firstId}`);
+  result = await first.request("/api/driver/location", { method: "PUT", body: { latitude: 52.23, longitude: 21.01, accuracy: 10 } });
+  assert.equal(result.response.status, 200);
+
+  db.prepare("UPDATE driver_locations SET updated_at = ? WHERE user_id = ?")
+    .run(new Date(Date.now() - 2 * 60 * 1000).toISOString(), secondId);
+  result = await first.request("/api/driver/nearby", {
+    method: "POST",
+    body: { radius: 25 }
+  });
+  assert.equal(result.data.drivers.length, 0);
+
+  db.prepare("UPDATE driver_locations SET updated_at = ? WHERE user_id = ?").run(nowIso(), secondId);
+  result = await second.request("/api/driver/gps", { method: "PUT", body: { enabled: false } });
+  assert.equal(result.response.status, 200);
+  assert.equal(db.prepare("SELECT gps_enabled FROM driver_profiles WHERE user_id = ?").get(secondId).gps_enabled, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM driver_locations WHERE user_id = ?").get(secondId).n, 0);
+  result = await first.request("/api/driver/nearby", { method: "POST", body: { radius: 25 } });
+  assert.equal(result.data.drivers.length, 0);
+  result = await second.request("/api/driver/location", { method: "PUT", body: { latitude: 52.25, longitude: 21.02, accuracy: 18 } });
+  assert.equal(result.response.status, 409);
+  result = await second.request("/api/driver/nearby", { method: "POST", body: { radius: 25 } });
+  assert.equal(result.response.status, 409);
+
+  db.prepare("DELETE FROM rate_limits WHERE key = ?").run(`driver-location:user:${firstId}`);
+  result = await first.request("/api/driver/location", { method: "PUT", body: { latitude: 52.23, longitude: 21.01, accuracy: 10 } });
+  assert.equal(result.response.status, 200);
+  result = await first.request("/api/driver/location", { method: "PUT", body: { latitude: 52.2301, longitude: 21.0101, accuracy: 10 } });
+  assert.equal(result.response.status, 429);
+
+  db.close();
+
+  result = await first.request("/api/logout", { method: "POST", body: {} });
+  assert.equal(result.response.status, 200);
+  const relogin = new Client();
+  await relogin.csrf();
+  result = await relogin.request("/api/login", { method: "POST", body: { identifier: names.locationOne, password: "location-password-123" } });
+  assert.equal(result.response.status, 200);
+  result = await relogin.request("/api/driver/profile");
+  assert.equal(result.data.profile.gpsEnabled, true);
+});
+
+test("direct radio requires an accepted contact and keeps audio private to channel members", async () => {
+  async function createRadioDriver(client, username, email, nickname) {
+    await client.csrf();
+    let result = await client.request("/api/register", {
+      method: "POST",
+      body: { username, email, password: "radio-password-123", confirmPassword: "radio-password-123" }
+    });
+    assert.equal(result.response.status, 201);
+    result = await client.request("/api/driver/profile", { method: "PUT", body: { nickname, driverType: "TIR", countryCode: "PL" } });
+    assert.equal(result.response.status, 201);
+  }
+
+  const first = new Client();
+  const second = new Client();
+  const outsider = new Client();
+  const firstNick = `RadioOne_${runId}`;
+  const secondNick = `RadioTwo_${runId}`;
+  await createRadioDriver(first, names.radioOne, names.radioOneEmail, firstNick);
+  await createRadioDriver(second, names.radioTwo, names.radioTwoEmail, secondNick);
+  await createRadioDriver(outsider, names.radioThree, names.radioThreeEmail, `RadioThree_${runId}`);
+
+  let result = await first.request("/api/driver/radio/direct", { method: "POST", body: { nickname: secondNick } });
+  assert.equal(result.response.status, 403);
+  assert.equal(result.data.error, "radio_contact_required");
+
+  result = await first.request(`/api/driver/drivers/${encodeURIComponent(secondNick)}/contact`, { method: "POST", body: {} });
+  assert.equal(result.response.status, 200);
+  result = await second.request(`/api/driver/drivers/${encodeURIComponent(firstNick)}/contact`, { method: "POST", body: {} });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.driver.relationship, "CONTACT");
+
+  result = await first.request("/api/driver/radio/direct", { method: "POST", body: { nickname: secondNick } });
+  assert.equal(result.response.status, 201);
+  const channelId = result.data.channel.id;
+  assert.equal(result.data.channel.kind, "DIRECT");
+  result = await second.request("/api/driver/radio/direct", { method: "POST", body: { nickname: firstNick } });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.channel.id, channelId);
+
+  result = await first.request(`/api/driver/radio/channels/${channelId}/ptt`, { method: "POST", body: {} });
+  assert.equal(result.response.status, 201);
+  const { transmissionId, uploadToken } = result.data;
+  result = await second.request(`/api/driver/radio/channels/${channelId}/ptt`, { method: "POST", body: {} });
+  assert.equal(result.response.status, 409);
+  assert.equal(result.data.error, "radio_channel_busy");
+
+  let response = await first.binaryRequest(`/api/driver/radio/transmissions/${transmissionId}/audio`, {
+    body: Buffer.from("not-a-real-webm-but-private-binary"),
+    headers: { "Content-Type": "audio/webm", "X-Radio-Upload-Token": "wrong" }
+  });
+  assert.equal(response.status, 409);
+  response = await first.binaryRequest(`/api/driver/radio/transmissions/${transmissionId}/audio`, {
+    body: Buffer.from("not-a-real-webm-but-private-binary"),
+    headers: { "Content-Type": "audio/webm", "X-Radio-Upload-Token": uploadToken }
+  });
+  assert.equal(response.status, 201);
+  const committed = await response.json();
+  assert.equal(committed.transmission.id, transmissionId);
+  assert.equal(committed.transmission.byteLength, 34);
+  const storageDb = openDb();
+  const storageKey = storageDb.prepare("SELECT storage_key FROM radio_transmissions WHERE id = ?").get(transmissionId).storage_key;
+  storageDb.close();
+  const storedAudioPath = path.join(runDir, "radio", storageKey);
+  assert.equal(fs.existsSync(storedAudioPath), true);
+
+  result = await second.request(`/api/driver/radio/channels/${channelId}/transmissions`);
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.transmissions.length, 1);
+  response = await second.binaryRequest(`/api/driver/radio/transmissions/${transmissionId}/audio`, { method: "GET" });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(Buffer.from(await response.arrayBuffer()).toString("utf8"), "not-a-real-webm-but-private-binary");
+  response = await outsider.binaryRequest(`/api/driver/radio/transmissions/${transmissionId}/audio`, { method: "GET" });
+  assert.equal(response.status, 404);
+
+  result = await second.request(`/api/driver/radio/transmissions/${transmissionId}`, { method: "DELETE", body: {} });
+  assert.equal(result.response.status, 404);
+  result = await first.request(`/api/driver/radio/transmissions/${transmissionId}`, { method: "DELETE", body: {} });
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(result.data.deleted, { id: transmissionId, channelId });
+  assert.equal(fs.existsSync(storedAudioPath), false);
+  result = await second.request(`/api/driver/radio/channels/${channelId}/transmissions`);
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.transmissions.length, 0);
+  response = await second.binaryRequest(`/api/driver/radio/transmissions/${transmissionId}/audio`, { method: "GET" });
+  assert.equal(response.status, 404);
+  result = await first.request("/api/driver/radio/channels");
+  assert.equal(result.data.channels.find((item) => item.id === channelId).transmissionCount, 0);
+
+  result = await second.request(`/api/driver/radio/channels/${channelId}/ptt`, { method: "POST", body: {} });
+  assert.equal(result.response.status, 201);
+  const cancelledTransmission = result.data;
+  result = await second.request(`/api/driver/radio/transmissions/${cancelledTransmission.transmissionId}/audio`, {
+    method: "DELETE", headers: { "X-Radio-Upload-Token": cancelledTransmission.uploadToken }
+  });
+  assert.equal(result.response.status, 200);
+  result = await first.request(`/api/driver/radio/channels/${channelId}/ptt`, { method: "POST", body: {} });
+  assert.equal(result.response.status, 201);
+  result = await first.request(`/api/driver/radio/transmissions/${result.data.transmissionId}/audio`, {
+    method: "DELETE", headers: { "X-Radio-Upload-Token": result.data.uploadToken }
+  });
+  assert.equal(result.response.status, 200);
+
+  result = await first.request(`/api/driver/drivers/${encodeURIComponent(secondNick)}/block`, { method: "PUT", body: { enabled: true } });
+  assert.equal(result.response.status, 200);
+  result = await second.request(`/api/driver/radio/channels/${channelId}/transmissions`);
+  assert.equal(result.response.status, 403);
+  assert.equal(result.data.error, "driver_blocked");
+
+  const db = openDb();
+  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 11);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM radio_transmissions WHERE id = ?").get(transmissionId).n, 0);
+  db.close();
+});
+
+test("general Driver chat is persistent, idempotent, cursor-based, and broadcasts committed messages", async (t) => {
+  async function createChatDriver(client, username, email, nickname, countryCode = null) {
+    await client.csrf();
+    let result = await client.request("/api/register", {
+      method: "POST",
+      body: { username, email, password: "chat-password-123", confirmPassword: "chat-password-123" }
     });
     assert.equal(result.response.status, 201);
     result = await client.request("/api/driver/profile", {
