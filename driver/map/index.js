@@ -1,5 +1,72 @@
 import { countryFlag } from "../shared/countries.js?v=20260714-10";
 
+const DRIVER_TYPE_META = Object.freeze({
+  TAXI: { short: "TAXI", label: "такси", className: "taxi" },
+  TIR: { short: "TIR", label: "грузовой транспорт", className: "tir" },
+  DELIVERY: { short: "DEL", label: "доставка", className: "delivery" },
+  GENERAL: { short: "DRV", label: "водитель", className: "general" }
+});
+
+export function driverTypeMeta(type) {
+  return DRIVER_TYPE_META[type] || DRIVER_TYPE_META.GENERAL;
+}
+
+export function formatDriverDistance(distanceKm) {
+  if (!Number.isFinite(distanceKm)) return "";
+  if (distanceKm < 1) return `${Math.max(10, Math.round(distanceKm * 1000 / 10) * 10)} м`;
+  if (distanceKm < 10) return `${distanceKm.toFixed(1)} км`;
+  return `${Math.round(distanceKm)} км`;
+}
+
+function markerAriaLabel(driver) {
+  const meta = driverTypeMeta(driver.driverType);
+  const distance = formatDriverDistance(driver.distanceKm);
+  const country = countryFlag(driver.countryCode);
+  return [driver.nickname, meta.label, distance, country].filter(Boolean).join(", ");
+}
+
+function renderDriverMarker(element, driver) {
+  const meta = driverTypeMeta(driver.driverType);
+  element.className = `driver-map-marker driver-map-marker--${meta.className}`;
+  element.setAttribute("aria-label", markerAriaLabel(driver));
+  element.title = markerAriaLabel(driver);
+  element.replaceChildren();
+
+  const badge = document.createElement("span");
+  badge.className = "driver-map-marker__badge";
+  badge.textContent = meta.short;
+
+  const distance = document.createElement("span");
+  distance.className = "driver-map-marker__distance";
+  distance.textContent = formatDriverDistance(driver.distanceKm);
+
+  element.append(badge, distance);
+}
+
+function createDriverMarkerElement(driver, onDriverCard) {
+  const element = document.createElement("button");
+  element.type = "button";
+  renderDriverMarker(element, driver);
+  element.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    Promise.resolve(onDriverCard?.(driver.nickname)).catch(() => {});
+  });
+  return element;
+}
+
+function createOwnMarkerElement() {
+  const element = document.createElement("div");
+  element.className = "driver-map-marker driver-map-marker--self";
+  element.setAttribute("aria-label", "Моё местоположение");
+  element.title = "Моё местоположение";
+  const badge = document.createElement("span");
+  badge.className = "driver-map-marker__badge";
+  badge.textContent = "Я";
+  element.append(badge);
+  return element;
+}
+
 export function createMapController({ setState, onDriverCard }) {
   const config = JSON.parse(document.querySelector("#driver-map-config").textContent);
   let map = null;
@@ -80,10 +147,33 @@ export function createMapController({ setState, onDriverCard }) {
     };
   }
 
+  function createLegendControl() {
+    return {
+      onAdd() {
+        const legend = document.createElement("div");
+        legend.className = "maplibregl-ctrl driver-map-legend";
+        legend.setAttribute("aria-label", "Обозначения водителей на карте");
+        for (const type of ["TAXI", "TIR", "DELIVERY", "GENERAL"]) {
+          const meta = driverTypeMeta(type);
+          const row = document.createElement("span");
+          const badge = document.createElement("b");
+          badge.className = `driver-map-legend__badge driver-map-legend__badge--${meta.className}`;
+          badge.textContent = meta.short;
+          const label = document.createElement("i");
+          label.textContent = meta.label;
+          row.append(badge, label);
+          legend.append(row);
+        }
+        return legend;
+      },
+      onRemove() {}
+    };
+  }
+
   function init() {
     if (map) return true;
     if (!window.maplibregl) {
-      setState("Не удалось загрузить карту.", "error");
+      setState("Карта сейчас не загрузилась. GPS, профиль и чат продолжают работать.", "error");
       return false;
     }
     try {
@@ -109,6 +199,7 @@ export function createMapController({ setState, onDriverCard }) {
       });
       map.addControl(new window.maplibregl.AttributionControl({ compact: false, customAttribution: config.attribution }));
       map.addControl(createLocationControl(), "top-right");
+      map.addControl(createLegendControl(), "top-left");
       if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); });
       else mapLoaded = true;
       if (globalThis.ResizeObserver) {
@@ -118,7 +209,7 @@ export function createMapController({ setState, onDriverCard }) {
       return true;
     } catch {
       map = null;
-      setState("Не удалось запустить интерактивную карту. Профиль и чат остаются доступны.", "error");
+      setState("Не удалось запустить интерактивную карту. GPS, профиль и чат остаются доступны.", "error");
       return false;
     }
   }
@@ -134,7 +225,7 @@ export function createMapController({ setState, onDriverCard }) {
     if (!map) return;
     ownLocation = { longitude: location.longitude, latitude: location.latitude };
     const point = [location.longitude, location.latitude];
-    if (!ownMarker) ownMarker = new window.maplibregl.Marker({ color: "#2f8cff" }).setLngLat(point).addTo(map);
+    if (!ownMarker) ownMarker = new window.maplibregl.Marker({ element: createOwnMarkerElement(), anchor: "bottom" }).setLngLat(point).addTo(map);
     else ownMarker.setLngLat(point);
     updateLocationControl();
     updateRadiusOverlay();
@@ -159,13 +250,12 @@ export function createMapController({ setState, onDriverCard }) {
       const point = [driver.longitude, driver.latitude];
       let marker = nearbyMarkers.get(driver.nickname);
       if (!marker) {
-        marker = new window.maplibregl.Marker({ color: "#68e0ad" }).setLngLat(point).addTo(map);
-        marker.getElement?.().addEventListener("click", () => {
-          Promise.resolve(onDriverCard?.(driver.nickname)).catch(() => {});
-        });
+        const element = createDriverMarkerElement(driver, onDriverCard);
+        marker = new window.maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(point).addTo(map);
         nearbyMarkers.set(driver.nickname, marker);
       } else {
         marker.setLngLat(point);
+        renderDriverMarker(marker.getElement(), driver);
       }
     }
     for (const [nickname, marker] of nearbyMarkers) {
