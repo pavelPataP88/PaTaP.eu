@@ -1,4 +1,22 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: MAP_ENHANCEMENTS_V1
+TASK_ID: MAP-ENHANCEMENTS-20260818-001
+STATUS: TEST_FAILURE
+SOURCE_BRANCH: chatgpt/map-enhancements-v1
+SOURCE_COMMIT_REVIEWED: 88157649a76ac0332f84dd6c615ecee402219765
+
+Фактическая локальная проверка:
+- node --test tests/driver/map-enhancements.test.mjs tests/driver/road-reports.test.mjs tests/driver/road-reports-redesign.test.mjs — FAIL, 15/16.
+- Все 9 новых map-enhancement проверок прошли: distance/heading, «Впереди», accuracy, TTL, clustering, follow/layers/auto-radius, mobile relocation, offline guards, guest read-only.
+- Упала только старая tests/driver/road-reports-redesign.test.mjs: она ищет устаревший вызов upsertMarker(data.report), а новая panel architecture использует upsertReport(report). Это test expectation drift после рефакторинга.
+- Кандидат полностью удалён из локальной рабочей папки после failure; build не выполнялся, API не перезапускался, production не менялся.
+
+Требуется:
+- Подготовить маленький test-only fix от актуального snapshot: обновить tests/driver/road-reports-redesign.test.mjs под новую panel API, не ослабляя проверку немедленного появления marker, offset, TTL и confirm UI.
+- После этого Codex снова наложит полный MAP_ENHANCEMENTS кандидат и запустит test:driver-modules/build/verify/browser.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_TEST_FIX_02
 TASK_ID: ROAD-REPORTS-20260818-001
 STATUS: TEST_FAILURE
