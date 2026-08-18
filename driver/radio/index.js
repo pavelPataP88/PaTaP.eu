@@ -1,5 +1,6 @@
 import { createRadioExperienceUi, isAccidentalRecording } from "./experience.mjs?v=20260818-radio2";
 import { createRadioConsoleUi, RADIO_ROLE_LABELS, RADIO_POLICY_LABELS } from "./console.mjs?v=20260818-radio2";
+import { createRadioLiveAudio } from "./live-audio.mjs?v=20260818-radio2";
 
 const MAX_RECORDING_MS = 60_000;
 const MIN_RECORDING_MS = 550;
@@ -83,6 +84,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   let activated = false;
   let pollTimer = null;
   let eventSource = null;
+  let liveEventSource = null;
   let recorder = null;
   let stream = null;
   let recording = null;
@@ -107,6 +109,16 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   let carMode = false;
   let echoRunning = false;
   let refreshInFlight = null;
+
+  const liveAudio = createRadioLiveAudio({
+    uploadBinary,
+    canListenToChannel(channelId) {
+      return playbackAllowed(channels.get(Number(channelId)));
+    },
+    onTransportState(mode) {
+      radioCard.dataset.liveTransport = mode;
+    }
+  });
 
   function setState(text, kind = "ready", { lockMs = 0 } = {}) {
     currentPhase = PHASE_LABELS[kind] ? kind : "ready";
@@ -186,6 +198,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
 
   async function playIncoming(item, { force = false } = {}) {
     if (!item || item.sender?.nickname === ownNickname) return false;
+    if (!force && liveAudio.hasHeard(item.id)) return true;
     const targetChannel = channels.get(Number(item.channelId));
     if (!force && !playbackAllowed(targetChannel)) return false;
     pauseActiveAudio();
@@ -422,6 +435,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       }
       settings = data.settings || settings; invites = data.invites || []; alerts = data.alerts || [];
       consoleUi.setSettings(settings); consoleUi.setInvitesCount(invites.length); consoleUi.showAlert(alerts[0] || null);
+      syncLiveEventStream();
       const preferred = previousId && channels.get(Number(previousId))
         || settings.defaultChannelId && channels.get(Number(settings.defaultChannelId))
         || channels.values().next().value || null;
@@ -429,7 +443,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       if (!initial) {
         for (const item of channels.values()) {
           const oldId = Number(previousLast.get(item.id) || 0); const newId = Number(item.lastTransmissionId || 0);
-          if (newId > oldId) handleNewTransmission(item, oldId, newId);
+          if (previousLast.has(item.id) && newId > oldId) handleNewTransmission(item, oldId, newId);
         }
       }
       if (channel?.speaker && !channel.speaker.isSelf && !recording && !starting && !uploading) setState(`Сейчас говорит ${channel.speaker.nickname}.`, "listening");
@@ -465,6 +479,27 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     eventSource = null;
   }
 
+  function connectLiveEventStream() {
+    if (!activated || liveEventSource || typeof EventSource === "undefined" || !settings.autoPlay || settings.status === "BUSY") return;
+    liveEventSource = new EventSource("/api/driver/radio/live-events");
+    liveEventSource.addEventListener("radio-live", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (payload.type === "radio.live") void liveAudio.handleIncoming(payload);
+      } catch { }
+    });
+  }
+
+  function closeLiveEventStream() {
+    if (liveEventSource) liveEventSource.close();
+    liveEventSource = null;
+  }
+
+  function syncLiveEventStream() {
+    if (settings.autoPlay && settings.status !== "BUSY") connectLiveEventStream();
+    else closeLiveEventStream();
+  }
+
   function schedulePoll() {
     if (pollTimer) window.clearInterval(pollTimer);
     pollTimer = activated ? window.setInterval(() => refreshOverview(), POLL_MS) : null;
@@ -473,11 +508,11 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   async function updateSettings(patch, { quiet = false } = {}) {
     try {
       const data = await api("/api/driver/radio/settings", { method: "PATCH", body: patch });
-      settings = data.settings; consoleUi.setSettings(settings);
+      settings = data.settings; consoleUi.setSettings(settings); syncLiveEventStream();
       if (!quiet) setState("Настройки рации сохранены.", "ready");
       return true;
     } catch (error) {
-      consoleUi.setSettings(settings); if (!quiet) setState(friendlyRadioError(error), "error"); return false;
+      consoleUi.setSettings(settings); syncLiveEventStream(); if (!quiet) setState(friendlyRadioError(error), "error"); return false;
     }
   }
 
@@ -660,7 +695,14 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     c.nextButton.addEventListener("click", () => carStep(1));
     c.carReplayButton.addEventListener("click", replayLast);
     c.replayButton.addEventListener("click", replayLast);
-    c.liveButton.addEventListener("click", () => updateSettings({ autoPlay: !settings.autoPlay }));
+    c.liveButton.addEventListener("click", async () => {
+      const enable = !settings.autoPlay;
+      if (enable && !(await liveAudio.unlockListening())) {
+        setState("Браузер не разрешил живое воспроизведение. Проверьте звук и попробуйте ещё раз.", "error");
+        return;
+      }
+      await updateSettings({ autoPlay: enable });
+    });
     c.speedSelect.addEventListener("change", async () => {
       const rate = Number(c.speedSelect.value);
       if (await updateSettings({ playbackRate: rate })) { for (const player of historyPlayers) player.audio.playbackRate = rate; if (activeAudio) activeAudio.playbackRate = rate; }
@@ -682,6 +724,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   }
 
   async function finishRecording(chunks, mimeType, session) {
+    await liveAudio.stopBroadcast({ flush: !cancelUpload });
     recording = null; recordingStartedAt = 0; pointerCancelOnRelease = false; stopRecordingClock(); uploading = true;
     ptt.classList.remove("recording"); updatePtt(); closeStream();
     if (cancelUpload) {
@@ -735,8 +778,10 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       recorder.addEventListener("dataavailable", (item) => { if (item.data?.size) chunks.push(item.data); });
       recorder.addEventListener("stop", () => finishRecording(chunks, recordedMimeType, lease), { once: true });
       recorder.start(1_000); recordingStartedAt = Date.now(); startRecordingClock(); ptt.classList.add("recording"); setState(`Вы говорите в канал «${channel.title}».`, "recording"); updatePtt();
+      void liveAudio.startBroadcast(stream, lease);
       stopTimer = window.setTimeout(() => { if (pointerCancelOnRelease) cancelRecording(undefined); else stopRecording(undefined); }, MAX_RECORDING_MS);
     } catch (error) {
+      await liveAudio.stopBroadcast({ flush: false });
       closeStream(); recording = null; recordingStartedAt = 0; pointerCancelOnRelease = false; stopRecordingClock();
       if (error.status === 401) onAuthLost();
       else if (error.message === "radio_channel_busy") setState(error.speaker ? `Сейчас говорит ${error.speaker}.` : "Канал уже занят другим водителем.", "listening");
@@ -752,7 +797,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     const elapsed = recordingStartedAt ? Date.now() - recordingStartedAt : 0;
     pttHeld = false; pointerCancelOnRelease = false;
     if (stopTimer) window.clearTimeout(stopTimer); stopTimer = null;
-    if (starting && !recording) { cancelUpload = true; cancelReason = "Передача отменена до начала записи."; setState(cancelReason, "ready"); return; }
+    if (starting && !recording) { cancelUpload = true; cancelReason = "Передача отменена до начала записи."; setState(cancelReason, "ready"); void liveAudio.stopBroadcast({ flush: false }); return; }
     if (recording && isAccidentalRecording(elapsed, MIN_RECORDING_MS)) { cancelUpload = true; cancelReason = "Слишком короткая запись. Передача не отправлена."; }
     if (recorder?.state === "recording") recorder.stop();
   }
@@ -762,7 +807,9 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     if (!pttHeld && !recording && !starting) return;
     cancelUpload = true; cancelReason = reason; pttHeld = false; pointerCancelOnRelease = false;
     if (stopTimer) window.clearTimeout(stopTimer); stopTimer = null;
-    setState("Отменяем передачу…", "requesting"); if (recorder?.state === "recording") recorder.stop();
+    setState("Отменяем передачу…", "requesting");
+    if (recorder?.state === "recording") recorder.stop();
+    else void liveAudio.stopBroadcast({ flush: false });
   }
 
   function updateCancelGesture(event) {
@@ -802,7 +849,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       if (!profileReady) return setState("Сначала сохраните профиль водителя.", "error");
       await refreshOverview({ initial: true });
       if (channel) await selectChannel(channel, { keepStatus: true }); else setState("Нет доступного канала рации.", "disabled");
-      connectEventStream(); schedulePoll();
+      connectEventStream(); syncLiveEventStream(); schedulePoll();
     },
     setSession({ profile }) { profileReady = Boolean(profile); ownNickname = profile?.nickname || ""; navButton.disabled = !profileReady; updatePtt(); },
     setProfileReady(profile) { profileReady = Boolean(profile); ownNickname = profile?.nickname || ownNickname; navButton.disabled = !profileReady; updatePtt(); },
@@ -813,12 +860,13 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     },
     reset() {
       activated = false; profileReady = false; ownNickname = ""; pttHeld = false; pointerCancelOnRelease = false; starting = false; uploading = false; cancelUpload = true; cancelReason = ""; statusLockUntil = 0;
-      pauseActiveAudio(); closeEventStream();
+      pauseActiveAudio(); closeEventStream(); closeLiveEventStream(); void liveAudio.stopBroadcast({ flush: false }); liveAudio.closeListening();
       if (pollTimer) window.clearInterval(pollTimer); if (stopTimer) window.clearTimeout(stopTimer); pollTimer = null; stopTimer = null; stopRecordingClock();
       if (recorder?.state === "recording") recorder.stop(); closeStream(); recorder = null; recording = null; recordingStartedAt = 0; channel = null;
       channels.clear(); knownLastIds.clear(); pinnedIds.clear(); historyItems = []; historyPlayers = []; invites = []; alerts = [];
       settings = { status: "AVAILABLE", soloChannelId: null, defaultChannelId: null, autoPlay: false, playbackRate: 1 }; carMode = false; refreshInFlight = null;
       renderChannelList(); renderTransmissions(); consoleUi.renderPins([]); consoleUi.showAlert(null); consoleUi.setInvitesCount(0); consoleUi.setSettings(settings); consoleUi.setCarMode(false);
+      radioCard.dataset.liveTransport = "off";
       navButton.disabled = true; ptt.classList.remove("recording"); currentPhase = "disabled"; experience.reset(); updatePtt(); setState("Рация отключена", "disabled");
     }
   };
