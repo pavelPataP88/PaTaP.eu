@@ -1,7 +1,8 @@
 import { countryFlag } from "../shared/countries.js?v=20260714-10";
 import { ensureMapLibre } from "./maplibre-loader.mjs?v=20260818-1";
+import { createRoadReportPanel } from "./road-reports-panel.mjs?v=20260818-redesign1";
 
-export function createMapController({ setState, onDriverCard }) {
+export function createMapController({ setState, onDriverCard, api, onAuthLost, showError }) {
   const config = JSON.parse(document.querySelector("#driver-map-config").textContent);
   let map = null;
   let ownMarker = null;
@@ -10,6 +11,8 @@ export function createMapController({ setState, onDriverCard }) {
   let resizeObserver = null;
   let radiusKm = 25;
   let mapLoaded = false;
+  let profileReady = false;
+  let roadReports = null;
   const nearbyMarkers = new Map();
   const radiusSourceId = "driver-search-radius";
 
@@ -123,6 +126,16 @@ export function createMapController({ setState, onDriverCard }) {
         resizeObserver = new ResizeObserver(() => map?.resize());
         resizeObserver.observe(document.querySelector("#driver-map"));
       }
+      const mapElement = document.querySelector("#driver-map");
+      roadReports = createRoadReportPanel({
+        map,
+        mapElement,
+        api,
+        getOwnLocation: () => ownLocation ? { ...ownLocation } : null,
+        isProfileReady: () => profileReady,
+        onAuthLost,
+        showError
+      });
       return true;
     } catch {
       map = null;
@@ -190,6 +203,10 @@ export function createMapController({ setState, onDriverCard }) {
     nearbyMarkers.clear();
   }
 
+  function setProfileReady(value) {
+    profileReady = Boolean(value);
+  }
+
   return {
     init,
     resize() { if (map) map.resize(); },
@@ -199,12 +216,17 @@ export function createMapController({ setState, onDriverCard }) {
     recenterOwn,
     clearOwn,
     showNearby,
-    clearNearby
+    clearNearby,
+    refreshRoadReports() { return roadReports?.refresh?.(); },
+    setProfileReady
   };
 }
 
 export function createDriverModule(context) {
   const controller = createMapController({
+    api: context.api,
+    onAuthLost: context.onAuthLost,
+    showError: context.showError,
     setState(text, state) { context.getModule("gps")?.controller?.setState(text, state); },
     onDriverCard(nickname) { return context.openDriverCard?.(nickname); }
   });
@@ -212,7 +234,11 @@ export function createDriverModule(context) {
     controller,
     async activate() {
       await controller.init();
+      await controller.refreshRoadReports();
       window.setTimeout(() => controller.resize(), 0);
-    }
+    },
+    setSession({ profile }) { controller.setProfileReady(Boolean(profile)); },
+    setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); },
+    reset() { controller.setProfileReady(false); }
   };
 }
