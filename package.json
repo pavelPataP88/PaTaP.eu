@@ -11,7 +11,7 @@
     "auth:restore": "node server/auth/restore-db.js",
     "test:auth": "node scripts/run-auth-tests.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
-    "test:driver-modules": "node --test tests/driver/module-loader.test.mjs tests/driver/chat-reactions.test.mjs tests/driver/road-reports.test.mjs tests/driver/map-enhancements.test.mjs",
+    "test:driver-modules": "node --test tests/driver/module-loader.test.mjs tests/driver/chat-reactions.test.mjs tests/driver/road-reports.test.mjs tests/driver/map-enhancements.test.mjs tests/driver/radio-experience.test.mjs",
     "test:config": "node --test tests/config/caddy-policy.test.js",
     "test:browser": "node scripts/run-browser-test.js",
     "audit:performance": "node scripts/audit-interface-performance.js",
