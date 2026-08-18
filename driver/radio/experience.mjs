@@ -33,7 +33,7 @@ export function installRadioExperienceStyles() {
   document.head.append(style);
 }
 
-export function createRadioExperienceUi({ card, ptt }) {
+export function createRadioExperienceUi({ card, ptt, mount = null }) {
   installRadioExperienceStyles();
   const live = document.createElement("section");
   live.className = "radio-live-status";
@@ -68,10 +68,11 @@ export function createRadioExperienceUi({ card, ptt }) {
   const hint = document.createElement("p");
   hint.className = "radio-ptt-hint";
   hint.id = "radio-ptt-hint";
-  hint.textContent = "Зажмите и говорите. Отпустите для отправки. Для отмены уведите палец за пределы кнопки и отпустите; с клавиатуры — Esc.";
+  hint.textContent = "Зажмите и говорите. Отпустите для завершения и сохранения. Короткий тап не выходит в эфир. Увод пальца или Esc останавливает передачу и не сохраняет её; уже прозвучавшую часть живого эфира отозвать нельзя.";
 
   live.append(channelBox, phaseBox, timing);
-  card?.insertBefore(live, card.querySelector(".radio-channels"));
+  if (mount) mount.append(live);
+  else card?.insertBefore(live, card.querySelector(".radio-channels"));
   ptt?.insertAdjacentElement("afterend", hint);
   ptt?.setAttribute("aria-describedby", "radio-ptt-hint radio-recording-time");
   ptt?.setAttribute("aria-pressed", "false");
@@ -79,7 +80,9 @@ export function createRadioExperienceUi({ card, ptt }) {
   return {
     setChannel(channel) {
       if (!channel) channelName.textContent = "Канал не выбран";
-      else channelName.textContent = channel.kind === "DIRECT" ? `Прямой · ${channel.title}` : channel.title;
+      else if (channel.kind === "DIRECT") channelName.textContent = `Прямой · ${channel.title}`;
+      else if (channel.kind === "GENERAL") channelName.textContent = `Общий · ${channel.title}`;
+      else channelName.textContent = `Канал · ${channel.title}`;
     },
     setPhase(phase, text) {
       const safePhase = RADIO_PHASES.includes(phase) ? phase : "ready";
