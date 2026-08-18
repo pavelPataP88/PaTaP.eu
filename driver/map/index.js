@@ -1,7 +1,23 @@
 import { countryFlag } from "../shared/countries.js?v=20260714-10";
 import { ensureMapLibre } from "./maplibre-loader.mjs?v=20260818-1";
 
-export function createMapController({ setState, onDriverCard }) {
+const ROAD_REPORT_REFRESH_MS = 30_000;
+const ROAD_REPORT_TYPES = Object.freeze({
+  ACCIDENT: { label: "ДТП", marker: "ДТП", lanes: true },
+  ROADWORK: { label: "Дорожные работы", marker: "РАБ", lanes: true },
+  OBSTACLE: { label: "Препятствие", marker: "!", lanes: false },
+  ROAD_CONTROL: { label: "Дорожный контроль", marker: "К", lanes: false },
+  TRANSPORT_INSPECTION: { label: "Транспортная инспекция", marker: "ТИ", lanes: false }
+});
+const ROAD_REPORT_LANES = Object.freeze({
+  ALL: "Все полосы",
+  LEFT: "Левая полоса",
+  MIDDLE: "Средняя полоса",
+  RIGHT: "Правая полоса",
+  SHOULDER: "Обочина"
+});
+
+export function createMapController({ setState, onDriverCard, api, onAuthLost, showError }) {
   const config = JSON.parse(document.querySelector("#driver-map-config").textContent);
   let map = null;
   let ownMarker = null;
@@ -10,7 +26,11 @@ export function createMapController({ setState, onDriverCard }) {
   let resizeObserver = null;
   let radiusKm = 25;
   let mapLoaded = false;
+  let profileReady = false;
+  let roadReportTimer = null;
+  let roadReportControls = null;
   const nearbyMarkers = new Map();
+  const roadReportMarkers = new Map();
   const radiusSourceId = "driver-search-radius";
 
   function radiusPolygon(location, radius) {
@@ -86,6 +106,167 @@ export function createMapController({ setState, onDriverCard }) {
     };
   }
 
+  function clearRoadReports() {
+    for (const marker of roadReportMarkers.values()) marker.remove();
+    roadReportMarkers.clear();
+  }
+
+  function roadReportTitle(report) {
+    const type = ROAD_REPORT_TYPES[report.type]?.label || "Дорожная отметка";
+    const lane = report.lane ? ROAD_REPORT_LANES[report.lane] : "";
+    const expires = report.expiresAt ? new Date(report.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    return [type, lane, expires ? `до ${expires}` : ""].filter(Boolean).join(" · ");
+  }
+
+  async function confirmRoadReport(report) {
+    let status = null;
+    if (window.confirm(`${roadReportTitle(report)}\n\nСобытие всё ещё актуально?`)) status = "ACTIVE";
+    else if (window.confirm("Отметить, что события уже нет?")) status = "GONE";
+    if (!status) return;
+    try {
+      const data = await api(`/api/driver/road-reports/${report.id}/confirm`, { method: "POST", body: { status } });
+      if (roadReportControls) {
+        roadReportControls.status.textContent = data.closed ? "Отметка закрыта." : status === "ACTIVE" ? "Актуальность подтверждена." : "Ваше подтверждение учтено.";
+      }
+      await refreshRoadReports();
+    } catch (error) {
+      if (error.status === 401) onAuthLost();
+      else showError?.("Не удалось подтвердить дорожную отметку.");
+    }
+  }
+
+  function showRoadReports(reports = []) {
+    if (!map) return;
+    clearRoadReports();
+    for (const report of reports) {
+      if (!ROAD_REPORT_TYPES[report.type]) continue;
+      const element = document.createElement("button");
+      element.type = "button";
+      element.textContent = ROAD_REPORT_TYPES[report.type].marker;
+      element.title = roadReportTitle(report);
+      element.setAttribute("aria-label", roadReportTitle(report));
+      element.style.minWidth = "34px";
+      element.style.height = "34px";
+      element.style.padding = "0 6px";
+      element.style.borderRadius = "17px";
+      element.style.border = "2px solid #ffffff";
+      element.style.background = "#f59e0b";
+      element.style.color = "#111827";
+      element.style.fontWeight = "800";
+      element.style.boxShadow = "0 2px 8px rgba(0,0,0,.35)";
+      element.style.cursor = "pointer";
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        confirmRoadReport(report);
+      });
+      const marker = new window.maplibregl.Marker({ element })
+        .setLngLat([report.longitude, report.latitude])
+        .addTo(map);
+      roadReportMarkers.set(report.id, marker);
+    }
+  }
+
+  async function refreshRoadReports() {
+    if (!profileReady || !map) {
+      clearRoadReports();
+      return;
+    }
+    try {
+      const data = await api("/api/driver/road-reports");
+      showRoadReports(Array.isArray(data.reports) ? data.reports : []);
+    } catch (error) {
+      if (error.status === 401) onAuthLost();
+      else showError?.("Не удалось обновить дорожные отметки.");
+    }
+  }
+
+  function updateRoadReportLane(typeSelect, laneWrap, laneSelect) {
+    const lanes = Boolean(ROAD_REPORT_TYPES[typeSelect.value]?.lanes);
+    laneWrap.hidden = !lanes;
+    laneSelect.disabled = !lanes;
+  }
+
+  function createRoadReportControls() {
+    if (roadReportControls) return;
+    const mapElement = document.querySelector("#driver-map");
+    if (!mapElement?.parentElement) return;
+    const container = document.createElement("div");
+    container.dataset.roadReports = "controls";
+    container.className = "privacy-controls";
+
+    const typeLabel = document.createElement("label");
+    typeLabel.textContent = "Дорожная отметка ";
+    const typeSelect = document.createElement("select");
+    typeSelect.setAttribute("aria-label", "Тип дорожной отметки");
+    for (const [value, config] of Object.entries(ROAD_REPORT_TYPES)) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = config.label;
+      typeSelect.append(option);
+    }
+    typeLabel.append(typeSelect);
+
+    const laneWrap = document.createElement("label");
+    laneWrap.textContent = " Полоса ";
+    const laneSelect = document.createElement("select");
+    laneSelect.setAttribute("aria-label", "Затронутая полоса");
+    for (const [value, label] of Object.entries(ROAD_REPORT_LANES)) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      laneSelect.append(option);
+    }
+    laneWrap.append(laneSelect);
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.textContent = "Отметить здесь";
+    add.disabled = !profileReady;
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    typeSelect.addEventListener("change", () => updateRoadReportLane(typeSelect, laneWrap, laneSelect));
+    add.addEventListener("click", async () => {
+      if (!profileReady) return;
+      if (!ownLocation) {
+        status.textContent = "Сначала включите Driver/GPS и дождитесь позиции.";
+        return;
+      }
+      const config = ROAD_REPORT_TYPES[typeSelect.value];
+      const body = {
+        type: typeSelect.value,
+        lane: config?.lanes ? laneSelect.value : null,
+        latitude: ownLocation.latitude,
+        longitude: ownLocation.longitude
+      };
+      add.disabled = true;
+      status.textContent = "Добавляем отметку…";
+      try {
+        await api("/api/driver/road-reports", { method: "POST", body });
+        status.textContent = "Дорожная отметка добавлена в текущей позиции.";
+        await refreshRoadReports();
+      } catch (error) {
+        if (error.status === 401) onAuthLost();
+        else if (error.message === "road_report_location_required") status.textContent = "Нужна свежая включённая GPS-позиция.";
+        else if (error.message === "road_report_too_far") status.textContent = "Точка слишком далеко от текущей GPS-позиции.";
+        else status.textContent = "Не удалось добавить дорожную отметку.";
+      } finally {
+        add.disabled = !profileReady;
+      }
+    });
+
+    container.append(typeLabel, laneWrap, add, status);
+    mapElement.parentElement.insertBefore(container, mapElement);
+    roadReportControls = { container, typeSelect, laneWrap, laneSelect, add, status };
+    updateRoadReportLane(typeSelect, laneWrap, laneSelect);
+  }
+
+  function scheduleRoadReports() {
+    if (roadReportTimer) window.clearInterval(roadReportTimer);
+    roadReportTimer = profileReady ? window.setInterval(refreshRoadReports, ROAD_REPORT_REFRESH_MS) : null;
+  }
+
   async function init() {
     if (map) return true;
     try {
@@ -117,12 +298,15 @@ export function createMapController({ setState, onDriverCard }) {
       });
       map.addControl(new window.maplibregl.AttributionControl({ compact: false, customAttribution: config.attribution }));
       map.addControl(createLocationControl(), "top-right");
-      if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); });
+      if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); refreshRoadReports(); });
       else mapLoaded = true;
       if (globalThis.ResizeObserver) {
         resizeObserver = new ResizeObserver(() => map?.resize());
         resizeObserver.observe(document.querySelector("#driver-map"));
       }
+      createRoadReportControls();
+      scheduleRoadReports();
+      await refreshRoadReports();
       return true;
     } catch {
       map = null;
@@ -190,6 +374,24 @@ export function createMapController({ setState, onDriverCard }) {
     nearbyMarkers.clear();
   }
 
+  function setProfileReady(value) {
+    profileReady = Boolean(value);
+    if (roadReportControls) roadReportControls.add.disabled = !profileReady;
+    scheduleRoadReports();
+    if (!profileReady) clearRoadReports();
+  }
+
+  function resetRoadReports() {
+    profileReady = false;
+    if (roadReportTimer) window.clearInterval(roadReportTimer);
+    roadReportTimer = null;
+    clearRoadReports();
+    if (roadReportControls) {
+      roadReportControls.add.disabled = true;
+      roadReportControls.status.textContent = "";
+    }
+  }
+
   return {
     init,
     resize() { if (map) map.resize(); },
@@ -199,12 +401,19 @@ export function createMapController({ setState, onDriverCard }) {
     recenterOwn,
     clearOwn,
     showNearby,
-    clearNearby
+    clearNearby,
+    refreshRoadReports,
+    showRoadReports,
+    setProfileReady,
+    resetRoadReports
   };
 }
 
 export function createDriverModule(context) {
   const controller = createMapController({
+    api: context.api,
+    onAuthLost: context.onAuthLost,
+    showError: context.showError,
     setState(text, state) { context.getModule("gps")?.controller?.setState(text, state); },
     onDriverCard(nickname) { return context.openDriverCard?.(nickname); }
   });
@@ -212,7 +421,11 @@ export function createDriverModule(context) {
     controller,
     async activate() {
       await controller.init();
+      await controller.refreshRoadReports();
       window.setTimeout(() => controller.resize(), 0);
-    }
+    },
+    setSession({ profile }) { controller.setProfileReady(Boolean(profile)); },
+    setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); },
+    reset() { controller.resetRoadReports(); }
   };
 }
