@@ -1,6 +1,12 @@
 const { DRIVER_RADII_KM, validLocation, createLocationRepository } = require("./location");
 const { normalizeDriverProfile, publicDriverProfile, createProfileRepository } = require("./profile");
 const { createDriverDirectory } = require("./directory");
+const {
+  createRoadReportStore,
+  MAX_REPORT_DISTANCE_KM,
+  haversineKm,
+  normalizeInput: normalizeRoadReportInput
+} = require("../road-reports/repository");
 
 function createDriverRoutes({
   db,
@@ -16,6 +22,7 @@ function createDriverRoutes({
   const profiles = createProfileRepository(db);
   const locations = createLocationRepository(db, { addMinutes });
   const directory = createDriverDirectory(db, { addMinutes });
+  const roadReports = createRoadReportStore();
 
   return async function handleDriverRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/")) return false;
@@ -44,6 +51,13 @@ function createDriverRoutes({
       return true;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/driver/road-reports") {
+      const session = requireSession(req, res);
+      if (!session) return true;
+      json(res, 200, { reports: roadReports.list() });
+      return true;
+    }
+
     const driverMatch = url.pathname.match(/^\/api\/driver\/drivers\/([^/]+)$/);
     if (req.method === "GET" && driverMatch) {
       const session = requireSession(req, res);
@@ -55,6 +69,72 @@ function createDriverRoutes({
     }
 
     if (body === undefined) return false;
+
+    if (req.method === "POST" && url.pathname === "/api/driver/road-reports") {
+      const session = requireSession(req, res);
+      if (!session || !requireCsrf(req, res, session)) return true;
+      if (!profiles.exists(session.user.id)) {
+        json(res, 409, { error: "driver_profile_required" });
+        return true;
+      }
+      if (!checkRate(`road-report-create:user:${session.user.id}`, 10, 10)) {
+        json(res, 429, { error: "road_report_rate_limited" });
+        return true;
+      }
+      const input = normalizeRoadReportInput(body);
+      if (!input) {
+        json(res, 400, { error: "invalid_road_report" });
+        return true;
+      }
+      if (!profiles.isGpsEnabled(session.user.id)) {
+        json(res, 409, { error: "road_report_location_required" });
+        return true;
+      }
+      const origin = locations.getFresh(session.user.id);
+      if (!origin) {
+        json(res, 409, { error: "road_report_location_required" });
+        return true;
+      }
+      if (haversineKm(origin.latitude, origin.longitude, input.latitude, input.longitude) > MAX_REPORT_DISTANCE_KM) {
+        json(res, 400, { error: "road_report_too_far" });
+        return true;
+      }
+      const report = roadReports.create(session.user.id, input);
+      audit(req, "road_report_created", {
+        userId: session.user.id,
+        success: true,
+        details: { reportId: report.id, type: report.type }
+      });
+      json(res, 201, { report });
+      return true;
+    }
+
+    const roadReportConfirmMatch = url.pathname.match(/^\/api\/driver\/road-reports\/(\d+)\/confirm$/);
+    if (req.method === "POST" && roadReportConfirmMatch) {
+      const session = requireSession(req, res);
+      if (!session || !requireCsrf(req, res, session)) return true;
+      if (!profiles.exists(session.user.id)) {
+        json(res, 409, { error: "driver_profile_required" });
+        return true;
+      }
+      if (!checkRate(`road-report-confirm:user:${session.user.id}`, 30, 5)) {
+        json(res, 429, { error: "road_report_rate_limited" });
+        return true;
+      }
+      const status = String(body?.status || "").toUpperCase();
+      const result = roadReports.confirm(session.user.id, Number(roadReportConfirmMatch[1]), status);
+      if (result.error) {
+        json(res, result.error === "road_report_not_found" ? 404 : 400, { error: result.error });
+        return true;
+      }
+      audit(req, result.closed ? "road_report_closed" : "road_report_confirmed", {
+        userId: session.user.id,
+        success: true,
+        details: { reportId: Number(roadReportConfirmMatch[1]), status }
+      });
+      json(res, 200, result);
+      return true;
+    }
 
     const driverActionMatch = url.pathname.match(/^\/api\/driver\/drivers\/([^/]+)\/(contact|block|decline)$/);
     if (driverActionMatch) {
