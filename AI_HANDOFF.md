@@ -1,3 +1,70 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: PRODUCT_DISCOVERY
+TASK_ID: PRODUCT-DISCOVERY-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/product-discovery-concept
+SOURCE_COMMIT: 159c87325231efb1f353222413c2cd6944e61bcd
+BASE: codex/local-workspace-snapshot @ cd2c226813eeafcca5e7ca3cb4d8220cd2310bce
+
+Результат:
+- Создан только документ `docs/PRODUCT_CONCEPT.md`.
+- Код сайта, server, SQLite schema, production/runtime данные и main не менялись.
+- Предложение Kimi проверено по рынку и по текущему snapshot.
+
+Ключевые выводы исследования:
+- Подтверждена серьёзная проблема truck parking в ЕС: European Commission в 2025 году указывает дефицит порядка 390 тыс. safe/secure parking spaces и отдельно отмечает роль connectivity/digitalisation.
+- Широкий тезис Kimi «в Европе нет полноценного карта + сообщество продукта» не подтверждается: Michelin Truckfly уже имеет европейскую truck map/POI/parking/community/alerts, LKW.APP — parking occupancy/forecast/community updates, intruck/SNAP — поиск/booking парковок.
+- Поэтому документ НЕ позиционирует PaTaP как «пустую нишу» и не обещает уникальность parking сам по себе.
+- Реалистичное направление сформулировано уже: приватная сеть взаимопомощи водителей, где существующие map + nearby + contacts + chat + PTT дополняются короткими живыми дорожными отметками.
+- Один приоритетный следующий блок предложен как гипотеза для Codex review: `PARKING_STATUS` — три временных статуса «есть места / мало мест / мест нет» + timestamp/TTL. Без booking, forecast, Push/PWA, PostGIS, route engine, free-text/photo moderation и скрытого GPS occupancy.
+
+Что проверено в текущем snapshot:
+- `driver/module-registry.json`: активны отдельные модули map, gps, chat, radio, profile, contacts.
+- `driver/map/index.js`: MapLibre, own/nearby markers, radius overlay, отдельная controller-граница.
+- `driver/gps/index.js`: GPS opt-in, radius 5/25/50/100, throttled location updates, явная очистка видимости.
+- `server/driver/routes.js`: profile/directory/contacts/nearby/GPS/location API; parking API отсутствует.
+- По repo search `parking` отдельного parking module/API/schema в snapshot не найдено.
+
+Реальные внешние источники:
+- European Commission — Parking areas:
+  https://transport.ec.europa.eu/transport-modes/road/parking-areas_en
+- European Commission — More safe and secure parking for professional drivers is needed (2025-04-11):
+  https://transport.ec.europa.eu/news-events/news/more-safe-and-secure-parking-professional-drivers-needed-eu-study-reveals-2025-04-11_en
+- European Commission — Safe and secure truck parking / ITS information:
+  https://transport.ec.europa.eu/transport-themes/smart-mobility/road/its-directive-and-action-plan/safe-and-secure-truck-parking_en
+- Michelin — Truckfly by Michelin GPS/community/Europe:
+  https://www.michelin.com/en/publications/products-and-services/truckfly-by-michelin-launches-an-innovative-gps-heavyweight
+- Michelin Mobility Intelligence — Truck POI / Truckfly data:
+  https://mobilityintelligence.michelin.com/en/products/truck-poi/
+- LKW.APP App Store — parking occupancy/forecast/community:
+  https://apps.apple.com/pl/app/lkw-app-parking-for-truckers/id1618788306
+- intruck App Store — European truck stops/booking:
+  https://apps.apple.com/pl/app/intruck-truckstop-app/id1219974438
+- Trucker Path Help Center — parking updates/community/prediction:
+  https://helpcenter.truckerpath.com/hc/en-us/articles/9398625000717-Purchasing-A-Subscription-To-Trucker-Path
+- DAT One — load-board plus map/parking context:
+  https://www.dat.com/solutions/load-board-app
+- Truckstop Go — carrier/load-board context:
+  https://truckstop.com/carriers/load-board-app/
+
+Ограничения исследования:
+- Не проводились интервью с водителями PaTaP и не анализировалась реальная продуктовая telemetry.
+- Не проводился исчерпывающий аудит всех trucking apps Европы и всех их языков.
+- Поэтому нельзя утверждать, что русскоязычная ниша свободна, что PTT гарантированно является moat, или что PARKING_STATUS гарантированно даст retention.
+- Цифры конкурентов взяты из их собственных официальных материалов и не считаются независимым аудитом.
+- Для документального блока runtime/build/tests не запускались: код не менялся; корректность проверена сравнением ветки с base.
+
+Изменённые файлы:
+- docs/PRODUCT_CONCEPT.md
+- AI_HANDOFF.md
+
+Codex проверить:
+1. Сопоставить продуктовые выводы с фактическим локальным snapshot/production состоянием.
+2. Проверить, что diff содержит только документ и handoff.
+3. Принять/скорректировать один следующий узкий блок; ChatGPT следующий блок не начинал.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: RADIO_RELIABILITY
 TASK_ID: RADIO-RELIABILITY-20260818-001
