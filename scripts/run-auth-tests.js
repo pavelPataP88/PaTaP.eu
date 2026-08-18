@@ -29,7 +29,8 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
       "--test",
       path.join("tests", "auth", "api.test.js"),
       path.join("tests", "auth", "chat-reactions.test.js"),
-      path.join("tests", "auth", "radio-reliability.test.js")
+      path.join("tests", "auth", "radio-reliability.test.js"),
+      path.join("tests", "auth", "road-reports.test.js")
     ], {
       cwd: environment.root,
       env: { ...environment.env, PATAP_AUTH_BASE_URL: environment.baseUrl },
