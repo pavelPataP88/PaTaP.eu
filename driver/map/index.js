@@ -4,6 +4,8 @@ import { createRoadReportPanel } from "./road-reports-panel.mjs?v=20260818-redes
 import { createMapExperience } from "./map-experience.mjs?v=20260818-mapv1";
 import { installMapUiStyles } from "./map-ui-styles.mjs?v=20260818-mapv1";
 
+const INITIAL_MAP_ZOOM = 11;
+const GPS_FOCUS_ZOOM = 14;
 const DRIVER_TYPE_LABELS = Object.freeze({ TIR: "TIR", TAXI: "Taxi", DELIVERY: "Дост.", GENERAL: "Driver" });
 
 function driverMarkerElement(driver) {
@@ -52,6 +54,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   let roadReports = null;
   let experience = null;
   let nearbyDrivers = [];
+  let initialGpsFocused = false;
   const nearbyMarkers = new Map();
   const radiusSourceId = "driver-search-radius";
 
@@ -98,12 +101,19 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     locationButton.title = ownLocation ? "Вернуться к моему местоположению и следить" : "Ожидаем GPS-позицию";
   }
 
-  function recenterOwn() {
+  function focusOwn({ follow = false } = {}) {
     if (!map || !ownLocation) return false;
-    if (experience?.setFollowMode("FOLLOW")) return true;
-    map.easeTo({ center: [ownLocation.longitude, ownLocation.latitude], duration: 450 });
+    if (follow) experience?.setFollowMode("FOLLOW");
+    const currentZoom = map.getZoom?.();
+    map.easeTo({
+      center: [ownLocation.longitude, ownLocation.latitude],
+      zoom: Math.max(GPS_FOCUS_ZOOM, Number.isFinite(currentZoom) ? currentZoom : GPS_FOCUS_ZOOM),
+      duration: 450
+    });
     return true;
   }
+
+  function recenterOwn() { return focusOwn({ follow: true }); }
 
   function createLocationControl() {
     return { onAdd() { const container = document.createElement("div"); container.className = "maplibregl-ctrl maplibregl-ctrl-group driver-location-control"; locationButton = document.createElement("button"); locationButton.id = "map-locate"; locationButton.type = "button"; locationButton.setAttribute("aria-label", "Вернуться к моему местоположению и следить"); locationButton.textContent = "⌖"; locationButton.addEventListener("click", recenterOwn); container.append(locationButton); updateLocationControl(); return container; }, onRemove() { locationButton = null; } };
@@ -137,7 +147,8 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     if (map) return true;
     try { await ensureMapLibre(); } catch { setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error"); return false; }
     try {
-      map = new window.maplibregl.Map({ container: "driver-map", center: config.center, zoom: config.zoom, maxZoom: config.maxZoom, attributionControl: false, style: { version: 8, sources: { basemap: { type: "raster", tiles: config.tiles, tileSize: 256, maxzoom: config.maxZoom, attribution: config.attribution } }, layers: [{ id: "basemap", type: "raster", source: "basemap" }] } });
+      const configuredZoom = Number.isFinite(config.zoom) ? config.zoom : INITIAL_MAP_ZOOM;
+      map = new window.maplibregl.Map({ container: "driver-map", center: config.center, zoom: Math.max(INITIAL_MAP_ZOOM, configuredZoom), maxZoom: config.maxZoom, attributionControl: false, style: { version: 8, sources: { basemap: { type: "raster", tiles: config.tiles, tileSize: 256, maxzoom: config.maxZoom, attribution: config.attribution } }, layers: [{ id: "basemap", type: "raster", source: "basemap" }] } });
       map.addControl(new window.maplibregl.AttributionControl({ compact: false, customAttribution: config.attribution }));
       map.addControl(createLocationControl(), "top-right");
       if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); experience?.setOwnLocation(ownLocation); }); else mapLoaded = true;
@@ -151,7 +162,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     } catch { map = null; setState("Не удалось запустить интерактивную карту. Профиль и чат остаются доступны.", "error"); return false; }
   }
 
-  function clearOwn() { if (ownMarker) ownMarker.remove(); ownMarker = null; ownLocation = null; clearRadiusOverlay(); experience?.clearOwnLocation(); updateLocationControl(); }
+  function clearOwn() { if (ownMarker) ownMarker.remove(); ownMarker = null; ownLocation = null; initialGpsFocused = false; clearRadiusOverlay(); experience?.clearOwnLocation(); updateLocationControl(); }
 
   function showOwn(location) {
     if (!map) return;
@@ -159,6 +170,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     const point = [location.longitude, location.latitude];
     if (!ownMarker) ownMarker = new window.maplibregl.Marker({ color: "#2f8cff" }).setLngLat(point).addTo(map); else ownMarker.setLngLat(point);
     updateLocationControl(); updateRadiusOverlay(); experience?.setOwnLocation(ownLocation);
+    if (!initialGpsFocused) { initialGpsFocused = true; focusOwn(); }
   }
 
   function setRadius(nextRadius, { focus = false } = {}) { if (!Number.isFinite(nextRadius) || nextRadius <= 0) return false; radiusKm = nextRadius; updateRadiusOverlay(); if (focus && map && ownLocation) { map.easeTo({ center: [ownLocation.longitude, ownLocation.latitude], zoom: radiusZoom(ownLocation, radiusKm), duration: 450 }); return true; } return false; }
