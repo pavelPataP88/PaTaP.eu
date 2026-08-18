@@ -294,15 +294,26 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
       res.end(JSON.stringify({ deleted: { id, roomId: 9 } }));
       return;
     }
+    const radioChannels = [{
+      id: 4, key: "direct:303:404", kind: "DIRECT", title: "NearbyDriver",
+      peer: { nickname: "NearbyDriver", driverType: "DELIVERY" }, speaker: null,
+      lastTransmissionId: radioTransmissions.at(-1)?.id || null,
+      transmissionCount: radioTransmissions.length,
+      createdAt: new Date().toISOString()
+    }];
+    if (url.pathname === "/api/driver/radio/overview") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        channels: radioChannels,
+        settings: { status: "AVAILABLE", soloChannelId: null, defaultChannelId: null, autoPlay: false, playbackRate: 1 },
+        invites: [],
+        alerts: []
+      }));
+      return;
+    }
     if (url.pathname === "/api/driver/radio/channels") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ channels: [{
-        id: 4, key: "direct:303:404", kind: "DIRECT", title: "NearbyDriver",
-        peer: { nickname: "NearbyDriver", driverType: "DELIVERY" }, speaker: null,
-        lastTransmissionId: radioTransmissions.at(-1)?.id || null,
-        transmissionCount: radioTransmissions.length,
-        createdAt: new Date().toISOString()
-      }] }));
+      res.end(JSON.stringify({ channels: radioChannels }));
       return;
     }
     if (url.pathname === "/api/driver/radio/channels/4/transmissions") {
