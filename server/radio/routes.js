@@ -34,6 +34,14 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
     return true;
   }
 
+  function releaseFailedUpload(userId, transmissionId, uploadToken) {
+    try {
+      return radio.cancelTransmission(userId, transmissionId, uploadToken);
+    } catch {
+      return false;
+    }
+  }
+
   return async function handleRadioRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/radio/")) return false;
 
@@ -92,6 +100,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       try {
         audio = await readBinaryBody(req, MAX_AUDIO_BYTES);
       } catch (error) {
+        releaseFailedUpload(session.user.id, transmissionId, uploadToken);
         json(res, error.status || 400, { error: error.message || "invalid_radio_audio" });
         return true;
       }
