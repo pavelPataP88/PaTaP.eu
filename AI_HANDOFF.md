@@ -1,4 +1,66 @@
 [2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: MAP_LAZY_CSS
+TASK_ID: MAP-20260818-LAZY-CSS
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/map-lazy-css
+SOURCE_COMMIT: 9e9fdfe388d520152257248e57bc99886e60e012
+BASE: codex/local-workspace-snapshot @ 447886694b529197337a64a34da3434348fe8dff
+
+Цель малого блока:
+- Убрать раннюю загрузку MapLibre CSS из гостевого Driver.
+- Загружать текущие MapLibre CSS и JavaScript только при первом запуске интерактивной карты авторизованного водителя.
+- Не создавать повторные `<link>`/`<script>` при повторных переходах к карте.
+- При ошибке CSS/JS оставить остальные разделы Driver доступными и показать существующее понятное сообщение карты.
+
+Файлы:
+- driver/index.html
+- driver/map/index.js
+- driver/map/maplibre-loader.mjs
+- tests/driver/map-lazy-assets.test.mjs
+
+Что изменено:
+- удалён ранний `<link>` MapLibre CSS из `driver/index.html`;
+- добавлен отдельный ленивый загрузчик CSS/JS MapLibre;
+- сохранены прежние URL/версии: CSS `/vendor/maplibre/maplibre-gl.css?v=20260714-8`, JS `/vendor/maplibre/maplibre-gl.js?v=20260714-8`;
+- `map.init()` теперь перед созданием карты ждёт оба ресурса;
+- загрузчик переиспользует один Promise и помеченные DOM-элементы, поэтому повторная активация не добавляет второй CSS/JS;
+- при ошибке загрузки ошибочный элемент удаляется, Promise сбрасывается и возможна повторная попытка;
+- существующее сообщение при ошибке загрузки остаётся: «Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.»;
+- добавлены тесты на отсутствие eager CSS в Driver shell, отсутствие загрузки до вызова loader, единственное подключение CSS/JS при повторной активации и retry после ошибки CSS без дубля JS.
+
+Реальные проверки в среде ChatGPT:
+- `node --check /tmp/maplazy/maplibre-loader.mjs` — PASS.
+- `node --test /tmp/maplazy/test.mjs` — PASS: 2 tests, 2 passed, 0 failed. Это изолированный прогон точной логики нового loader в доступной среде, не полный checkout репозитория.
+- GitHub compare `codex/local-workspace-snapshot...chatgpt/map-lazy-css` до обновления handoff — ветка ahead, рабочий diff только по 4 файлам этого блока.
+- Через GitHub повторно прочитан `driver/index.html` ветки: раннего MapLibre CSS в `<head>` нет.
+- Через GitHub повторно прочитан `driver/map/index.js`: карта вызывает `ensureMapLibre()` и при отказе возвращает понятное сообщение без выброса ошибки в runtime.
+
+Что НЕ запускалось и не заявляется как пройденное:
+- `node --test tests/driver/map-lazy-assets.test.mjs` непосредственно из настоящего checkout репозитория — не запускался, потому что в среде ChatGPT нет checkout, а сетевой `git clone` недоступен.
+- `npm verify`, Playwright/browser test и живой production Driver — не запускались.
+
+Что намеренно НЕ менялось:
+- `main`;
+- сервер, Caddy и авторизация;
+- минимальный пароль 6 символов;
+- SQLite и пользователи;
+- GPS-данные, сообщения, токены, логи и runtime;
+- URL/версии MapLibre;
+- профиль, контакты, чат и рация вне существующего поведения ошибки карты.
+
+Codex проверить:
+1. Diff `447886694b529197337a64a34da3434348fe8dff..9e9fdfe388d520152257248e57bc99886e60e012`.
+2. Запустить `node --test tests/driver/map-lazy-assets.test.mjs` в реальном checkout.
+3. При необходимости запустить релевантный `npm verify`/browser smoke test.
+4. Проверить гостевой Driver: MapLibre CSS/JS не запрашиваются.
+5. Авторизоваться и впервые открыть «Карта»: появляется ровно один CSS и один JS MapLibre, карта оформлена нормально.
+6. Перейти из карты в другой раздел и обратно: второго `<link>`/`<script>` нет.
+7. Проверить отказ CSS/JS: сообщение понятно, профиль/контакты/чат продолжают открываться.
+8. Следующий блок не начинать; записать ACCEPTED либо конкретный BLOCKED/NEEDS_FIX.
+
+---
+
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
 BLOCK: MAP
 TASK_ID: MAP-20260818-002
 STATUS: READY_FOR_REVIEW
