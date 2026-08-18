@@ -327,7 +327,7 @@ function migrate(db) {
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES(10, ?)").run(nowIso());
   }
   if (current < 11) {
-    // Keep the legacy room table and ids intact.  This adds a single source
+    // Keep the legacy room table and ids intact. This adds a single source
     // of truth for space semantics while preserving GENERAL/DIRECT history.
     db.exec(`
       CREATE TABLE chat_room_spaces (
@@ -349,6 +349,21 @@ function migrate(db) {
         CHECK(role IN ('OWNER','ADMIN','MODERATOR','MEMBER','READONLY'));
     `);
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES(11, ?)").run(nowIso());
+  }
+  if (current < 12) {
+    // Additive migration only: existing rooms, members and messages stay intact.
+    db.exec(`
+      CREATE TABLE chat_message_reactions (
+        message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reaction TEXT NOT NULL CHECK(reaction IN ('👍','✅','👀','❤️')),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(message_id, user_id, reaction)
+      );
+      CREATE INDEX chat_message_reactions_message_idx
+        ON chat_message_reactions(message_id, reaction, user_id);
+    `);
+    db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES(12, ?)").run(nowIso());
   }
 }
 
