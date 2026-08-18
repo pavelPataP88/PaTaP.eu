@@ -2,12 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { RADIO_KIND_LABELS, RADIO_ROLE_LABELS, RADIO_POLICY_LABELS } from "../../driver/radio/console.mjs";
+import { createPcmDownsampler, RADIO_LIVE_SAMPLE_RATE, RADIO_LIVE_CHUNK_SAMPLES, RADIO_LIVE_GATE_MS } from "../../driver/radio/live-audio.mjs";
 
 const consoleSource = await readFile(new URL("../../driver/radio/console.mjs", import.meta.url), "utf8");
 const radioSource = await readFile(new URL("../../driver/radio/index.js", import.meta.url), "utf8");
+const liveAudioSource = await readFile(new URL("../../driver/radio/live-audio.mjs", import.meta.url), "utf8");
 const schemaSource = await readFile(new URL("../../server/radio/schema.js", import.meta.url), "utf8");
 const repositorySource = await readFile(new URL("../../server/radio/repository.js", import.meta.url), "utf8");
 const routesSource = await readFile(new URL("../../server/radio/routes.js", import.meta.url), "utf8");
+const liveServerSource = await readFile(new URL("../../server/radio/live-http.js", import.meta.url), "utf8");
 
 test("Radio Console has original standalone information architecture for recent, channels and direct radio", () => {
   assert.equal(RADIO_KIND_LABELS.GENERAL, "Общий");
@@ -67,6 +70,35 @@ test("radio uses authenticated SSE refresh push with an independent polling fall
   assert.doesNotMatch(routesSource, /sendRadioEvent\([^\n]*transmission/);
 });
 
+test("live PTT uses 16 kHz PCM, a 550 ms accidental-tap gate, token authorization and a completion marker", () => {
+  assert.equal(RADIO_LIVE_SAMPLE_RATE, 16_000);
+  assert.equal(RADIO_LIVE_CHUNK_SAMPLES, 4_000);
+  assert.equal(RADIO_LIVE_GATE_MS, 550);
+  const input = Float32Array.from({ length: 480 }, (_, index) => Math.sin(index / 12));
+  const downsampler = createPcmDownsampler(48_000, 16_000);
+  const output = downsampler.push(input);
+  assert.equal(downsampler.sampleRate, 16_000);
+  assert.equal(output.length, 160);
+  assert.ok(output.some((value) => value !== 0));
+
+  assert.match(radioSource, /createRadioLiveAudio/);
+  assert.match(radioSource, /new EventSource\("\/api\/driver\/radio\/live-events"\)/);
+  assert.match(radioSource, /liveAudio\.startBroadcast\(stream, lease\)/);
+  assert.match(radioSource, /liveAudio\.stopBroadcast\(\{ flush: !cancelUpload \}\)/);
+  assert.match(radioSource, /liveAudio\.hasHeard\(item\.id\)/);
+  assert.match(radioSource, /previousLast\.has\(item\.id\)/);
+  assert.match(liveAudioSource, /LIVE_GATE_MS = 550/);
+  assert.match(liveAudioSource, /pendingChunks/);
+  assert.match(liveAudioSource, /X-Radio-Live-End/);
+  assert.match(liveServerSource, /createRadioLiveHttp/);
+  assert.match(liveServerSource, /radio\.uploadTarget/);
+  assert.match(liveServerSource, /requireCsrf/);
+  assert.match(liveServerSource, /radio\.live\.ready/);
+  assert.match(liveServerSource, /finalSequence/);
+  assert.match(routesSource, /live\.handle\(req, res, url, body\)/);
+  assert.match(routesSource, /live\.clearTransmission\(transmissionId\)/);
+});
+
 test("incoming committed audio is filtered by autoplay, mute, Busy and Solo and history supports sequential playback", () => {
   assert.match(radioSource, /settings\.autoPlay/);
   assert.match(radioSource, /targetChannel\.muted/);
@@ -76,6 +108,7 @@ test("incoming committed audio is filtered by autoplay, mute, Busy and Solo and 
   assert.match(radioSource, /historyPlayers\[index \+ 1\]\.playHere/);
   assert.match(radioSource, /playbackRate = Number\(settings\.playbackRate/);
   assert.match(radioSource, /latest\.sender\.nickname !== ownNickname/);
+  assert.match(radioSource, /if \(!force && liveAudio\.hasHeard\(item\.id\)\) return true/);
 });
 
 test("server schema is additive around legacy radio transmission and lease tables", () => {
