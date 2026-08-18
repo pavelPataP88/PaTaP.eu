@@ -51,6 +51,14 @@ Never publish or commit users, SQLite, GPS data, messages, radio uploads, tokens
 
 Keep minimum registration password length **6**. Do not weaken CSRF, rate limits, session cookies, radio access checks or GPS/privacy checks.
 
+## Radio experience v1 — deployed
+
+- Large hold-to-talk control, active channel, visible recording/sending/delivery/error/busy states and recording timer are deployed.
+- Short taps, drag-out release, Escape, blur and interrupted pointer interaction cancel safely.
+- A delivery message is shown only after server confirmation or a confirmed channel lookup; unknown network outcome remains explicit.
+- UI layout was corrected so transmission actions remain usable in the scrollable list.
+- All local verification passed; two-driver real-device smoke remains a manual follow-up.
+
 ## Current next block
 
 The next and only task is `RADIO_EXPERIENCE_V1`. Read `AI_TASK.md` and `AI_HANDOFF.md` before making any change.
