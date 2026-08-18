@@ -1,4 +1,9 @@
 const REFRESH_MS = 30_000;
+const FRESHNESS_TICK_MS = 15_000;
+const OFFLINE_QUEUE_KEY = "patap_road_report_pending_v1";
+const OFFLINE_QUEUE_MAX_AGE_MS = 2 * 60_000;
+const RETRY_GPS_MAX_AGE_MS = 30_000;
+const RETRY_MAX_DISTANCE_KM = 0.25;
 
 export const ROAD_REPORT_TYPES = Object.freeze({
   ACCIDENT: { label: "ДТП", short: "ДТП", lanes: true },
@@ -15,6 +20,58 @@ export const ROAD_REPORT_LANES = Object.freeze({
   RIGHT: "Правая",
   SHOULDER: "Обочина"
 });
+
+function haversineKm(fromLat, fromLon, toLat, toLon) {
+  const radians = (degrees) => degrees * Math.PI / 180;
+  const earthKm = 6371.0088;
+  const latDelta = radians(toLat - fromLat);
+  const lonDelta = radians(toLon - fromLon);
+  const a = Math.sin(latDelta / 2) ** 2 +
+    Math.cos(radians(fromLat)) * Math.cos(radians(toLat)) * Math.sin(lonDelta / 2) ** 2;
+  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function reportFreshness(report, now = Date.now()) {
+  const createdAt = new Date(report?.createdAt).getTime();
+  const expiresAt = new Date(report?.expiresAt).getTime();
+  if (!Number.isFinite(createdAt) || !Number.isFinite(expiresAt) || expiresAt <= createdAt) {
+    return { ratio: 1, opacity: 1, phase: "fresh" };
+  }
+  const ratio = Math.max(0, Math.min(1, (expiresAt - now) / (expiresAt - createdAt)));
+  if (ratio <= 0.2) return { ratio, opacity: 0.48, phase: "old" };
+  if (ratio <= 0.5) return { ratio, opacity: 0.72, phase: "aging" };
+  return { ratio, opacity: 1, phase: "fresh" };
+}
+
+export function clusterRoadReports(reports, zoom) {
+  if (!Array.isArray(reports) || reports.length < 2 || zoom >= 10) {
+    return (reports || []).map((report) => ({ kind: "report", key: `report:${report.id}`, report }));
+  }
+  const cell = zoom < 6 ? 0.9 : zoom < 8 ? 0.4 : 0.16;
+  const buckets = new Map();
+  for (const report of reports) {
+    const key = `${Math.round(report.latitude / cell)}:${Math.round(report.longitude / cell)}`;
+    const bucket = buckets.get(key) || [];
+    bucket.push(report);
+    buckets.set(key, bucket);
+  }
+  const result = [];
+  for (const [key, bucket] of buckets) {
+    if (bucket.length === 1) {
+      result.push({ kind: "report", key: `report:${bucket[0].id}`, report: bucket[0] });
+      continue;
+    }
+    result.push({
+      kind: "cluster",
+      key: `cluster:${key}`,
+      reports: bucket,
+      count: bucket.length,
+      latitude: bucket.reduce((sum, item) => sum + item.latitude, 0) / bucket.length,
+      longitude: bucket.reduce((sum, item) => sum + item.longitude, 0) / bucket.length
+    });
+  }
+  return result;
+}
 
 function formatExpiry(expiresAt) {
   if (!expiresAt) return "";
@@ -52,12 +109,42 @@ function roadReportTitle(report) {
   return [type, lane, formatExpiry(report.expiresAt)].filter(Boolean).join(" · ");
 }
 
-export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, isProfileReady, onAuthLost, showError }) {
+function readQueued(storage) {
+  try {
+    const value = JSON.parse(storage?.getItem?.(OFFLINE_QUEUE_KEY) || "null");
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeQueued(storage, value) {
+  try {
+    if (value) storage?.setItem?.(OFFLINE_QUEUE_KEY, JSON.stringify(value));
+    else storage?.removeItem?.(OFFLINE_QUEUE_KEY);
+  } catch {}
+}
+
+export function createRoadReportPanel({
+  map,
+  mapElement,
+  api,
+  getOwnLocation,
+  isProfileReady,
+  onAuthLost,
+  showError,
+  onReportsChanged,
+  isVisible = () => true,
+  storage = globalThis.sessionStorage
+}) {
   const reportMarkers = new Map();
   let selectedType = null;
   let selectedLane = null;
   let selectedReport = null;
-  let timer = null;
+  let refreshTimer = null;
+  let freshnessTimer = null;
+  let currentReports = [];
+  let visible = isVisible() !== false;
 
   const overlay = document.createElement("div");
   overlay.dataset.roadReports = "overlay";
@@ -151,8 +238,11 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
 
   function markerElement(report) {
     const element = document.createElement("button");
+    const freshness = reportFreshness(report);
     element.type = "button";
+    element.className = "road-report-marker";
     element.dataset.roadReportMarker = String(report.id);
+    element.dataset.freshness = freshness.phase;
     element.textContent = ROAD_REPORT_TYPES[report.type]?.short || "!";
     element.title = roadReportTitle(report);
     element.setAttribute("aria-label", roadReportTitle(report));
@@ -167,6 +257,7 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
       background: "#ffb454",
       color: "#16120b",
       fontWeight: "900",
+      opacity: String(freshness.opacity),
       boxShadow: "0 4px 13px rgba(0,0,0,.42)",
       cursor: "pointer"
     });
@@ -177,31 +268,62 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
     return element;
   }
 
-  function upsertMarker(report) {
+  function clusterElement(item) {
+    const element = document.createElement("button");
+    element.type = "button";
+    element.className = "road-report-cluster";
+    element.textContent = String(item.count);
+    element.setAttribute("aria-label", `${item.count} дорожных событий. Приблизить карту.`);
+    element.addEventListener("click", () => {
+      map.easeTo?.({
+        center: [item.longitude, item.latitude],
+        zoom: Math.min(15, (map.getZoom?.() || 8) + 2),
+        duration: 350
+      });
+    });
+    return element;
+  }
+
+  function clearMarkers() {
+    for (const marker of reportMarkers.values()) marker.remove();
+    reportMarkers.clear();
+  }
+
+  function renderMarkers() {
+    clearMarkers();
+    if (!visible) return;
+    const items = clusterRoadReports(currentReports, map.getZoom?.() || 12);
+    for (const item of items) {
+      if (item.kind === "cluster") {
+        const marker = new window.maplibregl.Marker({ element: clusterElement(item) })
+          .setLngLat([item.longitude, item.latitude])
+          .addTo(map);
+        reportMarkers.set(item.key, marker);
+        continue;
+      }
+      const report = item.report;
+      const marker = new window.maplibregl.Marker({
+        element: markerElement(report),
+        anchor: "bottom",
+        offset: [0, -30]
+      }).setLngLat([report.longitude, report.latitude]).addTo(map);
+      reportMarkers.set(item.key, marker);
+    }
+  }
+
+  function upsertReport(report) {
     if (!report?.id || !ROAD_REPORT_TYPES[report.type]) return;
-    const previous = reportMarkers.get(report.id);
-    if (previous) previous.remove();
-    const marker = new window.maplibregl.Marker({
-      element: markerElement(report),
-      anchor: "bottom",
-      offset: [0, -30]
-    }).setLngLat([report.longitude, report.latitude]).addTo(map);
-    reportMarkers.set(report.id, marker);
+    const index = currentReports.findIndex((item) => item.id === report.id);
+    if (index >= 0) currentReports[index] = report;
+    else currentReports.unshift(report);
+    onReportsChanged?.(currentReports.slice());
+    renderMarkers();
   }
 
   function showReports(reports = []) {
-    const visible = new Set();
-    for (const report of reports) {
-      if (!ROAD_REPORT_TYPES[report.type]) continue;
-      visible.add(report.id);
-      upsertMarker(report);
-    }
-    for (const [id, marker] of reportMarkers) {
-      if (!visible.has(id)) {
-        marker.remove();
-        reportMarkers.delete(id);
-      }
-    }
+    currentReports = (Array.isArray(reports) ? reports : []).filter((report) => ROAD_REPORT_TYPES[report.type]);
+    onReportsChanged?.(currentReports.slice());
+    renderMarkers();
   }
 
   async function refresh() {
@@ -212,6 +334,60 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
     } catch (error) {
       if (error.status === 401) onAuthLost?.();
       else showError?.("Не удалось обновить дорожные события.");
+    }
+  }
+
+  function queuedPayload() {
+    if (!selectedType) return null;
+    const location = getOwnLocation?.();
+    if (!location) return null;
+    return {
+      queuedAt: Date.now(),
+      type: selectedType,
+      lane: selectedLane,
+      latitude: location.latitude,
+      longitude: location.longitude
+    };
+  }
+
+  async function sendReportPayload(payload) {
+    const data = await api("/api/driver/road-reports", {
+      method: "POST",
+      body: {
+        type: payload.type,
+        lane: payload.lane,
+        latitude: payload.latitude,
+        longitude: payload.longitude
+      }
+    });
+    if (data.report) upsertReport(data.report);
+    return data;
+  }
+
+  async function flushOfflineQueue() {
+    const queued = readQueued(storage);
+    if (!queued) return false;
+    if (Date.now() - queued.queuedAt > OFFLINE_QUEUE_MAX_AGE_MS) {
+      storeQueued(storage, null);
+      start.title = "Неотправленное событие устарело и удалено.";
+      return false;
+    }
+    if (!isProfileReady?.()) return false;
+    const location = getOwnLocation?.();
+    if (!location || !Number.isFinite(location.timestamp) || Date.now() - location.timestamp > RETRY_GPS_MAX_AGE_MS) return false;
+    if (haversineKm(location.latitude, location.longitude, queued.latitude, queued.longitude) > RETRY_MAX_DISTANCE_KM) {
+      storeQueued(storage, null);
+      start.title = "Неотправленное событие удалено: автомобиль уже уехал от места.";
+      return false;
+    }
+    try {
+      const data = await sendReportPayload(queued);
+      storeQueued(storage, null);
+      start.title = data.report ? `Отправлено после восстановления сети: ${roadReportTitle(data.report)}.` : "Событие отправлено.";
+      return true;
+    } catch (error) {
+      if (error.status === 401) onAuthLost?.();
+      return false;
     }
   }
 
@@ -226,24 +402,21 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
     choices.append(summary, create);
     create.addEventListener("click", async () => {
       if (!isProfileReady?.()) return;
-      const location = getOwnLocation?.();
-      if (!location) {
+      const payload = queuedPayload();
+      if (!payload) {
         status.textContent = "Нужна включённая свежая GPS-позиция.";
+        return;
+      }
+      if (globalThis.navigator?.onLine === false) {
+        storeQueued(storage, payload);
+        closeSheet();
+        start.title = "Сети нет. Событие сохранено максимум на 2 минуты и отправится только если вы останетесь рядом с местом.";
         return;
       }
       create.disabled = true;
       status.textContent = "Создаём событие…";
       try {
-        const data = await api("/api/driver/road-reports", {
-          method: "POST",
-          body: {
-            type: selectedType,
-            lane: selectedLane,
-            latitude: location.latitude,
-            longitude: location.longitude
-          }
-        });
-        upsertMarker(data.report);
+        const data = await sendReportPayload(payload);
         const message = `Добавлено: ${roadReportTitle(data.report)}.`;
         closeSheet();
         status.textContent = message;
@@ -303,13 +476,14 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
         body: { status: statusValue }
       });
       if (data.closed) {
-        reportMarkers.get(selectedReport.id)?.remove();
-        reportMarkers.delete(selectedReport.id);
+        currentReports = currentReports.filter((item) => item.id !== selectedReport.id);
+        onReportsChanged?.(currentReports.slice());
+        renderMarkers();
       } else if (data.report) {
-        upsertMarker(data.report);
+        upsertReport(data.report);
       }
       closeSheet();
-      start.title = data.closed ? "Событие снято с карты." : "Подтверждение учтено.";
+      start.title = data.closed ? "Событие снято с карты." : "Подтверждение учтено, срок события обновлён.";
     } catch (error) {
       if (error.status === 401) onAuthLost?.();
       else if (error.message === "road_report_location_required") status.textContent = "Для подтверждения нужна свежая включённая GPS-позиция.";
@@ -343,20 +517,30 @@ export function createRoadReportPanel({ map, mapElement, api, getOwnLocation, is
     showTypeChoices();
   });
   cancel.addEventListener("click", () => closeSheet());
+  map.on?.("zoomend", renderMarkers);
+  globalThis.addEventListener?.("online", flushOfflineQueue);
 
-  timer = window.setInterval(refresh, REFRESH_MS);
+  refreshTimer = window.setInterval(refresh, REFRESH_MS);
+  freshnessTimer = window.setInterval(renderMarkers, FRESHNESS_TICK_MS);
   refresh();
+  if (globalThis.navigator?.onLine !== false) flushOfflineQueue();
 
   return {
     refresh,
-    upsertMarker,
-    setProfileReady() {},
+    upsertMarker: upsertReport,
+    setVisible(nextVisible) {
+      visible = Boolean(nextVisible);
+      overlay.hidden = !visible;
+      renderMarkers();
+    },
+    getReports() { return currentReports.slice(); },
+    flushOfflineQueue,
     destroy() {
-      if (timer) window.clearInterval(timer);
-      for (const marker of reportMarkers.values()) marker.remove();
-      reportMarkers.clear();
+      if (refreshTimer) window.clearInterval(refreshTimer);
+      if (freshnessTimer) window.clearInterval(freshnessTimer);
+      clearMarkers();
       overlay.remove();
+      globalThis.removeEventListener?.("online", flushOfflineQueue);
     }
   };
 }
-
