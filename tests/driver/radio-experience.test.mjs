@@ -24,8 +24,9 @@ test("radio exposes explicit driver-facing phases and large mobile PTT", () => {
   }
   assert.match(uiSource, /Активный канал/);
   assert.match(uiSource, /Зажмите и говорите/);
-  assert.match(uiSource, /уведите палец за пределы кнопки/);
-  assert.match(uiSource, /клавиатуры — Esc/);
+  assert.match(uiSource, /Короткий тап не выходит в эфир/);
+  assert.match(uiSource, /Увод пальца или Esc останавливает передачу и не сохраняет её/);
+  assert.match(uiSource, /уже прозвучавшую часть живого эфира отозвать нельзя/);
   assert.match(uiSource, /min-height:104px/);
   assert.match(uiSource, /min-height:112px/);
   assert.match(uiSource, /touch-action:none/);
@@ -33,8 +34,8 @@ test("radio exposes explicit driver-facing phases and large mobile PTT", () => {
   assert.match(uiSource, /aria-pressed/);
 });
 
-test("PTT hold remains releasable and supports pointer, one-hand cancel and keyboard cancellation", () => {
-  assert.match(radioSource, /ptt\.disabled = !profileReady \|\| !channel \|\| Boolean\(busy\) \|\| uploading/);
+test("PTT hold remains releasable and supports pointer, one-hand stop and keyboard cancellation", () => {
+  assert.match(radioSource, /ptt\.disabled = !profileReady \|\| !channel \|\| Boolean\(busy\) \|\| uploading \|\| channel\?\.canTalk === false/);
   assert.doesNotMatch(radioSource, /ptt\.disabled[^\n]+Boolean\(recording\)/);
   assert.match(radioSource, /pointerdown/);
   assert.match(radioSource, /pointermove/);
@@ -47,13 +48,14 @@ test("PTT hold remains releasable and supports pointer, one-hand cancel and keyb
   assert.match(radioSource, /event\.key === "Escape"/);
   assert.match(radioSource, /event\.key === " " \|\| event\.key === "Enter"/);
   assert.match(radioSource, /blur/);
-  assert.match(radioSource, /if \(pointerCancelOnRelease\) cancelRecording\(undefined\)/);
+  assert.match(radioSource, /if \(pointerCancelOnRelease\) \{ cancelRecording\(event\); return; \}/);
 });
 
 test("short recordings and explicit cancellation use the existing token-protected cancel path", () => {
   assert.match(radioSource, /MIN_RECORDING_MS = 550/);
   assert.match(radioSource, /isAccidentalRecording\(elapsed, MIN_RECORDING_MS\)/);
   assert.match(radioSource, /Слишком короткая запись\. Передача не отправлена\./);
+  assert.match(radioSource, /liveAudio\.stopBroadcast\(\{ flush: !cancelUpload \}\)/);
   assert.match(radioSource, /cancelTransmission\(session\)/);
   assert.match(radioSource, /X-Radio-Upload-Token/);
   assert.match(routesSource, /req\.method === "DELETE" && audioMatch/);
@@ -78,12 +80,13 @@ test("delivery success is shown only after upload confirmation and ambiguous net
   assert.match(radioSource, /Ответ загрузки был потерян, но передача уже есть в канале/);
 });
 
-test("radio protocol and access model remain the existing general/direct PTT model", () => {
+test("legacy DIRECT radio remains alongside GENERAL and GROUP without weakening contact access", () => {
   assert.match(radioSource, /\/api\/driver\/radio\/direct/);
   assert.match(radioSource, /\/api\/driver\/radio\/channels\/\$\{channel\.id\}\/ptt/);
   assert.match(routesSource, /createDirectChannel/);
-  assert.match(repositorySource, /c\.kind, c\.created_at/);
-  assert.match(repositorySource, /'DIRECT'/);
+  assert.match(repositorySource, /effectiveKind = profile\?\.space_kind \|\| "DIRECT"/);
+  assert.match(repositorySource, /createGroupChannel/);
+  assert.match(repositorySource, /GENERAL_CHANNEL_KEY/);
   assert.match(repositorySource, /radio_contact_required/);
   assert.match(repositorySource, /areContacts/);
 });
