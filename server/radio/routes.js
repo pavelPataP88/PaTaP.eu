@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { createRadioRepository } = require("./repository");
+const { createRadioLiveHttp } = require("./live-http");
 
 const AUDIO_TYPES = new Set(["audio/webm", "audio/ogg", "audio/mp4"]);
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
@@ -16,6 +17,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
   const radio = createRadioRepository(db, { hashToken, randomToken, nowIso });
   const storageDir = path.join(dataDir, "radio");
   const eventClients = new Set();
+  const live = createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso, readBinaryBody });
 
   function sendRadioEvent(res, payload) {
     try {
@@ -64,9 +66,11 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
   function releaseFailedUpload(userId, transmissionId, uploadToken) {
     try {
       const released = radio.cancelTransmission(userId, transmissionId, uploadToken);
+      live.clearTransmission(transmissionId);
       if (released) signalRefresh("speaker_released");
       return released;
     } catch {
+      live.clearTransmission(transmissionId);
       return false;
     }
   }
@@ -79,6 +83,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
 
   return async function handleRadioRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/radio/")) return false;
+    if (await live.handle(req, res, url, body)) return true;
 
     if (req.method === "GET" && url.pathname === "/api/driver/radio/events") {
       const session = requireRadioUser(req, res);
@@ -210,10 +215,12 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
         fs.renameSync(temporaryPath, finalPath);
         const committed = radio.commitUpload(session.user.id, transmissionId, uploadToken, { mimeType, byteLength: audio.length }, nowIso());
         if (!committed) throw new Error("radio_upload_not_authorized");
+        live.clearTransmission(transmissionId);
         audit(req, "radio_transmission_committed", { userId: session.user.id, success: true, details: { channelId: committed.channelId, transmissionId: committed.id } });
         signalRefresh("transmission_committed");
         json(res, 201, { transmission: committed });
       } catch (error) {
+        live.clearTransmission(transmissionId);
         fs.rmSync(temporaryPath, { force: true });
         fs.rmSync(finalPath, { force: true });
         json(res, error.message === "radio_upload_not_authorized" ? 409 : 500, { error: error.message === "radio_upload_not_authorized" ? error.message : "radio_upload_failed" });
@@ -224,10 +231,12 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
     if (req.method === "DELETE" && audioMatch) {
       const session = requireMutation(req, res);
       if (!session) return true;
+      const transmissionId = Number(audioMatch[1]);
       const uploadToken = String(req.headers["x-radio-upload-token"] || "");
-      const cancelled = radio.cancelTransmission(session.user.id, Number(audioMatch[1]), uploadToken);
+      const cancelled = radio.cancelTransmission(session.user.id, transmissionId, uploadToken);
+      live.clearTransmission(transmissionId);
       if (!cancelled) return respond(res, 409, { error: "radio_upload_not_authorized" });
-      audit(req, "radio_transmission_cancelled", { userId: session.user.id, success: true, details: { transmissionId: Number(audioMatch[1]) } });
+      audit(req, "radio_transmission_cancelled", { userId: session.user.id, success: true, details: { transmissionId } });
       signalRefresh("speaker_released");
       return respond(res, 200, { ok: true });
     }
@@ -243,6 +252,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       try { fs.rmSync(path.join(storageDir, target.storage_key), { force: true }); }
       catch { return respond(res, 500, { error: "radio_delete_failed" }); }
       if (!radio.deleteCommittedTransmission(session.user.id, transmissionId)) return respond(res, 409, { error: "radio_delete_conflict" });
+      live.clearTransmission(transmissionId);
       audit(req, "radio_transmission_deleted", { userId: session.user.id, success: true, details: { channelId: Number(target.channel_id), transmissionId } });
       signalRefresh("transmission_deleted");
       return respond(res, 200, { deleted: { id: transmissionId, channelId: Number(target.channel_id) } });
