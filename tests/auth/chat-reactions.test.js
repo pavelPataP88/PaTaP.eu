@@ -143,7 +143,7 @@ test("reactions toggle, aggregate people, publish realtime event, and keep messa
     type: "chat.reaction.updated",
     roomId: 1,
     messageId: generalMessageId,
-    reactions: result.data.reactions
+    reactions: [{ key: "👍", count: 1, people: ["Bravo"] }]
   });
 
   result = await request(2, `/api/driver/chat/messages/${generalMessageId}/reactions`, {
