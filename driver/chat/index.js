@@ -1,5 +1,28 @@
 const RECONNECT_MS = 2_000;
 
+export const CHAT_REACTIONS = Object.freeze([
+  { key: "👍", label: "Понял" },
+  { key: "✅", label: "Подтверждаю" },
+  { key: "👀", label: "Проверяю" },
+  { key: "❤️", label: "Поддерживаю" }
+]);
+
+export function reactionView(reactions, key) {
+  const option = CHAT_REACTIONS.find((item) => item.key === key);
+  const current = (reactions || []).find((item) => item.key === key);
+  const people = Array.isArray(current?.people) ? current.people.filter(Boolean) : [];
+  const count = Number.isSafeInteger(current?.count) ? current.count : people.length;
+  const label = option?.label || "Реакция";
+  return {
+    key,
+    label,
+    count,
+    people,
+    reactedByMe: Boolean(current?.reactedByMe),
+    title: people.length ? `${label}: ${people.join(", ")}` : label
+  };
+}
+
 export function createChatController({ api, onAuthLost }) {
   const navButton = document.querySelector('[data-driver-target="chat"]');
   const roomTitle = document.querySelector("#chat-room-title");
@@ -21,6 +44,21 @@ export function createChatController({ api, onAuthLost }) {
   let lastTypingSentAt = 0;
   let olderCursor = null;
   let typingTimer = null;
+
+  function ensureReactionStyles() {
+    if (document.querySelector("#chat-reactions-style")) return;
+    const style = document.createElement("style");
+    style.id = "chat-reactions-style";
+    style.textContent = `
+      .chat-reactions { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+      .chat-reaction { display:inline-flex; align-items:center; gap:4px; min-width:38px; min-height:30px; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#0a1914; color:var(--muted); cursor:pointer; line-height:1; }
+      .chat-reaction:hover, .chat-reaction[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:rgba(104,224,173,.1); }
+      .chat-reaction-count { font-size:.75rem; font-weight:800; }
+      @media (max-width:1100px) { .chat-reactions { gap:4px; margin-top:6px; } .chat-reaction { min-height:28px; min-width:36px; padding:2px 7px; } }
+    `;
+    document.head.append(style);
+  }
+  ensureReactionStyles();
 
   function setState(text, kind = "") {
     state.textContent = text;
@@ -66,6 +104,53 @@ export function createChatController({ api, onAuthLost }) {
         if (messages.delete(message.id)) renderMessages({ preserveScroll: true, scrollToBottom: false });
       } else setState("Не удалось удалить сообщение.", "error");
     }
+  }
+
+  async function toggleReaction(message, reaction) {
+    try {
+      const data = await api(`/api/driver/chat/messages/${message.id}/reactions`, {
+        method: "POST",
+        body: { reaction }
+      });
+      const current = messages.get(message.id);
+      if (current) {
+        messages.set(message.id, { ...current, reactions: data.reactions || [] });
+        renderMessages({ preserveScroll: true, scrollToBottom: false });
+      }
+    } catch (error) {
+      if (error.status === 401) onAuthLost();
+      else if (error.message === "driver_blocked") handleBlockedRoom();
+      else setState("Не удалось изменить реакцию. Сообщение осталось без изменений.", "error");
+    }
+  }
+
+  function createReactionBar(message) {
+    const bar = document.createElement("div");
+    bar.className = "chat-reactions";
+    bar.setAttribute("aria-label", "Реакции на сообщение");
+    for (const option of CHAT_REACTIONS) {
+      const view = reactionView(message.reactions, option.key);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chat-reaction";
+      button.dataset.reaction = option.key;
+      button.setAttribute("aria-pressed", String(view.reactedByMe));
+      button.setAttribute("aria-label", view.count ? `${view.label}, ${view.count}` : view.label);
+      button.title = view.title;
+      const emoji = document.createElement("span");
+      emoji.setAttribute("aria-hidden", "true");
+      emoji.textContent = option.key;
+      button.append(emoji);
+      if (view.count > 0) {
+        const count = document.createElement("span");
+        count.className = "chat-reaction-count";
+        count.textContent = String(view.count);
+        button.append(count);
+      }
+      button.addEventListener("click", () => toggleReaction(message, option.key));
+      bar.append(button);
+    }
+    return bar;
   }
 
   function createMessageMenu(message) {
@@ -130,7 +215,7 @@ export function createChatController({ api, onAuthLost }) {
       meta.append(author, time, createMessageMenu(message));
       const body = document.createElement("p");
       body.textContent = message.text;
-      item.append(meta, body);
+      item.append(meta, body, createReactionBar(message));
       messagesElement.append(item);
     }
     if (preserveScroll) messagesElement.scrollTop = previousTop + (messagesElement.scrollHeight - previousHeight);
@@ -140,7 +225,8 @@ export function createChatController({ api, onAuthLost }) {
   function addMessages(items, options) {
     let changed = false;
     for (const message of items || []) {
-      if (!messages.has(message.id)) changed = true;
+      const previous = messages.get(message.id);
+      if (!previous || JSON.stringify(previous) !== JSON.stringify(message)) changed = true;
       messages.set(message.id, message);
     }
     if (changed) renderMessages(options);
@@ -261,6 +347,12 @@ export function createChatController({ api, onAuthLost }) {
         addMessages([payload.message]);
       } else if (payload.type === "chat.message.deleted" && payload.roomId === room.id) {
         if (messages.delete(payload.messageId)) renderMessages({ preserveScroll: true, scrollToBottom: false });
+      } else if (payload.type === "chat.reaction.updated" && payload.roomId === room.id) {
+        const current = messages.get(payload.messageId);
+        if (current) {
+          messages.set(payload.messageId, { ...current, reactions: payload.reactions || [] });
+          renderMessages({ preserveScroll: true, scrollToBottom: false });
+        }
       } else if (payload.type === "chat.typing" && payload.roomId === room.id) {
         typingState.textContent = `${payload.nickname} печатает…`;
         if (typingTimer !== null) window.clearTimeout(typingTimer);
