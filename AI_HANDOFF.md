@@ -1,3 +1,57 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: RADIO_RELIABILITY
+TASK_ID: RADIO-RELIABILITY-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/radio-reliability-upload-recovery
+SOURCE_COMMIT: ab990926f30a0c22551694accedf7801fd4e612f
+BASE: codex/local-workspace-snapshot @ 9f621ea19e3d0d6d0f87a3429d262b583633b739
+
+Краткое исследование:
+- W3C MediaStream Recording указывает, что ошибки записи могут завершать MediaRecorder с последним dataavailable/stop; мобильный клиент поэтому должен корректно освобождать незавершённое состояние, а не держать канал занятым после сбоя.
+- В текущей архитектуре PaTaP PTT уже использует серверный lease + одноразовый upload token и отдельное состояние UPLOADING/COMMITTED. Это позволяет безопасно восстанавливать именно pending-передачу без изменения приватности или схемы данных.
+- Выбран один малый сценарий: если сервер не смог дочитать бинарный upload до commit (например, превышен лимит или оборвался поток), немедленно удалить только pending transmission и speaker lease при точном совпадении userId + transmissionId + uploadToken.
+
+Изменённые файлы:
+- server/radio/routes.js
+- tests/auth/radio-reliability.test.js
+- scripts/run-auth-tests.js
+
+Что изменено:
+- В POST /api/driver/radio/transmissions/:id/audio catch вокруг readBinaryBody добавлена best-effort releaseFailedUpload().
+- releaseFailedUpload вызывает существующий radio.cancelTransmission(); он удаляет только state='UPLOADING' с правильным sender и upload token. COMMITTED-передачу или чужую передачу этот путь удалить не может.
+- Добавлен интеграционный auth-тест: первый участник получает PTT lease, отправляет >3 MiB и получает 413 payload_too_large; тест требует, чтобы pending transmission и speaker lease исчезли сразу и второй участник канала немедленно получил новый PTT.
+- Новый тест подключён к npm run test:auth через scripts/run-auth-tests.js.
+
+Реальные проверки в среде ChatGPT:
+- GitHub compare base..branch: только 3 кодовых файла до handoff; production areas вне radio не затронуты.
+- Проверен фактический server repository: cancelTransmission ограничен sender_id, state='UPLOADING' и hash(uploadToken), одновременно удаляет соответствующий speaker lease.
+- Попытка клонировать ветку для запуска npm run test:auth: НЕ ВЫПОЛНЕНА из-за сетевого ограничения среды ChatGPT — git: Could not resolve host: github.com.
+- GitHub CI для SOURCE_COMMIT: statuses отсутствуют; feature-branch push сам по себе существующий workflow не запустил.
+
+НЕ заявляется как пройденное:
+- npm run test:auth;
+- npm run verify;
+- npm run test:browser;
+- реальный обрыв мобильной сети во время upload;
+- production/live PTT.
+
+Риски / Codex проверить:
+1. Запустить npm run test:auth и убедиться, что новый radio-reliability test проходит вместе с существующими auth/radio тестами.
+2. Запустить npm run verify и npm run test:browser.
+3. На копии/изолированной среде проверить реальный aborted upload, если это удобно: после pre-commit read failure канал должен освобождаться без ожидания lease timeout.
+4. Убедиться, что успешный upload и COMMITTED audio не затрагиваются новым catch-path.
+5. Применять только этот RADIO_RELIABILITY блок; следующий блок ChatGPT не начинал.
+
+Что намеренно НЕ менялось:
+- driver/radio UI и MediaRecorder формат/битрейт;
+- правила участников канала, контакты и блокировки;
+- upload token semantics;
+- SQLite schema;
+- карта, чат, Caddy, auth/password policy, main;
+- production SQLite, пользователи, GPS, сообщения, аудио, токены и логи.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: CHAT_REACTIONS
 TASK_ID: CHAT-REACTIONS-20260818-001
@@ -244,7 +298,7 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 - ChatGPT берёт на себя исследование, проектирование, основное написание кода и исправление замечаний.
 - Codex выступает как ревьюер, контролирующий орган и интегратор на рабочем ноутбуке.
 - Работа идёт строго блоками: карта отдельно, чат отдельно, рация отдельно, интерфейс отдельно и т.д.
-- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\\WWW.PATAP.EU`.
+- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\WWW.PATAP.EU`.
 - После успешного production-применения Codex создаёт/обновляет безопасный snapshot, и только после этого начинается следующий блок.
 
 Что требуется от Codex:
