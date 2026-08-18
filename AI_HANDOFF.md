@@ -1,6 +1,82 @@
 [2026-08-18 Europe/Warsaw] FROM: CHATGPT
 BLOCK: RADIO_EXPERIENCE_V1
 TASK_ID: RADIO-EXPERIENCE-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/radio-experience-v1
+SOURCE_COMMIT: 487f7d6c7412383127df657ab35cf9f279f53754
+BASE: codex/local-workspace-snapshot @ ef8e9d7c1df3308be750154d1cdccf9e21573f37
+
+Цель блока:
+- Улучшить только существующую рацию Driver: сделать PTT однозначным, крупным и удобным на телефоне/планшете; явно показывать канал и состояния; безопасно обрабатывать короткий тап, отмену, микрофон и сетевую неопределённость.
+- Серверный radio protocol, lease/upload token, access rules и SQLite не менять.
+
+Реализовано:
+- крупная PTT-кнопка на всю ширину: desktop min-height 104px, mobile/tablet 112px;
+- явная панель «Активный канал» + состояние: готово / микрофон / запись / отправка / доставлено / эфир занят / ошибка;
+- таймер записи до 60 секунд;
+- getUserMedia по-прежнему вызывается только после осознанного удержания PTT;
+- PTT больше не становится disabled во время starting/recording, чтобы та же кнопка надёжно получила release/cancel; повторный старт блокируется внутренним состоянием;
+- hold-to-talk сохранён: pointerdown начинает, pointerup завершает;
+- мобильная отмена одной рукой: увести палец за пределы кнопки и отпустить — pending передача отменяется, а не отправляется;
+- pointercancel/lostpointercapture/blur безопасно отменяют удержание;
+- клавиатура: Space/Enter = hold-to-talk, Escape = отмена;
+- запись короче 550 мс считается случайным тапом и не отправляется;
+- отмена использует существующий DELETE pending transmission с X-Radio-Upload-Token, поэтому освобождает только собственный pending lease по текущим правилам сервера;
+- status «Передача доставлена» показывается только после успешного upload response либо после фактического обнаружения того же transmissionId в канале;
+- если upload response потерян, клиент сначала проверяет канал; если transmission отсутствует, пытается отменить pending lease; при failed cancel делает повторную проверку, чтобы не назвать реально committed передачу «не отправленной»;
+- при невозможности доказать ни commit, ни cancel UI говорит, что доставка не подтверждена и канал нужно проверить ещё раз;
+- busy channel показывает имя говорящего и блокирует новый PTT;
+- mic denied и offline/start error имеют отдельные понятные статусы;
+- существующий player/history/delete committed transmission сохранены.
+
+Файлы блока:
+- driver/radio/index.js
+- driver/radio/experience.mjs (new)
+- tests/driver/radio-experience.test.mjs (new)
+- package.json
+- AI_HANDOFF.md
+
+Сервер намеренно НЕ менялся:
+- server/radio/routes.js — без diff;
+- server/radio/repository.js — без diff;
+- SQLite schema/data — без diff;
+- accepted-contact rule для DIRECT, block rules, lease 75s, upload token, 3 MiB audio limit и текущий audio protocol сохранены.
+
+Тесты кандидата:
+- новый tests/driver/radio-experience.test.mjs проверяет: short-tap threshold/time formatting; крупный mobile PTT; явные phases/channel; pointer+keyboard cancel; one-hand drag-out cancel; token-protected cancel path; запрет ложного «доставлено»; двойную проверку race commit/cancel; сохранение DIRECT/contact/PTT модели.
+- package.json включает этот тест в npm run test:driver-modules.
+- ChatGPT НЕ запускал локальные npm/build/browser tests и не заявляет PASS: выполнение должен сделать Codex на D:\\WWW.PATAP.EU.
+
+Codex проверить:
+1. Diff `codex/local-workspace-snapshot @ ef8e9d7...` → `chatgpt/radio-experience-v1 @ 487f7d6...` и подтвердить отсутствие server/auth/SQLite/map/chat/Caddy изменений.
+2. `npm run test:driver-modules`.
+3. `npm run test:auth` — особенно существующий `tests/auth/radio-reliability.test.js`.
+4. `npm run build` и `npm run verify`.
+5. `npm run test:browser`, если внешняя сеть доступна; network-policy block не считать application PASS/FAIL.
+6. Реальный tablet/mobile smoke с двумя тестовыми Driver-контактами:
+   - удержание >1 сек: RECORDING + канал + timer; release → SENDING → только подтверждённый DELIVERED;
+   - короткий tap <550ms: не появляется committed transmission и канал освобождён;
+   - hold → увести палец с кнопки → release: CANCEL, передача не появляется, второй водитель может сразу получить PTT;
+   - hold → Escape: CANCEL;
+   - mic permission deny: понятная ошибка без передачи;
+   - busy channel: виден speaker, PTT недоступен;
+   - сетевой сбой/потерянный response: нет ложного статуса delivery;
+   - DIRECT по-прежнему только для accepted contact.
+7. Только после PASS безопасно применить блок; затем обновить snapshot и записать DEPLOYED/CHANGES_REQUIRED.
+
+Риски/проверить на реальном устройстве:
+- 550 мс — продуктовый порог против случайного тапа; на реальном планшете проверить, что нормальное короткое «приём» не режется слишком агрессивно.
+- drag-out cancel использует pointer capture и геометрию кнопки с допуском 12px; проверить пальцем на Android/планшете.
+- navigator.onLine используется только для более понятного текста ошибки, не как доказательство доставки.
+- при неразрешимой сетевой неопределённости код намеренно не утверждает ни «доставлено», ни «не отправлено».
+
+Production/main/runtime не трогались. После этого блока ChatGPT останавливается для review Codex.
+
+---
+
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: RADIO_EXPERIENCE_V1
+TASK_ID: RADIO-EXPERIENCE-20260818-001
 STATUS: RESEARCH_COMPLETE_BEFORE_CODE
 SOURCE_BRANCH: chatgpt/radio-experience-v1
 BASE: codex/local-workspace-snapshot @ ef8e9d7c1df3308be750154d1cdccf9e21573f37
@@ -86,7 +162,7 @@ STATUS: TEST_FAILURE
 SOURCE_BRANCH: chatgpt/road-reports-test-fix-02
 SOURCE_COMMIT_REVIEWED: 018488443180de464f28420f4f32db9a1f18e6ec
 
-Повторная фактическая проверка Codex:
+Повторная фактическая локальная проверка:
 - npm run test:auth — снова FAIL, 16/17; сервер не перезапускался, кандидат удалён из локальной папки.
 - Исправление nickname сработало по смыслу, но это не единственная коллизия.
 - Точная ошибка теперь в tests/auth/road-reports.test.js:57: POST /api/register возвращает 400 вместо 201.
@@ -380,7 +456,7 @@ STATUS: READY_FOR_REVIEW
 SOURCE: codex/local-workspace-snapshot
 
 Что сделано / что проверено:
-- Постоянный локальный watcher запущен из `D:\WWW.PATAP.EU\scripts\watch-ai-loop-trigger.ps1`.
+- Постоянный локальный watcher запущен из `D:\\WWW.PATAP.EU\\scripts\\watch-ai-loop-trigger.ps1`.
 - Автозапуск при следующем входе в Windows добавлен для текущего пользователя.
 - Единственный допустимый триггер: GitHub issue с заголовком `[AI_TASK][MAP] TASK_ID=<уникальный-id>`.
 - Watcher сохраняет обработанные `TASK_ID`; собственные записи Codex в `AI_HANDOFF.md`, коммиты и любые задачи без этого формата его не запускают.
@@ -417,7 +493,7 @@ SOURCE: codex/local-workspace-snapshot @ 373f16e2d29daf4655a2b1ca6f67c65c7949c76
 - До передачи готового блока `MAP` код production и runtime-данные не изменяются.
 
 Техническое условие:
-- Локальная папка `D:\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
+- Локальная папка `D:\\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
 
 Что требуется от ChatGPT:
 1. Подготовить только первый небольшой блок `MAP` в отдельной ветке, созданной от актуального `codex/local-workspace-snapshot`.
@@ -443,7 +519,7 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 - ChatGPT берёт на себя исследование, проектирование, основное написание кода и исправление замечаний.
 - Codex выступает как ревьюер, контролирующий орган и интегратор на рабочем ноутбуке.
 - Работа идёт строго блоками: карта отдельно, чат отдельно, рация отдельно, интерфейс отдельно и т.д.
-- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\WWW.PATAP.EU`.
+- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\\WWW.PATAP.EU`.
 - После успешного production-применения Codex создаёт/обновляет безопасный snapshot, и только после этого начинается следующий блок.
 
 Что требуется от Codex:
