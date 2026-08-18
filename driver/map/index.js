@@ -100,7 +100,9 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
         updateLocationControl();
         return container;
       },
-      onRemove() { locationButton = null; }
+      onRemove() {
+        locationButton = null;
+      }
     };
   }
 
@@ -191,29 +193,55 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     const container = document.createElement("div");
     container.dataset.roadReports = "controls";
     container.className = "privacy-controls";
+
     const typeLabel = document.createElement("label");
     typeLabel.textContent = "Дорожная отметка ";
     const typeSelect = document.createElement("select");
     typeSelect.setAttribute("aria-label", "Тип дорожной отметки");
     for (const [value, config] of Object.entries(ROAD_REPORT_TYPES)) {
-      const option = document.createElement("option"); option.value = value; option.textContent = config.label; typeSelect.append(option);
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = config.label;
+      typeSelect.append(option);
     }
     typeLabel.append(typeSelect);
-    const laneWrap = document.createElement("label"); laneWrap.textContent = " Полоса ";
-    const laneSelect = document.createElement("select"); laneSelect.setAttribute("aria-label", "Затронутая полоса");
+
+    const laneWrap = document.createElement("label");
+    laneWrap.textContent = " Полоса ";
+    const laneSelect = document.createElement("select");
+    laneSelect.setAttribute("aria-label", "Затронутая полоса");
     for (const [value, label] of Object.entries(ROAD_REPORT_LANES)) {
-      const option = document.createElement("option"); option.value = value; option.textContent = label; laneSelect.append(option);
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      laneSelect.append(option);
     }
     laneWrap.append(laneSelect);
-    const add = document.createElement("button"); add.type = "button"; add.textContent = "Отметить здесь"; add.disabled = !profileReady;
-    const status = document.createElement("span"); status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.textContent = "Отметить здесь";
+    add.disabled = !profileReady;
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
     typeSelect.addEventListener("change", () => updateRoadReportLane(typeSelect, laneWrap, laneSelect));
     add.addEventListener("click", async () => {
       if (!profileReady) return;
-      if (!ownLocation) { status.textContent = "Сначала включите Driver/GPS и дождитесь позиции."; return; }
+      if (!ownLocation) {
+        status.textContent = "Сначала включите Driver/GPS и дождитесь позиции.";
+        return;
+      }
       const config = ROAD_REPORT_TYPES[typeSelect.value];
-      const body = { type: typeSelect.value, lane: config?.lanes ? laneSelect.value : null, latitude: ownLocation.latitude, longitude: ownLocation.longitude };
-      add.disabled = true; status.textContent = "Добавляем отметку…";
+      const body = {
+        type: typeSelect.value,
+        lane: config?.lanes ? laneSelect.value : null,
+        latitude: ownLocation.latitude,
+        longitude: ownLocation.longitude
+      };
+      add.disabled = true;
+      status.textContent = "Добавляем отметку…";
       try {
         await api("/api/driver/road-reports", { method: "POST", body });
         status.textContent = "Дорожная отметка добавлена в текущей позиции.";
@@ -223,8 +251,11 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
         else if (error.message === "road_report_location_required") status.textContent = "Нужна свежая включённая GPS-позиция.";
         else if (error.message === "road_report_too_far") status.textContent = "Точка слишком далеко от текущей GPS-позиции.";
         else status.textContent = "Не удалось добавить дорожную отметку.";
-      } finally { add.disabled = !profileReady; }
+      } finally {
+        add.disabled = !profileReady;
+      }
     });
+
     container.append(typeLabel, laneWrap, add, status);
     mapElement.parentElement.insertBefore(container, mapElement);
     roadReportControls = { container, typeSelect, laneWrap, laneSelect, add, status };
@@ -238,53 +269,161 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
 
   async function init() {
     if (map) return true;
-    try { await ensureMapLibre(); }
-    catch { setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error"); return false; }
+    try {
+      await ensureMapLibre();
+    } catch {
+      setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error");
+      return false;
+    }
     try {
       map = new window.maplibregl.Map({
-        container: "driver-map", center: config.center, zoom: config.zoom, maxZoom: config.maxZoom, attributionControl: false,
-        style: { version: 8, sources: { basemap: { type: "raster", tiles: config.tiles, tileSize: 256, maxzoom: config.maxZoom, attribution: config.attribution } }, layers: [{ id: "basemap", type: "raster", source: "basemap" }] }
+        container: "driver-map",
+        center: config.center,
+        zoom: config.zoom,
+        maxZoom: config.maxZoom,
+        attributionControl: false,
+        style: {
+          version: 8,
+          sources: {
+            basemap: {
+              type: "raster",
+              tiles: config.tiles,
+              tileSize: 256,
+              maxzoom: config.maxZoom,
+              attribution: config.attribution
+            }
+          },
+          layers: [{ id: "basemap", type: "raster", source: "basemap" }]
+        }
       });
       map.addControl(new window.maplibregl.AttributionControl({ compact: false, customAttribution: config.attribution }));
       map.addControl(createLocationControl(), "top-right");
-      if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); refreshRoadReports(); }); else mapLoaded = true;
-      if (globalThis.ResizeObserver) { resizeObserver = new ResizeObserver(() => map?.resize()); resizeObserver.observe(document.querySelector("#driver-map")); }
-      createRoadReportControls(); scheduleRoadReports(); await refreshRoadReports(); return true;
-    } catch { map = null; setState("Не удалось запустить интерактивную карту. Профиль и чат остаются доступны.", "error"); return false; }
+      if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); refreshRoadReports(); });
+      else mapLoaded = true;
+      if (globalThis.ResizeObserver) {
+        resizeObserver = new ResizeObserver(() => map?.resize());
+        resizeObserver.observe(document.querySelector("#driver-map"));
+      }
+      createRoadReportControls();
+      scheduleRoadReports();
+      await refreshRoadReports();
+      return true;
+    } catch {
+      map = null;
+      setState("Не удалось запустить интерактивную карту. Профиль и чат остаются доступны.", "error");
+      return false;
+    }
   }
 
-  function clearOwn() { if (ownMarker) ownMarker.remove(); ownMarker = null; ownLocation = null; clearRadiusOverlay(); updateLocationControl(); }
-  function showOwn(location) {
-    if (!map) return; ownLocation = { longitude: location.longitude, latitude: location.latitude }; const point = [location.longitude, location.latitude];
-    if (!ownMarker) ownMarker = new window.maplibregl.Marker({ color: "#2f8cff" }).setLngLat(point).addTo(map); else ownMarker.setLngLat(point);
-    updateLocationControl(); updateRadiusOverlay();
+  function clearOwn() {
+    if (ownMarker) ownMarker.remove();
+    ownMarker = null;
+    ownLocation = null;
+    clearRadiusOverlay();
+    updateLocationControl();
   }
+
+  function showOwn(location) {
+    if (!map) return;
+    ownLocation = { longitude: location.longitude, latitude: location.latitude };
+    const point = [location.longitude, location.latitude];
+    if (!ownMarker) ownMarker = new window.maplibregl.Marker({ color: "#2f8cff" }).setLngLat(point).addTo(map);
+    else ownMarker.setLngLat(point);
+    updateLocationControl();
+    updateRadiusOverlay();
+  }
+
   function setRadius(nextRadius, { focus = false } = {}) {
-    if (!Number.isFinite(nextRadius) || nextRadius <= 0) return false; radiusKm = nextRadius; updateRadiusOverlay();
-    if (focus && map && ownLocation) { map.easeTo({ center: [ownLocation.longitude, ownLocation.latitude], zoom: radiusZoom(ownLocation, radiusKm), duration: 450 }); return true; }
+    if (!Number.isFinite(nextRadius) || nextRadius <= 0) return false;
+    radiusKm = nextRadius;
+    updateRadiusOverlay();
+    if (focus && map && ownLocation) {
+      map.easeTo({ center: [ownLocation.longitude, ownLocation.latitude], zoom: radiusZoom(ownLocation, radiusKm), duration: 450 });
+      return true;
+    }
     return false;
   }
-  function showNearby(drivers) {
-    if (!map) return; const visible = new Set();
-    for (const driver of drivers) {
-      visible.add(driver.nickname); const point = [driver.longitude, driver.latitude]; let marker = nearbyMarkers.get(driver.nickname);
-      if (!marker) { marker = new window.maplibregl.Marker({ color: "#68e0ad" }).setLngLat(point).addTo(map); marker.getElement?.().addEventListener("click", () => { Promise.resolve(onDriverCard?.(driver.nickname)).catch(() => {}); }); nearbyMarkers.set(driver.nickname, marker); }
-      else marker.setLngLat(point);
-    }
-    for (const [nickname, marker] of nearbyMarkers) if (!visible.has(nickname)) { marker.remove(); nearbyMarkers.delete(nickname); }
-  }
-  function clearNearby() { for (const marker of nearbyMarkers.values()) marker.remove(); nearbyMarkers.clear(); }
-  function setProfileReady(value) { profileReady = Boolean(value); if (roadReportControls) roadReportControls.add.disabled = !profileReady; scheduleRoadReports(); if (!profileReady) clearRoadReports(); }
-  function resetRoadReports() { profileReady = false; if (roadReportTimer) window.clearInterval(roadReportTimer); roadReportTimer = null; clearRoadReports(); if (roadReportControls) { roadReportControls.add.disabled = true; roadReportControls.status.textContent = ""; } }
 
-  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, refreshRoadReports, showRoadReports, setProfileReady, resetRoadReports };
+  function showNearby(drivers) {
+    if (!map) return;
+    const visible = new Set();
+    for (const driver of drivers) {
+      visible.add(driver.nickname);
+      const point = [driver.longitude, driver.latitude];
+      let marker = nearbyMarkers.get(driver.nickname);
+      if (!marker) {
+        marker = new window.maplibregl.Marker({ color: "#68e0ad" }).setLngLat(point).addTo(map);
+        marker.getElement?.().addEventListener("click", () => {
+          Promise.resolve(onDriverCard?.(driver.nickname)).catch(() => {});
+        });
+        nearbyMarkers.set(driver.nickname, marker);
+      } else {
+        marker.setLngLat(point);
+      }
+    }
+    for (const [nickname, marker] of nearbyMarkers) {
+      if (!visible.has(nickname)) {
+        marker.remove();
+        nearbyMarkers.delete(nickname);
+      }
+    }
+  }
+
+  function clearNearby() {
+    for (const marker of nearbyMarkers.values()) marker.remove();
+    nearbyMarkers.clear();
+  }
+
+  function setProfileReady(value) {
+    profileReady = Boolean(value);
+    if (roadReportControls) roadReportControls.add.disabled = !profileReady;
+    scheduleRoadReports();
+    if (!profileReady) clearRoadReports();
+  }
+
+  function resetRoadReports() {
+    profileReady = false;
+    if (roadReportTimer) window.clearInterval(roadReportTimer);
+    roadReportTimer = null;
+    clearRoadReports();
+    if (roadReportControls) {
+      roadReportControls.add.disabled = true;
+      roadReportControls.status.textContent = "";
+    }
+  }
+
+  return {
+    init,
+    resize() { if (map) map.resize(); },
+    isReady() { return Boolean(map); },
+    showOwn,
+    setRadius,
+    recenterOwn,
+    clearOwn,
+    showNearby,
+    clearNearby,
+    refreshRoadReports,
+    showRoadReports,
+    setProfileReady,
+    resetRoadReports
+  };
 }
 
 export function createDriverModule(context) {
-  const controller = createMapController({ api: context.api, onAuthLost: context.onAuthLost, showError: context.showError, setState(text, state) { context.getModule("gps")?.controller?.setState(text, state); }, onDriverCard(nickname) { return context.openDriverCard?.(nickname); } });
+  const controller = createMapController({
+    api: context.api,
+    onAuthLost: context.onAuthLost,
+    showError: context.showError,
+    setState(text, state) { context.getModule("gps")?.controller?.setState(text, state); },
+    onDriverCard(nickname) { return context.openDriverCard?.(nickname); }
+  });
   return {
     controller,
-    async activate() { await controller.init(); await controller.refreshRoadReports(); window.setTimeout(() => controller.resize(), 0); },
+    async activate() {
+      await controller.init();
+      await controller.refreshRoadReports();
+      window.setTimeout(() => controller.resize(), 0);
+    },
     setSession({ profile }) { controller.setProfileReady(Boolean(profile)); },
     setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); },
     reset() { controller.resetRoadReports(); }
