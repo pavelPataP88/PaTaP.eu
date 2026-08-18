@@ -163,7 +163,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
       resize() {}
     }
     class FakeMarker {
-      constructor() { this.element = document.createElement("button"); (window.__markers ||= []).push(this); }
+      constructor(options = {}) { this.element = options.element || document.createElement("button"); (window.__markers ||= []).push(this); }
       setLngLat(value) { this.value = value; return this; }
       setPopup(value) { this.popup = value; return this; }
       addTo() { return this; }
@@ -391,19 +391,25 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   assert.deepEqual(await page.locator("#nearby-radius option").evaluateAll((items) => items.map((item) => item.value)), ["5", "25", "50", "100"]);
 
   requests.length = 0;
+  await page.locator('[data-map-experience="layers"]').click();
   await page.locator("#gps-toggle").check();
   await page.waitForFunction(() => window.__geo.watchCalls === 1);
   assert.equal(await page.evaluate(() => window.__geo.watchCalls), 1);
   assert.deepEqual(requests.find((item) => item.path === "/api/driver/gps").body, { enabled: true });
   await page.evaluate(() => window.__geo.success({ coords: { latitude: 52.2297, longitude: 21.0122, accuracy: 12 } }));
   await page.waitForFunction(() => document.querySelector("#gps-state").dataset.state === "active" && document.querySelector("#gps-state").textContent.includes("видимы"));
-  assert.deepEqual(await page.evaluate(() => window.__mapEaseTo || []), []);
+  assert.deepEqual(await page.evaluate(() => window.__mapEaseTo || []), [{ center: [21.0122, 52.2297], zoom: 14, duration: 450 }]);
   assert.equal(await page.locator("#map-locate").isEnabled(), true);
-  await page.locator("#map-locate").click();
-  assert.deepEqual(await page.evaluate(() => window.__mapEaseTo), [{ center: [21.0122, 52.2297], duration: 450 }]);
+  // The lightweight MapLibre stub does not create the real top-right control container.
+  await page.locator("#map-locate").evaluate((element) => element.click());
+  assert.deepEqual(await page.evaluate(() => window.__mapEaseTo), [
+    { center: [21.0122, 52.2297], zoom: 14, duration: 450 },
+    { center: [21.0122, 52.2297], duration: 320, bearing: 0 },
+    { center: [21.0122, 52.2297], zoom: 14, duration: 450 }
+  ]);
   await page.locator("#nearby-radius").selectOption("5");
-  await page.waitForFunction(() => (window.__mapEaseTo || []).length === 2);
-  const radiusMapState = await page.evaluate(() => ({ move: window.__mapEaseTo[1], radius: window.__fakeMap.getSource("driver-search-radius")?.data?.features?.[0]?.properties?.radiusKm }));
+  await page.waitForFunction(() => (window.__mapEaseTo || []).length === 4);
+  const radiusMapState = await page.evaluate(() => ({ move: window.__mapEaseTo[3], radius: window.__fakeMap.getSource("driver-search-radius")?.data?.features?.[0]?.properties?.radiusKm }));
   assert.deepEqual(radiusMapState.move.center, [21.0122, 52.2297]);
   assert.ok(radiusMapState.move.zoom > 0);
   assert.equal(radiusMapState.radius, 5);
@@ -623,6 +629,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
 
   requests.length = 0;
   await page.setViewportSize({ width: 390, height: 720 });
+  await page.locator('[data-map-experience="layers"]').click();
   await page.locator("#gps-toggle").uncheck();
   await page.waitForFunction(() => document.querySelector("#gps-state").textContent.includes("Driver выключен"));
   assert.equal(await page.locator("#gps-toggle").evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(201, 88, 81)");
@@ -639,6 +646,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   assert.equal(await page.evaluate(() => window.__geo.watchCalls), 0);
   assert.equal(await page.locator("#gps-toggle").isChecked(), false);
 
+  await page.locator('[data-map-experience="layers"]').click();
   await page.locator("#gps-toggle").check();
   await page.waitForFunction(() => window.__geo.watchCalls === 1);
   await page.evaluate(() => window.__geo.failure({ code: 1 }));
