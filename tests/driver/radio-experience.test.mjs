@@ -71,8 +71,9 @@ test("delivery success is shown only after upload confirmation and ambiguous net
 test("radio protocol and access model remain the existing general/direct PTT model", () => {
   assert.match(radioSource, /\/api\/driver\/radio\/direct/);
   assert.match(radioSource, /\/api\/driver\/radio\/channels\/\$\{channel\.id\}\/ptt/);
-  assert.match(routesSource, /radio_contact_required|createDirectChannel/);
-  assert.match(repositorySource, /kind, created_at/);
+  assert.match(routesSource, /createDirectChannel/);
+  assert.match(repositorySource, /c\.kind, c\.created_at/);
   assert.match(repositorySource, /'DIRECT'/);
+  assert.match(repositorySource, /radio_contact_required/);
   assert.match(repositorySource, /areContacts/);
 });
