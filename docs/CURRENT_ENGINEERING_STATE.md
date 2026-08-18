@@ -59,6 +59,13 @@ Keep minimum registration password length **6**. Do not weaken CSRF, rate limits
 - UI layout was corrected so transmission actions remain usable in the scrollable list.
 - All local verification passed; two-driver real-device smoke remains a manual follow-up.
 
+## Radio Console v2 — deployed
+
+- Radio Console добавляет общий эфир, публичные и закрытые каналы, роли, приглашения, moderation, избранное, mute, непрочитанные передачи, закрепления, Driving Mode и доступный PTT.
+- Near-live голос передаётся по PCM через HTTPS/SSE только транзитом, параллельно с подтверждённой сохранённой историей. Короткий tap до 550 мс в эфир не попадает.
+- Server-side policy, role и membership changes immediately revoke active PTT lease. Без сессии radio overview возвращает 401.
+- Автотесты, build, verify и browser test фактически прошли на рабочем ноутбуке. Реальный двухустройственный smoke микрофона/динамика остаётся ручной проверкой.
+
 ## Current next block
 
-The next and only task is `RADIO_EXPERIENCE_V1`. Read `AI_TASK.md` and `AI_HANDOFF.md` before making any change.
+No coding block is active. Read `AI_TASK.md` and `AI_HANDOFF.md` before proposing a new small block from the current snapshot.
