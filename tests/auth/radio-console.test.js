@@ -39,13 +39,43 @@ class Client {
   }
   async csrf() { return this.request("/api/csrf"); }
   async binaryRequest(pathname, body, headers = {}) {
-    const requestHeaders = {
-      Origin: "http://127.0.0.1:8090", "CF-Connecting-IP": this.clientIp,
-      "Content-Type": "audio/webm", ...headers
-    };
+    const requestHeaders = { Origin: "http://127.0.0.1:8090", "CF-Connecting-IP": this.clientIp, "Content-Type": "audio/webm", ...headers };
     if (this.csrfToken) requestHeaders["X-CSRF-Token"] = this.csrfToken;
     const cookie = this.cookieHeader(); if (cookie) requestHeaders.Cookie = cookie;
     return fetch(`${baseUrl}${pathname}`, { method: "POST", headers: requestHeaders, body });
+  }
+  async openRadioEvents() {
+    const controller = new AbortController();
+    const headers = { Accept: "text/event-stream", Origin: "http://127.0.0.1:8090", "CF-Connecting-IP": this.clientIp };
+    const cookie = this.cookieHeader(); if (cookie) headers.Cookie = cookie;
+    const response = await fetch(`${baseUrl}/api/driver/radio/events`, { headers, signal: controller.signal });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") || "", /text\/event-stream/);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    async function nextPayload(timeoutMs = 3_000) {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const blockEnd = buffer.indexOf("\n\n");
+        if (blockEnd >= 0) {
+          const block = buffer.slice(0, blockEnd);
+          buffer = buffer.slice(blockEnd + 2);
+          const dataLine = block.split("\n").find((line) => line.startsWith("data: "));
+          if (dataLine) return JSON.parse(dataLine.slice(6));
+          continue;
+        }
+        const remaining = Math.max(1, deadline - Date.now());
+        const result = await Promise.race([
+          reader.read(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("radio_sse_timeout")), remaining))
+        ]);
+        if (result.done) throw new Error("radio_sse_closed");
+        buffer += decoder.decode(result.value, { stream: true }).replaceAll("\r\n", "\n");
+      }
+      throw new Error("radio_sse_timeout");
+    }
+    return { controller, reader, nextPayload };
   }
 }
 
@@ -80,7 +110,7 @@ async function cancelLease(driver, lease) {
   assert.equal(result.response.status, 200);
 }
 
-test("Radio Console v2 enforces group roles, discovery, moderation, settings, alerts, pins and legacy direct access", async () => {
+test("Radio Console v2 enforces group roles, discovery, moderation, settings, alerts, pins, SSE and legacy direct access", async () => {
   const owner = await createDriver("owner");
   const trusted = await createDriver("trusted");
   const publicUser = await createDriver("public");
@@ -97,11 +127,19 @@ test("Radio Console v2 enforces group roles, discovery, moderation, settings, al
   assert.equal(general.canTalk, true);
   assert.equal(result.data.settings.status, "AVAILABLE");
 
-  result = await owner.client.request("/api/driver/radio/channels", {
-    method: "POST",
-    body: { title: "TIR Polska Test", description: "Закрытый тестовый канал", visibility: "PRIVATE", talkPolicy: "TRUSTED" }
-  });
-  assert.equal(result.response.status, 201);
+  const events = await owner.client.openRadioEvents();
+  try {
+    assert.equal((await events.nextPayload()).type, "radio.ready");
+    result = await owner.client.request("/api/driver/radio/channels", {
+      method: "POST",
+      body: { title: "TIR Polska Test", description: "Закрытый тестовый канал", visibility: "PRIVATE", talkPolicy: "TRUSTED" }
+    });
+    assert.equal(result.response.status, 201);
+    assert.equal((await events.nextPayload()).type, "radio.refresh");
+  } finally {
+    events.controller.abort();
+    await events.reader.cancel().catch(() => {});
+  }
   const privateId = result.data.channel.id;
   assert.equal(result.data.channel.kind, "GROUP");
   assert.equal(result.data.channel.role, "OWNER");
@@ -151,11 +189,7 @@ test("Radio Console v2 enforces group roles, discovery, moderation, settings, al
   result = await owner.client.request(`/api/driver/radio/channels/${privateId}/ptt`, { method: "POST", body: {} });
   assert.equal(result.response.status, 201);
   const committedLease = result.data;
-  const upload = await owner.client.binaryRequest(
-    `/api/driver/radio/transmissions/${committedLease.transmissionId}/audio`,
-    Buffer.from([1, 2, 3, 4, 5, 6]),
-    { "X-Radio-Upload-Token": committedLease.uploadToken }
-  );
+  const upload = await owner.client.binaryRequest(`/api/driver/radio/transmissions/${committedLease.transmissionId}/audio`, Buffer.from([1, 2, 3, 4, 5, 6]), { "X-Radio-Upload-Token": committedLease.uploadToken });
   assert.equal(upload.status, 201);
   result = await owner.client.request(`/api/driver/radio/channels/${privateId}/pins/${committedLease.transmissionId}`, { method: "POST", body: {} });
   assert.equal(result.response.status, 200);
@@ -164,10 +198,7 @@ test("Radio Console v2 enforces group roles, discovery, moderation, settings, al
   assert.equal(result.data.pins.length, 1);
   assert.equal(result.data.pins[0].id, committedLease.transmissionId);
 
-  result = await owner.client.request("/api/driver/radio/channels", {
-    method: "POST",
-    body: { title: "Public Road Test", description: "Открытый тест", visibility: "PUBLIC", talkPolicy: "EVERYONE" }
-  });
+  result = await owner.client.request("/api/driver/radio/channels", { method: "POST", body: { title: "Public Road Test", description: "Открытый тест", visibility: "PUBLIC", talkPolicy: "EVERYONE" } });
   assert.equal(result.response.status, 201);
   const publicId = result.data.channel.id;
   result = await publicUser.client.request("/api/driver/radio/discover?q=Public");
