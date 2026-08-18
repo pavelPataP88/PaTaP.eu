@@ -119,7 +119,7 @@ export function createChatController({ api, onAuthLost }) {
       }
     } catch (error) {
       if (error.status === 401) onAuthLost();
-      else if (error.message === "driver_blocked") handleBlockedRoom();
+      else if (error.message === "driver_blocked") setState("Реакция недоступна: связь между водителями заблокирована. Сообщение осталось без изменений.", "error");
       else setState("Не удалось изменить реакцию. Сообщение осталось без изменений.", "error");
     }
   }
