@@ -439,7 +439,7 @@ test("Driver profile is authenticated, validated, editable, and nickname-unique"
   assert.equal(result.data.drivers.length, 0);
 
   const db = openDb();
-  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 11);
+  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 12);
   assert.ok(db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE event_type IN ('driver_profile_created','driver_profile_updated')").get().n >= 2);
   db.close();
 });
@@ -736,7 +736,7 @@ test("direct radio requires an accepted contact and keeps audio private to chann
   assert.equal(result.data.error, "driver_blocked");
 
   const db = openDb();
-  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 11);
+  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 12);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM radio_transmissions WHERE id = ?").get(transmissionId).n, 0);
   db.close();
 });
@@ -985,7 +985,7 @@ test("general Driver chat is persistent, idempotent, cursor-based, and broadcast
   const db = openDb();
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM chat_messages WHERE sender_id = (SELECT id FROM users WHERE username = ?) AND client_message_id = ?").get(names.chatOne, "client_msg_0001").n, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM chat_direct_pairs WHERE room_id = ?").get(directRoomId).n, 1);
-  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 11);
+  assert.equal(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version, 12);
   db.close();
 });
 
