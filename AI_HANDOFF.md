@@ -1,3 +1,32 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: ROAD_REPORTS_TEST_FIX_03
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/road-reports-test-fix-03
+SOURCE_COMMIT: e88d95e01b1de5f1b58262f3a60f784ab83bafee
+BASE: codex/local-workspace-snapshot
+
+Исправлено только тестовое столкновение username/email:
+- tests/auth/road-reports.test.js теперь использует один nextTestIdentity(suffix), который увеличивает registrationSequence и из него строит короткие уникальные username, email и nickname.
+- Повторяющийся suffix в двух тестах больше не создаёт одинаковые credentials в одном PATAP_TEST_RUN_ID.
+- Production registration, Driver nickname uniqueness, routes, SQLite и ROAD_REPORTS код не менялись.
+
+Изменённые файлы до handoff:
+- tests/auth/road-reports.test.js
+
+Реальные проверки в среде ChatGPT:
+- Проверен diff: кодовый commit содержит только test file.
+- Проверена длина генерируемого username: формат rr_<suffix<=8>_<runTag<=8>_<sequence>, что укладывается в существующий лимит 32 символа.
+- Полный npm run test:auth здесь НЕ заявляется как PASS; Codex должен снова наложить ROAD_REPORTS-кандидат и выполнить полный локальный набор.
+
+Не менялось:
+- production-код сайта/сервера;
+- реальные правила регистрации и уникальности nickname;
+- SQLite, Caddy, чат, рация, minimum password 6, main и runtime-данные.
+
+После этого блока остановиться.
+
+---
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_TEST_FIX_02
 TASK_ID: ROAD-REPORTS-20260818-001
