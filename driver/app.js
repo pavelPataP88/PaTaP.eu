@@ -30,14 +30,23 @@ function show(view) {
   logoutButton.hidden = view !== "profile";
 }
 
-function showGuest() { show("guest"); }
-function openLogin() { showAuthForm("login"); show("login"); }
+function showGuest() {
+  show("guest");
+}
+
+function openLogin() {
+  showAuthForm("login");
+  show("login");
+}
 
 function showError(text) {
   if (messageTimer !== null) window.clearTimeout(messageTimer);
   message.textContent = text;
   message.hidden = false;
-  messageTimer = window.setTimeout(() => { message.hidden = true; messageTimer = null; }, 6000);
+  messageTimer = window.setTimeout(() => {
+    message.hidden = true;
+    messageTimer = null;
+  }, 6000);
 }
 
 function showAuthForm(mode) {
@@ -51,11 +60,16 @@ function handleAuthLost() {
   if (authResetPromise) return;
   authResetPromise = Promise.resolve(runtime?.invoke("reset"))
     .catch(() => {})
-    .finally(() => { resetCsrf(); authResetPromise = null; });
+    .finally(() => {
+      resetCsrf();
+      authResetPromise = null;
+    });
 }
 
 const navigation = createNavigationController({
-  onChange(name) { runtime?.activate(name).catch(() => showError("Раздел временно недоступен.")); }
+  onChange(name) {
+    runtime?.activate(name).catch(() => showError("Раздел временно недоступен."));
+  }
 });
 
 async function setupRuntime() {
@@ -121,7 +135,9 @@ loginForm.addEventListener("submit", async (event) => {
     loginForm.reset();
   } catch (error) {
     showError(error.message === "invalid_credentials" ? "Неверный логин или пароль." : "Не удалось войти. Попробуйте ещё раз.");
-  } finally { submit.disabled = false; }
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 document.querySelector("#show-driver-register").addEventListener("click", () => showAuthForm("register"));
@@ -144,7 +160,9 @@ document.querySelectorAll("[data-guest-driver-view]").forEach((button) => {
 registerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submit = registerForm.querySelector("button[type=submit]");
-  if (registerForm.elements.password.value !== registerForm.elements.confirmPassword.value) return showError("Пароли не совпадают.");
+  if (registerForm.elements.password.value !== registerForm.elements.confirmPassword.value) {
+    return showError("Пароли не совпадают.");
+  }
   submit.disabled = true;
   try {
     if (authResetPromise) await authResetPromise;
@@ -154,7 +172,9 @@ registerForm.addEventListener("submit", async (event) => {
     registerForm.reset();
   } catch (error) {
     showError(error.status === 409 ? "Логин, email или никнейм уже заняты." : "Проверьте поля регистрации, никнейм и тип водителя.");
-  } finally { submit.disabled = false; }
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 logoutButton.addEventListener("click", async () => {
