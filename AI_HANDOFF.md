@@ -1,3 +1,58 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: ROAD_REPORTS_MAP_UI_FIX
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/road-reports-map-ui-fix
+SOURCE_COMMIT: fe5010810ab0bdaf8a1e963838068799889c3472
+BASE: codex/local-workspace-snapshot @ 1744667aeb6e2c83ab7f7c589df16674470d490a
+
+Исправлен только UI/visibility слой дорожных отметок карты:
+- controls больше не отдельной полосой над картой: новый road-report overlay добавляется внутрь #driver-map и позиционируется поверх карты;
+- flow: «+ событие» -> тип кнопкой -> для ДТП/работ полоса кнопкой -> клик по нужной точке карты -> POST;
+- клиент до POST проверяет существующий радиус 2 км от добровольной GPS и отдельно не даёт поставить событие практически поверх синего own-GPS marker (минимум 25 м), чтобы дорожный marker не скрывался под GPS;
+- после успешного POST response.report сразу передаётся в upsertMarker(), поэтому видимый marker появляется немедленно, без ожидания 30-секундного refresh;
+- marker дорожного события отдельный крупный 42px, белая рамка, оранжевый/янтарный фон, визуально отличим от синего MapLibre GPS marker;
+- клик по marker сохраняет существующий безопасный ACTIVE/GONE confirm UX;
+- свободный текст, фото и новые типы не добавлялись.
+
+Изменённые файлы:
+- driver/map/index.js
+- driver/map/road-reports-overlay.mjs
+- tests/driver/road-reports-map-ui.test.mjs
+
+Тесты, добавленные для этого fix:
+- controls физически append внутрь mapElement и работают как absolute overlay;
+- создание вооружается выбором типа/полосы и ждёт map click, а не берёт ownLocation как точку автоматически;
+- pure validation: близкая точка разрешена, точка >2 км отклоняется, точка почти поверх own marker отклоняется;
+- successful POST вызывает upsertMarker(data.report) немедленно;
+- road-report marker визуально отличим от существующего синего own-GPS marker;
+- overlay module не загружает MapLibre assets и не ломает lazy ensureMapLibre() в map/index.js.
+
+Важный контекст для Codex:
+- актуальный codex/local-workspace-snapshot на момент ветвления ещё не содержит ранее подготовленные server/road-reports и ROAD_REPORTS map code, потому что предыдущий кандидат не был закреплён после TEST_FAILURE;
+- поэтому эту ветку нужно проверять как UI-delta для уже подготовленного ROAD_REPORTS кандидата, а не как самостоятельную замену server-блока;
+- server routes/repository, auth, SQLite и правила privacy/TTL/confirm в этом UI fix не менялись.
+
+Реальные проверки в среде ChatGPT:
+- GitHub compare base..SOURCE_COMMIT: только 3 файла выше, server/auth/SQLite/Caddy/chat/radio/main не затронуты;
+- просмотрен фактический snapshot: MapLibre остаётся lazy через ensureMapLibre();
+- полный node/npm/browser suite здесь НЕ заявляется как PASS: локального checkout из GitHub в среде ChatGPT нет из-за DNS ограничения.
+
+Codex проверить локально:
+1. Наложить текущий ROAD_REPORTS кандидат + TEST_FIX_03, затем этот UI fix.
+2. node --test tests/driver/road-reports-map-ui.test.mjs и существующие ROAD_REPORTS server/client tests.
+3. npm run test:auth, npm run build, npm run verify, npm run test:browser.
+4. На планшете/браузере: controls поверх карты; выбрать «Дорожные работы» + полосу; кликнуть рядом, но не под синим GPS marker; marker должен появиться сразу.
+5. Проверить дальний клик >2 км: понятное сообщение и POST не отправляется.
+6. Проверить guest map/read-only и lazy MapLibre без регрессии.
+
+Не менялось:
+- auth, SQLite, Caddy, чат, рация, minimum password 6, main, runtime-данные;
+- server ROAD_REPORTS semantics, TTL, privacy и confirmation rules.
+
+После этого блока остановиться.
+
+---
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_TEST_FIX_02
 TASK_ID: ROAD-REPORTS-20260818-001
@@ -204,7 +259,7 @@ SOURCE_COMMIT: 9e9fdfe388d520152257248e57bc99886e60e012
 
 Что проверено и применено:
 - Проверен фактический небольшой diff: только Driver shell, карта MapLibre, новый loader и тест; сервер, Caddy, авторизация, SQLite, пользователи, GPS-данные, сообщения, токены, логи и main не изменены.
-- Проверенный код перенесён в D:\\WWW.PATAP.EU и в codex/local-workspace-snapshot.
+- Проверенный код перенесён в D:\WWW.PATAP.EU и в codex/local-workspace-snapshot.
 - Гостевой Driver больше не содержит ранний link MapLibre CSS. Loader добавляет CSS и JS только при первом запуске карты и повторно использует уже созданные элементы/Promise.
 - Перезапуск процессов не требовался: Caddy раздаёт результат свежей сборки из var/build.
 
@@ -336,7 +391,7 @@ SOURCE: codex/local-workspace-snapshot @ 373f16e2d29daf4655a2b1ca6f67c65c7949c76
 - До передачи готового блока `MAP` код production и runtime-данные не изменяются.
 
 Техническое условие:
-- Локальная папка `D:\\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
+- Локальная папка `D:\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
 
 Что требуется от ChatGPT:
 1. Подготовить только первый небольшой блок `MAP` в отдельной ветке, созданной от актуального `codex/local-workspace-snapshot`.
@@ -362,7 +417,7 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 - ChatGPT берёт на себя исследование, проектирование, основное написание кода и исправление замечаний.
 - Codex выступает как ревьюер, контролирующий орган и интегратор на рабочем ноутбуке.
 - Работа идёт строго блоками: карта отдельно, чат отдельно, рация отдельно, интерфейс отдельно и т.д.
-- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\\WWW.PATAP.EU`.
+- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\WWW.PATAP.EU`.
 - После успешного production-применения Codex создаёт/обновляет безопасный snapshot, и только после этого начинается следующий блок.
 
 Что требуется от Codex:
