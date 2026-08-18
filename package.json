@@ -10,13 +10,14 @@
     "auth:backup": "node server/auth/backup-db.js",
     "auth:restore": "node server/auth/restore-db.js",
     "test:auth": "node scripts/run-auth-tests.js",
+    "test:radio-live": "node scripts/run-radio-live-test.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
     "test:driver-modules": "node --test tests/driver/module-loader.test.mjs tests/driver/chat-reactions.test.mjs tests/driver/road-reports.test.mjs tests/driver/map-enhancements.test.mjs tests/driver/radio-experience.test.mjs tests/driver/radio-console.test.mjs",
     "test:config": "node --test tests/config/caddy-policy.test.js",
     "test:browser": "node scripts/run-browser-test.js",
     "audit:performance": "node scripts/audit-interface-performance.js",
     "test:platformos": "node scripts/test-platformos-runtime.js",
-    "verify": "node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:driver-modules && npm run test:client && npm run test:config"
+    "verify": "node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config"
   },
   "devDependencies": {
     "playwright": "^1.61.1"
