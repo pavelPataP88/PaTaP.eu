@@ -350,7 +350,11 @@ export function createChatController({ api, onAuthLost }) {
       } else if (payload.type === "chat.reaction.updated" && payload.roomId === room.id) {
         const current = messages.get(payload.messageId);
         if (current) {
-          messages.set(payload.messageId, { ...current, reactions: payload.reactions || [] });
+          const personalized = (payload.reactions || []).map((item) => ({
+            ...item,
+            reactedByMe: Array.isArray(item.people) && item.people.includes(ownNickname)
+          }));
+          messages.set(payload.messageId, { ...current, reactions: personalized });
           renderMessages({ preserveScroll: true, scrollToBottom: false });
         }
       } else if (payload.type === "chat.typing" && payload.roomId === room.id) {
