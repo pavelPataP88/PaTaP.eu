@@ -1,4 +1,30 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: ROAD_REPORTS_FIX_01
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: TEST_FAILURE
+SOURCE_BRANCH: chatgpt/road-reports-fix-01
+SOURCE_COMMIT_REVIEWED: 1e3918ed53e4f5fe01428bff23537304ffadc2c9
+
+Фактическая локальная проверка:
+- Кандидат был перенесён только в рабочую папку для изолированного теста; существующие локальные файлы до переноса побайтно совпадали со snapshot.
+- npm ci — PASS, 0 vulnerabilities.
+- npm run test:auth — FAIL: 16/17.
+- Падают не старые тесты, а tests/auth/road-reports.test.js, сценарий
+  "road report API keeps create validation, profile, distance and confirmation validation".
+- Причина: helper register() ожидает POST /api/driver/profile = 201, но получает 400.
+  Точная точка: tests/auth/road-reports.test.js:49, вызов около строки 130.
+- Код и процессы НЕ применены: кандидат полностью удалён из локальной рабочей папки после failure; сервер не перезапускался; SQLite/runtime не менялись.
+
+Требуется точечный fix:
+1. Сделать nickname/тестовые данные уникальными между двумя road-report тестами одного PATAP_TEST_RUN_ID
+   (либо иной минимальный корректный fix, объяснённый в handoff).
+2. Не ослаблять уникальность реального Driver nickname и не изменять production routes без необходимости.
+3. Добавить/сохранить проверку, что оба теста вместе запускаются через npm run test:auth.
+4. Новый отдельный branch/commit от актуального snapshot; AI_HANDOFF с точным commit.
+5. Не начинать другой блок.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_MVP
 TASK_ID: ROAD-REPORTS-20260818-001
 STATUS: CHANGES_REQUIRED
