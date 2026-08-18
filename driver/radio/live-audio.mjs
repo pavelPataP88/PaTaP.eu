@@ -1,6 +1,7 @@
 const TARGET_SAMPLE_RATE = 16_000;
 const LIVE_CHUNK_SAMPLES = 4_000; // ~250 ms at 16 kHz.
 const LIVE_UPLOAD_TIMEOUT_MS = 4_000;
+const LIVE_GATE_MS = 550;
 const MAX_SCHEDULE_AHEAD_SECONDS = 1.5;
 
 function audioContextCtor() {
@@ -127,9 +128,11 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
     let transportFailed = false;
     let captureStopped = false;
     let cancelled = false;
+    let gateOpen = false;
+    let pendingChunks = [];
     let sendChain = Promise.resolve();
 
-    function queueChunk(chunk) {
+    function queueNetworkChunk(chunk) {
       if (!chunk.length || cancelled || transportFailed) return;
       const currentSequence = sequence;
       sequence += 1;
@@ -153,6 +156,19 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
       });
     }
 
+    function releaseGate() {
+      if (gateOpen || cancelled || transportFailed) return;
+      gateOpen = true;
+      for (const chunk of pendingChunks) queueNetworkChunk(chunk);
+      pendingChunks = [];
+    }
+
+    function queueChunk(chunk) {
+      if (!chunk.length || cancelled || transportFailed) return;
+      if (!gateOpen) pendingChunks.push(chunk);
+      else queueNetworkChunk(chunk);
+    }
+
     function drainFullChunks() {
       while (samples.length >= LIVE_CHUNK_SAMPLES) {
         const chunk = Int16Array.from(samples.slice(0, LIVE_CHUNK_SAMPLES));
@@ -160,6 +176,10 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
         queueChunk(chunk);
       }
     }
+
+    const gateTimer = setTimeout(() => {
+      if (!captureStopped) releaseGate();
+    }, LIVE_GATE_MS);
 
     processor.onaudioprocess = (event) => {
       if (captureStopped || cancelled || transportFailed) return;
@@ -174,11 +194,17 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
       context, source, processor, silentGain,
       async stop({ flush = true } = {}) {
         if (captureStopped) return;
+        clearTimeout(gateTimer);
         processor.onaudioprocess = null;
-        if (flush && samples.length && !transportFailed) queueChunk(Int16Array.from(samples));
+        if (flush && !transportFailed) {
+          releaseGate();
+          if (samples.length) queueNetworkChunk(Int16Array.from(samples));
+        } else {
+          cancelled = true;
+          pendingChunks = [];
+        }
         samples = [];
         captureStopped = true;
-        if (!flush) cancelled = true;
         try { source.disconnect(); } catch {}
         try { processor.disconnect(); } catch {}
         try { silentGain.disconnect(); } catch {}
@@ -203,7 +229,7 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
         }
       }
     };
-    onTransportState("live");
+    onTransportState("live_pending");
     return true;
   }
 
@@ -281,3 +307,4 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
 
 export const RADIO_LIVE_SAMPLE_RATE = TARGET_SAMPLE_RATE;
 export const RADIO_LIVE_CHUNK_SAMPLES = LIVE_CHUNK_SAMPLES;
+export const RADIO_LIVE_GATE_MS = LIVE_GATE_MS;
