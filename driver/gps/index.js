@@ -6,6 +6,7 @@ export function createGpsController({ api, map, onAuthLost }) {
   const gpsToggle = document.querySelector("#gps-toggle");
   const nearbyRadius = document.querySelector("#nearby-radius");
   const gpsState = document.querySelector("#gps-state");
+  const mapElement = document.querySelector("#driver-map");
   let currentUser = null;
   let hasProfile = false;
   let driverEnabled = false;
@@ -92,8 +93,16 @@ export function createGpsController({ api, map, onAuthLost }) {
     }
     lastSentAt = Date.now();
     try {
-      await api("/api/driver/location", { method: "PUT", body: latestLocation });
-      setState("Driver включён. Вы видите водителей с GPS и видимы им.", "active");
+      await api("/api/driver/location", {
+        method: "PUT",
+        body: {
+          latitude: latestLocation.latitude,
+          longitude: latestLocation.longitude,
+          accuracy: latestLocation.accuracy
+        }
+      });
+      const accuracy = Number.isFinite(latestLocation.accuracy) ? ` · ±${Math.round(latestLocation.accuracy)} м` : "";
+      setState(`Driver включён${accuracy}. Вы видите водителей с GPS и видимы им.`, "active");
       await refreshNearby();
     } catch (error) {
       if (error.status === 401) handleLostAuth();
@@ -109,14 +118,22 @@ export function createGpsController({ api, map, onAuthLost }) {
 
   function onPosition(position) {
     if (!driverEnabled) return;
-    const { latitude, longitude, accuracy } = position.coords || {};
+    const { latitude, longitude, accuracy, heading, speed } = position.coords || {};
     if (![latitude, longitude, accuracy].every((value) => typeof value === "number" && Number.isFinite(value))) {
       setState("Браузер вернул некорректную позицию.", "error");
       return;
     }
-    latestLocation = { latitude, longitude, accuracy };
+    latestLocation = {
+      latitude,
+      longitude,
+      accuracy,
+      heading: typeof heading === "number" && Number.isFinite(heading) && heading >= 0 ? heading : null,
+      speed: typeof speed === "number" && Number.isFinite(speed) && speed >= 0 ? speed : null,
+      timestamp: typeof position.timestamp === "number" ? position.timestamp : Date.now()
+    };
     map.showOwn(latestLocation);
-    setState("GPS получен. Включаем Driver…", "active");
+    const quality = accuracy <= 25 ? "GPS точный" : accuracy <= 60 ? "GPS получен" : "GPS неточный";
+    setState(`${quality} · ±${Math.round(accuracy)} м. Обновляем Driver…`, accuracy > 60 ? "error" : "active");
     sendLatestLocation();
   }
 
@@ -203,6 +220,14 @@ export function createGpsController({ api, map, onAuthLost }) {
     const radius = Number(nearbyRadius.value);
     if (!ALLOWED_RADII.has(radius)) nearbyRadius.value = "25";
     map.setRadius(Number(nearbyRadius.value), { focus: true });
+    refreshNearby();
+  });
+
+  mapElement?.addEventListener("patap:map-radius", (event) => {
+    const radius = Number(event.detail?.radius);
+    if (!ALLOWED_RADII.has(radius) || Number(nearbyRadius.value) === radius) return;
+    nearbyRadius.value = String(radius);
+    map.setRadius(radius, { focus: false });
     refreshNearby();
   });
 
