@@ -30,7 +30,8 @@ test("lane is optional only after accident or road work", () => {
 });
 
 test("created marker is immediate, offset above GPS and exposes TTL and confirmations", () => {
-  assert.match(panelSource, /upsertMarker\(data\.report\)/);
+  assert.match(panelSource, /if \(data\.report\) upsertReport\(data\.report\)/);
+  assert.match(panelSource, /function upsertReport\(report\)[\s\S]*renderMarkers\(\)/);
   assert.match(panelSource, /offset: \[0, -30\]/);
   assert.match(panelSource, /formatExpiry\(report\.expiresAt\)/);
   assert.match(panelSource, /Ещё актуально/);
