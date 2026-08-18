@@ -45,5 +45,6 @@ test("client personalizes realtime updates and preserves message text on reactio
   assert.match(source, /item\.people\.includes\(ownNickname\)/);
   assert.match(source, /messages\.set\(payload\.messageId, \{ \.\.\.current, reactions: personalized \}\)/);
   assert.match(source, /Не удалось изменить реакцию\. Сообщение осталось без изменений\./);
+  assert.match(source, /Реакция недоступна: связь между водителями заблокирована\. Сообщение осталось без изменений\./);
   assert.match(source, /body\.textContent = message\.text/);
 });
