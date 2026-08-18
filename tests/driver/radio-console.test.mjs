@@ -21,7 +21,7 @@ test("Radio Console has original standalone information architecture for recent,
   assert.match(consoleSource, /\+ Канал/);
   assert.match(consoleSource, /Найти канал/);
   assert.match(consoleSource, /Приглашения/);
-  assert.match(consoleSource, /Активный канал|radio-live-status/);
+  assert.match(consoleSource, /radio-live-status/);
 });
 
 test("Radio Console exposes driving, audio focus, replay, pins and accessibility without copying external assets", () => {
@@ -51,6 +51,20 @@ test("client integrates overview, groups, discovery, roles, Solo Busy, alerts, p
   assert.match(radioSource, /status === "BUSY"/);
   assert.match(radioSource, /runEchoTest/);
   assert.match(radioSource, /На сервер ничего не отправлено/);
+});
+
+test("radio uses authenticated SSE refresh push with an independent polling fallback", () => {
+  assert.match(radioSource, /new EventSource\("\/api\/driver\/radio\/events"\)/);
+  assert.match(radioSource, /payload\.type === "radio\.refresh"/);
+  assert.match(radioSource, /const POLL_MS = 12_000/);
+  assert.match(radioSource, /EventSource performs its own backoff\/reconnect/);
+  assert.match(routesSource, /text\/event-stream/);
+  assert.match(routesSource, /eventClients = new Set\(\)/);
+  assert.match(routesSource, /signalRefresh/);
+  assert.match(routesSource, /type: "radio\.refresh"/);
+  assert.match(routesSource, /RADIO_EVENT_HEARTBEAT_MS = 20_000/);
+  assert.doesNotMatch(routesSource, /sendRadioEvent\([^\n]*nickname/);
+  assert.doesNotMatch(routesSource, /sendRadioEvent\([^\n]*transmission/);
 });
 
 test("incoming committed audio is filtered by autoplay, mute, Busy and Solo and history supports sequential playback", () => {
@@ -89,6 +103,7 @@ test("group policy and moderation are enforced server-side rather than trusted t
   assert.match(repositorySource, /LISTENER/);
   assert.match(repositorySource, /radio_channel_bans/);
   assert.match(repositorySource, /areContacts/);
+  assert.match(repositorySource, /if \(!isMember\(channelId, userId\)\) return null/);
   assert.match(routesSource, /checkRate\(`radio-create-channel/);
   assert.match(routesSource, /checkRate\(`radio-alert/);
   assert.match(routesSource, /requireCsrf/);
