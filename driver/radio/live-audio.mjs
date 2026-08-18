@@ -67,9 +67,10 @@ export function decodePcm16Base64(encoded) {
 
 export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => true, onTransportState = () => {} } = {}) {
   let broadcaster = null;
+  let broadcastGeneration = 0;
   let listenContext = null;
   const listenStreams = new Map();
-  const heardTransmissions = new Set();
+  const completedLiveTransmissions = new Set();
 
   async function unlockListening() {
     const Ctor = audioContextCtor();
@@ -83,14 +84,26 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
     }
   }
 
+  async function stopBroadcast({ flush = true } = {}) {
+    broadcastGeneration += 1;
+    const active = broadcaster;
+    broadcaster = null;
+    if (active) await active.stop({ flush });
+  }
+
   async function startBroadcast(stream, session) {
     await stopBroadcast({ flush: false });
+    const generation = ++broadcastGeneration;
     const Ctor = audioContextCtor();
     if (!Ctor || !stream || !session?.transmissionId || !session?.uploadToken) return false;
     let context;
     try {
       context = new Ctor({ latencyHint: "interactive" });
       if (context.state !== "running") await context.resume();
+      if (generation !== broadcastGeneration) {
+        await context.close().catch(() => {});
+        return false;
+      }
       if (context.state !== "running" || typeof context.createScriptProcessor !== "function") {
         await context.close().catch(() => {});
         return false;
@@ -112,16 +125,17 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
     let samples = [];
     let sequence = 0;
     let transportFailed = false;
-    let stopped = false;
+    let captureStopped = false;
+    let cancelled = false;
     let sendChain = Promise.resolve();
 
-    function sendChunk(chunk) {
-      if (!chunk.length || stopped || transportFailed) return;
+    function queueChunk(chunk) {
+      if (!chunk.length || cancelled || transportFailed) return;
       const currentSequence = sequence;
       sequence += 1;
       const blob = pcm16ToLittleEndianBlob(chunk);
       sendChain = sendChain.then(async () => {
-        if (stopped || transportFailed) return;
+        if (cancelled || transportFailed) return;
         try {
           await uploadBinary(`/api/driver/radio/live/${session.transmissionId}`, blob, {
             timeoutMs: LIVE_UPLOAD_TIMEOUT_MS,
@@ -143,12 +157,12 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
       while (samples.length >= LIVE_CHUNK_SAMPLES) {
         const chunk = Int16Array.from(samples.slice(0, LIVE_CHUNK_SAMPLES));
         samples = samples.slice(LIVE_CHUNK_SAMPLES);
-        sendChunk(chunk);
+        queueChunk(chunk);
       }
     }
 
     processor.onaudioprocess = (event) => {
-      if (stopped || transportFailed) return;
+      if (captureStopped || cancelled || transportFailed) return;
       const input = event.inputBuffer?.getChannelData?.(0);
       if (!input?.length) return;
       const converted = downsampler.push(input);
@@ -159,43 +173,72 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
     broadcaster = {
       context, source, processor, silentGain,
       async stop({ flush = true } = {}) {
-        if (stopped) return;
-        if (flush && samples.length && !transportFailed) sendChunk(Int16Array.from(samples));
-        samples = [];
+        if (captureStopped) return;
         processor.onaudioprocess = null;
-        stopped = true;
+        if (flush && samples.length && !transportFailed) queueChunk(Int16Array.from(samples));
+        samples = [];
+        captureStopped = true;
+        if (!flush) cancelled = true;
         try { source.disconnect(); } catch {}
         try { processor.disconnect(); } catch {}
         try { silentGain.disconnect(); } catch {}
         await context.close().catch(() => {});
-        await Promise.race([sendChain.catch(() => {}), new Promise((resolve) => setTimeout(resolve, LIVE_UPLOAD_TIMEOUT_MS))]);
+        await Promise.race([
+          sendChain.catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, LIVE_UPLOAD_TIMEOUT_MS))
+        ]);
+        if (flush && !cancelled && !transportFailed && sequence > 0) {
+          try {
+            await uploadBinary(`/api/driver/radio/live/${session.transmissionId}`, new Blob([], { type: "application/octet-stream" }), {
+              timeoutMs: LIVE_UPLOAD_TIMEOUT_MS,
+              headers: {
+                "X-Radio-Upload-Token": session.uploadToken,
+                "X-Radio-Live-End": "1",
+                "X-Radio-Live-Sequence": String(sequence - 1)
+              }
+            });
+          } catch {
+            onTransportState("history_only");
+          }
+        }
       }
     };
     onTransportState("live");
     return true;
   }
 
-  async function stopBroadcast({ flush = true } = {}) {
-    const active = broadcaster;
-    broadcaster = null;
-    if (active) await active.stop({ flush });
-  }
-
   async function handleIncoming(payload) {
     const channelId = Number(payload?.channelId);
     const transmissionId = Number(payload?.transmissionId);
+    if (!Number.isSafeInteger(channelId) || !Number.isSafeInteger(transmissionId)) return false;
+    if (!canListenToChannel(channelId)) return false;
+
+    if (payload?.end === true) {
+      const finalSequence = Number(payload.finalSequence);
+      const streamState = listenStreams.get(transmissionId);
+      if (streamState && streamState.complete && Number.isSafeInteger(finalSequence) && finalSequence === streamState.lastSequence) {
+        completedLiveTransmissions.add(transmissionId);
+        if (completedLiveTransmissions.size > 200) completedLiveTransmissions.delete(completedLiveTransmissions.values().next().value);
+      }
+      listenStreams.delete(transmissionId);
+      return true;
+    }
+
     const sequence = Number(payload?.sequence);
     const sampleRate = Number(payload?.sampleRate);
-    if (!Number.isSafeInteger(channelId) || !Number.isSafeInteger(transmissionId) || !Number.isSafeInteger(sequence) || sampleRate !== TARGET_SAMPLE_RATE) return false;
-    if (!canListenToChannel(channelId)) return false;
+    if (!Number.isSafeInteger(sequence) || sequence < 0 || sampleRate !== TARGET_SAMPLE_RATE) return false;
     if (!(await unlockListening())) return false;
     const samples = decodePcm16Base64(payload.audio);
     if (!samples.length) return false;
 
     let streamState = listenStreams.get(transmissionId);
-    if (!streamState) streamState = { lastSequence: -1, nextTime: listenContext.currentTime + 0.08 };
+    if (!streamState) streamState = { lastSequence: -1, nextTime: listenContext.currentTime + 0.08, complete: true };
     if (sequence <= streamState.lastSequence) return false;
-    if (sequence !== streamState.lastSequence + 1 || streamState.nextTime - listenContext.currentTime > MAX_SCHEDULE_AHEAD_SECONDS) {
+    if (sequence !== streamState.lastSequence + 1) {
+      streamState.complete = false;
+      streamState.nextTime = listenContext.currentTime + 0.08;
+    } else if (streamState.nextTime - listenContext.currentTime > MAX_SCHEDULE_AHEAD_SECONDS) {
+      streamState.complete = false;
       streamState.nextTime = listenContext.currentTime + 0.08;
     }
 
@@ -209,19 +252,17 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
     streamState.nextTime = startAt + buffer.duration;
     streamState.lastSequence = sequence;
     listenStreams.set(transmissionId, streamState);
-    heardTransmissions.add(transmissionId);
-    if (heardTransmissions.size > 200) heardTransmissions.delete(heardTransmissions.values().next().value);
     source.addEventListener("ended", () => { try { source.disconnect(); } catch {} }, { once: true });
     return true;
   }
 
   function hasHeard(transmissionId) {
-    return heardTransmissions.has(Number(transmissionId));
+    return completedLiveTransmissions.has(Number(transmissionId));
   }
 
   function closeListening() {
     listenStreams.clear();
-    heardTransmissions.clear();
+    completedLiveTransmissions.clear();
     const context = listenContext;
     listenContext = null;
     context?.close?.().catch(() => {});
