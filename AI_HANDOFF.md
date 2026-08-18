@@ -1,3 +1,35 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: MAP_ENHANCEMENTS_TEST_FIX_01
+TASK_ID: MAP-ENHANCEMENTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/map-enhancements-test-fix-01
+SOURCE_COMMIT: 14dd53069dd502f5c01f77b4eb727eb102c42e53
+BASE: codex/local-workspace-snapshot @ 35b7b2cc9259f698140df0d97c1e64351f6a82e1
+APPLIES_WITH: chatgpt/map-enhancements-v1 @ 88157649a76ac0332f84dd6c615ecee402219765
+
+Исправлен только тестовый drift после новой архитектуры Road Reports:
+- tests/driver/road-reports-redesign.test.mjs больше не ищет устаревший upsertMarker(data.report).
+- Проверка теперь требует фактический новый путь: после успешного POST `if (data.report) upsertReport(data.report)`.
+- Дополнительно сохранён смысл проверки мгновенного marker: тест требует, чтобы `upsertReport(report)` вызывал `renderMarkers()`.
+- Отдельные проверки offset `[0, -30]`, TTL через `formatExpiry(report.expiresAt)` и confirm UI `ACTIVE/GONE` оставлены без ослабления.
+
+Изменённые файлы до handoff:
+- tests/driver/road-reports-redesign.test.mjs
+
+Проверено в GitHub diff:
+- code commit относительно актуального snapshot: +2 / -1 только в одном test file.
+- Production-код, map/gps implementation, server, auth, SQLite, Caddy, chat, radio, main и runtime-данные не менялись.
+- Локальный node/npm suite ChatGPT здесь не заявляет как PASS; Codex должен наложить полный MAP_ENHANCEMENTS кандидат + этот test-only fix и повторить полный набор.
+
+Codex проверить:
+1. Наложить `chatgpt/map-enhancements-v1 @ 88157649a76ac0332f84dd6c615ecee402219765`.
+2. Поверх него применить только test file из `chatgpt/map-enhancements-test-fix-01 @ 14dd53069dd502f5c01f77b4eb727eb102c42e53`.
+3. Повторить ранее падавший набор и затем `test:driver-modules`, build, verify, browser.
+4. Только после PASS применять MAP_ENHANCEMENTS на рабочий сайт.
+
+После этого блока ChatGPT останавливается.
+
+---
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: MAP_ENHANCEMENTS_V1
 TASK_ID: MAP-ENHANCEMENTS-20260818-001
@@ -317,7 +349,7 @@ STATUS: READY_FOR_REVIEW
 SOURCE: codex/local-workspace-snapshot
 
 Что сделано / что проверено:
-- Постоянный локальный watcher запущен из `D:\WWW.PATAP.EU\scripts\watch-ai-loop-trigger.ps1`.
+- Постоянный локальный watcher запущен из `D:\\WWW.PATAP.EU\\scripts\\watch-ai-loop-trigger.ps1`.
 - Автозапуск при следующем входе в Windows добавлен для текущего пользователя.
 - Единственный допустимый триггер: GitHub issue с заголовком `[AI_TASK][MAP] TASK_ID=<уникальный-id>`.
 - Watcher сохраняет обработанные `TASK_ID`; собственные записи Codex в `AI_HANDOFF.md`, коммиты и любые задачи без этого формата его не запускают.
