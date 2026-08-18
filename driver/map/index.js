@@ -1,24 +1,68 @@
 import { countryFlag } from "../shared/countries.js?v=20260714-10";
 
+const MAPLIBRE_CSS_URL = "/vendor/maplibre/maplibre-gl.css?v=20260714-8";
+const MAPLIBRE_JS_URL = "/vendor/maplibre/maplibre-gl.js?v=20260714-8";
 let mapLibrePromise = null;
 
-function ensureMapLibre() {
+function ensureMapLibreCss() {
+  let link = document.querySelector('link[data-driver-maplibre-css="true"]');
+  if (link?.dataset.maplibreReady === "true") return Promise.resolve();
+  if (link?.mapLibreLoadPromise) return link.mapLibreLoadPromise;
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = MAPLIBRE_CSS_URL;
+    link.dataset.driverMaplibreCss = "true";
+    document.head.append(link);
+  }
+  link.mapLibreLoadPromise = new Promise((resolve, reject) => {
+    link.addEventListener("load", () => {
+      link.dataset.maplibreReady = "true";
+      resolve();
+    }, { once: true });
+    link.addEventListener("error", () => {
+      link.remove();
+      reject(new Error("maplibre_css_load_failed"));
+    }, { once: true });
+  });
+  return link.mapLibreLoadPromise;
+}
+
+function ensureMapLibreScript() {
   if (window.maplibregl) return Promise.resolve(window.maplibregl);
-  if (mapLibrePromise) return mapLibrePromise;
-  mapLibrePromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "/vendor/maplibre/maplibre-gl.js?v=20260714-8";
+  let script = document.querySelector('script[data-driver-maplibre-js="true"]');
+  if (script?.mapLibreLoadPromise) return script.mapLibreLoadPromise;
+  if (!script) {
+    script = document.createElement("script");
+    script.src = MAPLIBRE_JS_URL;
     script.defer = true;
+    script.dataset.driverMaplibreJs = "true";
+    document.head.append(script);
+  }
+  script.mapLibreLoadPromise = new Promise((resolve, reject) => {
     script.addEventListener("load", () => {
       if (window.maplibregl) resolve(window.maplibregl);
-      else reject(new Error("maplibre_unavailable"));
+      else {
+        script.remove();
+        reject(new Error("maplibre_unavailable"));
+      }
     }, { once: true });
-    script.addEventListener("error", () => reject(new Error("maplibre_load_failed")), { once: true });
-    document.head.append(script);
-  }).catch((error) => {
-    mapLibrePromise = null;
-    throw error;
+    script.addEventListener("error", () => {
+      script.remove();
+      reject(new Error("maplibre_load_failed"));
+    }, { once: true });
   });
+  return script.mapLibreLoadPromise;
+}
+
+export function ensureMapLibre() {
+  if (mapLibrePromise) return mapLibrePromise;
+  mapLibrePromise = Promise.all([ensureMapLibreCss(), ensureMapLibreScript()])
+    .then(([, maplibregl]) => maplibregl)
+    .catch((error) => {
+      mapLibrePromise = null;
+      throw error;
+    });
   return mapLibrePromise;
 }
 
@@ -104,13 +148,11 @@ export function createMapController({ setState, onDriverCard }) {
 
   async function init() {
     if (map) return true;
-    if (!window.maplibregl) {
-      try {
-        await ensureMapLibre();
-      } catch {
-        setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error");
-        return false;
-      }
+    try {
+      await ensureMapLibre();
+    } catch {
+      setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error");
+      return false;
     }
     try {
       map = new window.maplibregl.Map({
