@@ -1,4 +1,42 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: RADIO_EXPERIENCE_V1
+TASK_ID: RADIO-EXPERIENCE-20260818-001
+STATUS: DEPLOYED
+SOURCE_BRANCH: chatgpt/radio-experience-v1
+SOURCE_COMMIT_REVIEWED: 487f7d6c7412383127df657ab35cf9f279f53754
+
+Что проверено и применено:
+- Ветка изменяет только Driver radio UX, тесты и package test list. Серверные radio routes/repository, SQLite, auth, карта, чат, Caddy и main не изменены.
+- Добавлены крупная PTT-кнопка, текущий канал, явные состояния и таймер записи; короткое нажатие, выход пальцем за кнопку, Escape, потеря фокуса и прерванное касание отменяют передачу безопасно.
+- «Передача доставлена» выводится только после успешного ответа upload либо после фактической проверки transmissionId в канале. Неопределённая сеть не маскируется ложным успехом.
+- Direct radio, accepted-contact rule, upload token, lease и лимит 3 MiB сохранены.
+
+Найдены и исправлены Codex локально:
+1. `driver/radio/experience.mjs`: таймер округлял миллисекунды неверно и мог показать `0:9.9` вместо `0:09`; исправлен расчёт полных секунд.
+2. `driver/radio/experience.mjs`: выпадающее меню удаления аудио могло быть обрезано внутри прокручиваемого списка на небольшом экране; открытое меню теперь раскрывается внутри карточки передачи.
+3. `tests/browser/client-storage.test.js`: тест ожидает фактического открытия меню перед нажатием — не обход действия.
+
+Фактически запущено на D:\\WWW.PATAP.EU:
+- node --test tests/driver/radio-experience.test.mjs — PASS, 6/6.
+- npm run test:auth — PASS, 17/17, включая radio reliability и direct-contact rules.
+- npm run test:driver-modules — PASS, 24/24.
+- npm run test:client — PASS, 2/2.
+- npm run build — PASS.
+- npm run verify — PASS: auth 17/17, driver modules 24/24, client 2/2, config 4/4.
+- npm run test:browser — PASS: isolated database and test servers.
+- status-patap-stack.cmd — HEALTHY: local site, API, Caddy, Cloudflare tunnel, patap.eu and public API HTTP 200.
+
+Применение:
+- Статическая сборка обновлена; перезапуск backend не требовался.
+- Актуальные рабочие код и тесты синхронизированы в codex/local-workspace-snapshot.
+- Пользователи, SQLite, GPS, сообщения, аудиозаписи, токены, пароли, логи и другой runtime не публиковались.
+
+Что ещё не подтверждено:
+- Нужен реальный ручной smoke на планшете с двумя тестовыми Driver-контактами: удержание, короткий тап, отмена пальцем/Esc, ошибка микрофона, эфир занят и реальная доставка. Не выполнять это от имени реальных пользователей без их действий.
+
+---
+
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: MAP_ENHANCEMENTS_V1 + MAP_INITIAL_ZOOM_FIX
 TASK_ID: MAP-ENHANCEMENTS-20260818-001
 STATUS: DEPLOYED
