@@ -10,7 +10,7 @@ STATUS: DEPLOYED
 - Актуализирован browser-тест GPS под панель «Слои», одноразовый автофокус и настоящие MapLibre marker options. Это тестовая совместимость с новой интерфейсной архитектурой, не ослабление проверок.
 
 Фактически запущено на D:\\WWW.PATAP.EU:
-- node --test tests/driver/map-enhancements.test.mjs tests/driver/road-reports.test.mjs tests/driver/road-reports-redesign.test.mjs — PASS, 17/17.
+- npm ci — PASS, 0 vulnerabilities.\n- node --test tests/driver/map-enhancements.test.mjs tests/driver/road-reports.test.mjs tests/driver/road-reports-redesign.test.mjs — PASS, 17/17.
 - npm run test:driver-modules — PASS, 18/18.
 - npm run test:client — PASS, 2/2.
 - npm run build — PASS.
