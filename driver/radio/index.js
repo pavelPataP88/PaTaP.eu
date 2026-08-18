@@ -5,7 +5,7 @@ const MAX_RECORDING_MS = 60_000;
 const MIN_RECORDING_MS = 550;
 const RECORDING_TICK_MS = 200;
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
-const POLL_MS = 2_000;
+const POLL_MS = 12_000;
 const VOICE_BITRATE = 32_000;
 const CANCEL_GESTURE_MARGIN_PX = 12;
 
@@ -38,11 +38,8 @@ function supportedMimeType() {
 function createVoiceRecorder(stream, mimeType) {
   const options = mimeType ? { mimeType } : {};
   options.audioBitsPerSecond = VOICE_BITRATE;
-  try {
-    return new MediaRecorder(stream, options);
-  } catch {
-    return mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-  }
+  try { return new MediaRecorder(stream, options); }
+  catch { return mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream); }
 }
 
 function formatAudioTime(value) {
@@ -85,6 +82,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   let ownNickname = "";
   let activated = false;
   let pollTimer = null;
+  let eventSource = null;
   let recorder = null;
   let stream = null;
   let recording = null;
@@ -108,6 +106,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   let cascadePlayback = false;
   let carMode = false;
   let echoRunning = false;
+  let refreshInFlight = null;
 
   function setState(text, kind = "ready", { lockMs = 0 } = {}) {
     currentPhase = PHASE_LABELS[kind] ? kind : "ready";
@@ -117,13 +116,10 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     experience.setPhase(currentPhase, PHASE_LABELS[currentPhase]);
   }
 
-  function effectiveBusy() {
-    return channel?.speaker && !channel.speaker.isSelf;
-  }
+  function effectiveBusy() { return channel?.speaker && !channel.speaker.isSelf; }
 
   function updatePtt() {
     const busy = effectiveBusy();
-    // Keep this exact rule: a held control must remain enabled during starting/recording so release/cancel is reliable.
     ptt.disabled = !profileReady || !channel || Boolean(busy) || uploading || channel?.canTalk === false;
     ptt.setAttribute("aria-pressed", recording || starting ? "true" : "false");
     experience.setChannel(channel);
@@ -200,10 +196,8 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     audio.playbackRate = Number(settings.playbackRate || 1);
     activeAudio = audio;
     audio.addEventListener("ended", () => { if (activeAudio === audio) activeAudio = null; }, { once: true });
-    try {
-      await audio.play();
-      return true;
-    } catch {
+    try { await audio.play(); return true; }
+    catch {
       if (activeAudio === audio) activeAudio = null;
       if (force) setState("Браузер не разрешил автоматическое воспроизведение. Нажмите «Повтор».", "error");
       return false;
@@ -238,9 +232,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       await loadPins();
       renderTransmissions(historyItems);
       setState(pinned ? "Закрепление снято." : "Передача закреплена в канале.", "ready");
-    } catch (error) {
-      setState(friendlyRadioError(error), "error");
-    }
+    } catch (error) { setState(friendlyRadioError(error), "error"); }
   }
 
   function createTransmissionMenu(item) {
@@ -291,19 +283,12 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     const progress = document.createElement("input");
     progress.type = "range";
     progress.className = "radio-audio-progress";
-    progress.min = "0";
-    progress.max = "0";
-    progress.step = "0.1";
-    progress.value = "0";
-    progress.disabled = true;
+    progress.min = "0"; progress.max = "0"; progress.step = "0.1"; progress.value = "0"; progress.disabled = true;
     progress.setAttribute("aria-label", "Позиция воспроизведения");
     const time = document.createElement("span");
-    time.className = "radio-audio-time";
-    time.textContent = "0:00";
+    time.className = "radio-audio-time"; time.textContent = "0:00";
     const audio = document.createElement("audio");
-    audio.preload = "metadata";
-    audio.playsInline = true;
-    audio.src = `/api/driver/radio/transmissions/${item.id}/audio`;
+    audio.preload = "metadata"; audio.playsInline = true; audio.src = `/api/driver/radio/transmissions/${item.id}/audio`;
     audio.playbackRate = Number(settings.playbackRate || 1);
 
     async function playHere({ cascade = true } = {}) {
@@ -316,29 +301,16 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       catch { if (activeAudio === audio) activeAudio = null; setState("Не удалось воспроизвести голосовое сообщение.", "error"); }
     }
     play.addEventListener("click", () => playHere({ cascade: true }));
-    audio.addEventListener("play", () => {
-      activeAudio = audio;
-      play.textContent = "❚❚";
-      play.setAttribute("aria-label", "Приостановить голосовое сообщение");
-    });
-    audio.addEventListener("pause", () => {
-      play.textContent = "▶";
-      play.setAttribute("aria-label", "Воспроизвести голосовое сообщение");
-      if (activeAudio === audio) activeAudio = null;
-    });
+    audio.addEventListener("play", () => { activeAudio = audio; play.textContent = "❚❚"; play.setAttribute("aria-label", "Приостановить голосовое сообщение"); });
+    audio.addEventListener("pause", () => { play.textContent = "▶"; play.setAttribute("aria-label", "Воспроизвести голосовое сообщение"); if (activeAudio === audio) activeAudio = null; });
     audio.addEventListener("durationchange", () => {
       const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-      progress.max = String(duration);
-      progress.disabled = duration <= 0;
+      progress.max = String(duration); progress.disabled = duration <= 0;
       time.textContent = `${formatAudioTime(audio.currentTime)} / ${formatAudioTime(duration)}`;
     });
-    audio.addEventListener("timeupdate", () => {
-      progress.value = String(audio.currentTime);
-      time.textContent = `${formatAudioTime(audio.currentTime)} / ${formatAudioTime(audio.duration)}`;
-    });
+    audio.addEventListener("timeupdate", () => { progress.value = String(audio.currentTime); time.textContent = `${formatAudioTime(audio.currentTime)} / ${formatAudioTime(audio.duration)}`; });
     audio.addEventListener("ended", () => {
-      progress.value = "0";
-      play.textContent = "▶";
+      progress.value = "0"; play.textContent = "▶";
       if (activeAudio === audio) activeAudio = null;
       if (cascadePlayback && historyPlayers[index + 1]) historyPlayers[index + 1].playHere({ cascade: true });
     });
@@ -352,28 +324,17 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     historyPlayers = [];
     transmissionsElement.replaceChildren();
     if (!historyItems.length) {
-      const empty = document.createElement("p");
-      empty.className = "radio-empty";
+      const empty = document.createElement("p"); empty.className = "radio-empty";
       empty.textContent = channel ? "В этом канале ещё нет передач." : "Выберите канал рации.";
-      transmissionsElement.append(empty);
-      return;
+      transmissionsElement.append(empty); return;
     }
     historyItems.forEach((item, index) => {
-      const article = document.createElement("article");
-      article.className = "radio-transmission";
-      article.dataset.transmissionId = String(item.id);
+      const article = document.createElement("article"); article.className = "radio-transmission"; article.dataset.transmissionId = String(item.id);
       const header = document.createElement("header");
-      const author = document.createElement("strong");
-      author.textContent = item.sender.nickname;
-      const time = document.createElement("time");
-      time.dateTime = item.committedAt;
-      time.textContent = new Date(item.committedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-      const menu = createTransmissionMenu(item);
-      header.append(author, time, menu);
-      const player = createAudioPlayer(item, index);
-      historyPlayers.push(player);
-      article.append(header, player.element);
-      transmissionsElement.append(article);
+      const author = document.createElement("strong"); author.textContent = item.sender.nickname;
+      const time = document.createElement("time"); time.dateTime = item.committedAt; time.textContent = new Date(item.committedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+      const menu = createTransmissionMenu(item); header.append(author, time, menu);
+      const player = createAudioPlayer(item, index); historyPlayers.push(player); article.append(header, player.element); transmissionsElement.append(article);
     });
     transmissionsElement.scrollTop = transmissionsElement.scrollHeight;
   }
@@ -382,12 +343,9 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     if (!channel) { renderTransmissions(); return []; }
     try {
       const data = await api(`/api/driver/radio/channels/${channel.id}/transmissions?limit=${limit}`);
-      const items = data.transmissions || [];
-      renderTransmissions(items);
-      return items;
+      const items = data.transmissions || []; renderTransmissions(items); return items;
     } catch (error) {
-      if (error.status === 401) onAuthLost();
-      else if (!silent) setState("Не удалось загрузить передачи.", "error");
+      if (error.status === 401) onAuthLost(); else if (!silent) setState("Не удалось загрузить передачи.", "error");
       return null;
     }
   }
@@ -404,22 +362,15 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       for (const item of data.pins || []) pinnedIds.add(Number(item.id));
       consoleUi.renderPins(data.pins || [], (item) => playIncoming(item, { force: true }));
       return data.pins || [];
-    } catch {
-      consoleUi.renderPins([]);
-      return [];
-    }
+    } catch { consoleUi.renderPins([]); return []; }
   }
 
   async function markCurrentRead() {
     if (!channel?.lastTransmissionId) return;
     try {
-      await api(`/api/driver/radio/channels/${channel.id}/preferences`, {
-        method: "PATCH", body: { lastReadTransmissionId: channel.lastTransmissionId }
-      });
-      channel.unreadCount = 0;
-      channels.set(channel.id, channel);
-      renderChannelList();
-    } catch { /* read marker is convenience only */ }
+      await api(`/api/driver/radio/channels/${channel.id}/preferences`, { method: "PATCH", body: { lastReadTransmissionId: channel.lastTransmissionId } });
+      channel.unreadCount = 0; channels.set(channel.id, channel); renderChannelList();
+    } catch { }
   }
 
   function renderChannelList() {
@@ -431,9 +382,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     pauseActiveAudio();
     channel = channels.get(Number(next.id)) || next;
     title.textContent = `Рация: ${channel.title}`;
-    experience.setChannel(channel);
-    consoleUi.setChannel(channel);
-    renderChannelList();
+    experience.setChannel(channel); consoleUi.setChannel(channel); renderChannelList();
     if (settings.status === "SOLO" && !keepStatus && Number(settings.soloChannelId) !== Number(channel.id)) {
       await updateSettings({ status: "SOLO", soloChannelId: channel.id }, { quiet: true });
     }
@@ -446,10 +395,8 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   }
 
   async function fetchLatest(channelId) {
-    try {
-      const data = await api(`/api/driver/radio/channels/${channelId}/transmissions?limit=1`);
-      return data.transmissions?.at(-1) || null;
-    } catch { return null; }
+    try { const data = await api(`/api/driver/radio/channels/${channelId}/transmissions?limit=1`); return data.transmissions?.at(-1) || null; }
+    catch { return null; }
   }
 
   async function handleNewTransmission(targetChannel, oldId, newId) {
@@ -457,13 +404,12 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     const latest = await fetchLatest(targetChannel.id);
     if (!latest || Number(latest.id) !== Number(newId)) return;
     if (Number(channel?.id) === Number(targetChannel.id) && !recording && !starting) {
-      await loadTransmissions({ silent: true });
-      await markCurrentRead();
+      await loadTransmissions({ silent: true }); await markCurrentRead();
     }
     if (latest.sender.nickname !== ownNickname) await playIncoming(latest);
   }
 
-  async function refreshOverview({ initial = false } = {}) {
+  async function performOverviewRefresh({ initial = false } = {}) {
     if (!profileReady) return;
     try {
       const data = await api("/api/driver/radio/overview");
@@ -474,42 +420,49 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
         channels.set(Number(item.id), item);
         knownLastIds.set(Number(item.id), Number(item.lastTransmissionId || 0));
       }
-      settings = data.settings || settings;
-      invites = data.invites || [];
-      alerts = data.alerts || [];
-      consoleUi.setSettings(settings);
-      consoleUi.setInvitesCount(invites.length);
-      const latestAlert = alerts[0] || null;
-      consoleUi.showAlert(latestAlert);
+      settings = data.settings || settings; invites = data.invites || []; alerts = data.alerts || [];
+      consoleUi.setSettings(settings); consoleUi.setInvitesCount(invites.length); consoleUi.showAlert(alerts[0] || null);
       const preferred = previousId && channels.get(Number(previousId))
         || settings.defaultChannelId && channels.get(Number(settings.defaultChannelId))
-        || channels.values().next().value
-        || null;
-      channel = preferred;
-      renderChannelList();
-      consoleUi.setChannel(channel);
-      experience.setChannel(channel);
-      updatePtt();
+        || channels.values().next().value || null;
+      channel = preferred; renderChannelList(); consoleUi.setChannel(channel); experience.setChannel(channel); updatePtt();
       if (!initial) {
         for (const item of channels.values()) {
-          const oldId = Number(previousLast.get(item.id) || 0);
-          const newId = Number(item.lastTransmissionId || 0);
+          const oldId = Number(previousLast.get(item.id) || 0); const newId = Number(item.lastTransmissionId || 0);
           if (newId > oldId) handleNewTransmission(item, oldId, newId);
         }
       }
-      if (channel?.speaker && !channel.speaker.isSelf && !recording && !starting && !uploading) {
-        setState(`Сейчас говорит ${channel.speaker.nickname}.`, "listening");
-      } else if (!recording && !starting && !uploading && channel && Date.now() >= statusLockUntil) {
-        setState(channel.canTalk === false ? "Канал активен. Режим прослушивания." : "Канал свободен. Можно говорить.", "ready");
-      }
+      if (channel?.speaker && !channel.speaker.isSelf && !recording && !starting && !uploading) setState(`Сейчас говорит ${channel.speaker.nickname}.`, "listening");
+      else if (!recording && !starting && !uploading && channel && Date.now() >= statusLockUntil) setState(channel.canTalk === false ? "Канал активен. Режим прослушивания." : "Канал свободен. Можно говорить.", "ready");
     } catch (error) {
-      if (error.status === 401) onAuthLost();
-      else if (!initial) setState("Не удалось обновить состояние рации.", "error");
+      if (error.status === 401) onAuthLost(); else if (!initial) setState("Не удалось обновить состояние рации.", "error");
     }
   }
 
-  async function refreshChannels() {
-    return refreshOverview();
+  function refreshOverview(options = {}) {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = performOverviewRefresh(options).finally(() => { refreshInFlight = null; });
+    return refreshInFlight;
+  }
+
+  async function refreshChannels() { return refreshOverview(); }
+
+  function connectEventStream() {
+    if (!activated || eventSource || typeof EventSource === "undefined") return;
+    eventSource = new EventSource("/api/driver/radio/events");
+    eventSource.addEventListener("radio", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (payload.type === "radio.refresh") refreshOverview();
+      } catch { }
+    });
+    eventSource.addEventListener("open", () => { if (currentPhase === "error" && channel) setState("Связь с рацией восстановлена.", "ready"); });
+    // EventSource performs its own backoff/reconnect. Fallback polling remains active independently.
+  }
+
+  function closeEventStream() {
+    if (eventSource) eventSource.close();
+    eventSource = null;
   }
 
   function schedulePoll() {
@@ -520,14 +473,11 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   async function updateSettings(patch, { quiet = false } = {}) {
     try {
       const data = await api("/api/driver/radio/settings", { method: "PATCH", body: patch });
-      settings = data.settings;
-      consoleUi.setSettings(settings);
+      settings = data.settings; consoleUi.setSettings(settings);
       if (!quiet) setState("Настройки рации сохранены.", "ready");
       return true;
     } catch (error) {
-      consoleUi.setSettings(settings);
-      if (!quiet) setState(friendlyRadioError(error), "error");
-      return false;
+      consoleUi.setSettings(settings); if (!quiet) setState(friendlyRadioError(error), "error"); return false;
     }
   }
 
@@ -535,57 +485,34 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     if (!channel) return false;
     try {
       const data = await api(`/api/driver/radio/channels/${channel.id}/preferences`, { method: "PATCH", body: patch });
-      Object.assign(channel, data.preferences || {});
-      channels.set(channel.id, channel);
-      consoleUi.setChannel(channel);
-      renderChannelList();
-      return true;
-    } catch (error) {
-      setState(friendlyRadioError(error), "error");
-      return false;
-    }
+      Object.assign(channel, data.preferences || {}); channels.set(channel.id, channel); consoleUi.setChannel(channel); renderChannelList(); return true;
+    } catch (error) { setState(friendlyRadioError(error), "error"); return false; }
   }
 
   async function replayLast() {
     let item = historyItems.at(-1);
     if (!item && channel) item = await fetchLatest(channel.id);
     if (!item) return setState("В этом канале пока нечего повторять.", "ready");
-    if (historyItems.length && historyPlayers.length) {
-      historyPlayers.at(-1).playHere({ cascade: false });
-    } else {
-      await playIncoming(item, { force: true });
-    }
+    if (historyItems.length && historyPlayers.length) historyPlayers.at(-1).playHere({ cascade: false });
+    else await playIncoming(item, { force: true });
   }
 
   async function runEchoTest() {
     if (echoRunning || recording || starting || uploading) return;
     if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) return setState("Тест микрофона не поддерживается этим браузером.", "error");
-    echoRunning = true;
-    setState("Тест микрофона: скажите несколько слов…", "requesting");
+    echoRunning = true; setState("Тест микрофона: скажите несколько слов…", "requesting");
     let localStream;
     try {
       localStream = await navigator.mediaDevices.getUserMedia(radioAudioConstraints());
-      const mimeType = supportedMimeType();
-      const echoRecorder = createVoiceRecorder(localStream, mimeType);
-      const chunks = [];
+      const mimeType = supportedMimeType(); const echoRecorder = createVoiceRecorder(localStream, mimeType); const chunks = [];
       echoRecorder.addEventListener("dataavailable", (event) => { if (event.data?.size) chunks.push(event.data); });
       const stopped = new Promise((resolve) => echoRecorder.addEventListener("stop", resolve, { once: true }));
-      echoRecorder.start(250);
-      await new Promise((resolve) => window.setTimeout(resolve, 3_000));
-      echoRecorder.stop();
-      await stopped;
-      for (const track of localStream.getTracks()) track.stop();
-      localStream = null;
-      const blob = new Blob(chunks, { type: echoRecorder.mimeType || "audio/webm" });
-      if (!blob.size) throw new Error("empty_echo");
-      pauseActiveAudio();
-      const audio = document.createElement("audio");
-      audio.src = URL.createObjectURL(blob);
-      audio.playbackRate = 1;
-      activeAudio = audio;
+      echoRecorder.start(250); await new Promise((resolve) => window.setTimeout(resolve, 3_000)); echoRecorder.stop(); await stopped;
+      for (const track of localStream.getTracks()) track.stop(); localStream = null;
+      const blob = new Blob(chunks, { type: echoRecorder.mimeType || "audio/webm" }); if (!blob.size) throw new Error("empty_echo");
+      pauseActiveAudio(); const audio = document.createElement("audio"); audio.src = URL.createObjectURL(blob); audio.playbackRate = 1; activeAudio = audio;
       audio.addEventListener("ended", () => { URL.revokeObjectURL(audio.src); if (activeAudio === audio) activeAudio = null; }, { once: true });
-      await audio.play();
-      setState("Тест микрофона воспроизводится только на этом устройстве. На сервер ничего не отправлено.", "ready");
+      await audio.play(); setState("Тест микрофона воспроизводится только на этом устройстве. На сервер ничего не отправлено.", "ready");
     } catch (error) {
       for (const track of localStream?.getTracks?.() || []) track.stop();
       setState(error.name === "NotAllowedError" ? "Микрофон запрещён браузером." : "Не удалось выполнить тест микрофона.", "error");
@@ -601,9 +528,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     ], "Создать канал", async (values) => {
       try {
         const data = await api("/api/driver/radio/channels", { method: "POST", body: values });
-        await refreshOverview();
-        await selectChannel(channels.get(Number(data.channel.id)) || data.channel);
-        setState("Канал создан.", "ready");
+        await refreshOverview(); await selectChannel(channels.get(Number(data.channel.id)) || data.channel); setState("Канал создан.", "ready");
       } catch (error) { setState(friendlyRadioError(error), "error"); return false; }
     });
     consoleUi.showDialog("Новый канал", form);
@@ -612,13 +537,11 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   async function showDiscover() {
     const wrap = document.createElement("div");
     const input = document.createElement("input"); input.type = "search"; input.placeholder = "Название открытого канала"; input.setAttribute("aria-label", "Поиск открытых каналов");
-    const results = document.createElement("div"); results.style.display = "grid"; results.style.gap = "8px";
-    wrap.append(input, results);
+    const results = document.createElement("div"); results.style.display = "grid"; results.style.gap = "8px"; wrap.append(input, results);
     let timer = null;
     async function search() {
       try {
-        const data = await api(`/api/driver/radio/discover?q=${encodeURIComponent(input.value.trim())}`);
-        results.replaceChildren();
+        const data = await api(`/api/driver/radio/discover?q=${encodeURIComponent(input.value.trim())}`); results.replaceChildren();
         for (const item of data.channels || []) {
           const join = consoleUi.makeAction(item.joined ? "Уже в канале" : "Вступить", async () => {
             if (item.joined) return;
@@ -632,21 +555,14 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       } catch { results.textContent = "Не удалось загрузить список каналов."; }
     }
     input.addEventListener("input", () => { if (timer) window.clearTimeout(timer); timer = window.setTimeout(search, 250); });
-    consoleUi.showDialog("Найти канал", wrap);
-    await search();
+    consoleUi.showDialog("Найти канал", wrap); await search();
   }
 
   function showInvites() {
     const rows = [];
     for (const invite of invites) {
-      const accept = consoleUi.makeAction("Принять", async () => {
-        try { await api(`/api/driver/radio/invites/${invite.channelId}/respond`, { method: "POST", body: { action: "ACCEPT" } }); await refreshOverview(); showInvites(); }
-        catch (error) { setState(friendlyRadioError(error), "error"); }
-      });
-      const decline = consoleUi.makeAction("Отклонить", async () => {
-        try { await api(`/api/driver/radio/invites/${invite.channelId}/respond`, { method: "POST", body: { action: "DECLINE" } }); await refreshOverview(); showInvites(); }
-        catch (error) { setState(friendlyRadioError(error), "error"); }
-      });
+      const accept = consoleUi.makeAction("Принять", async () => { try { await api(`/api/driver/radio/invites/${invite.channelId}/respond`, { method: "POST", body: { action: "ACCEPT" } }); await refreshOverview(); showInvites(); } catch (error) { setState(friendlyRadioError(error), "error"); } });
+      const decline = consoleUi.makeAction("Отклонить", async () => { try { await api(`/api/driver/radio/invites/${invite.channelId}/respond`, { method: "POST", body: { action: "DECLINE" } }); await refreshOverview(); showInvites(); } catch (error) { setState(friendlyRadioError(error), "error"); } });
       rows.push(consoleUi.makeRow({ title: invite.title, subtitle: `${invite.invitedBy} · ${invite.memberCount} участн.`, actions: [accept, decline] }));
     }
     if (!rows.length) { const p = document.createElement("p"); p.className = "radio-empty"; p.textContent = "Новых приглашений нет."; rows.push(p); }
@@ -668,9 +584,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       for (const member of data.members || []) {
         const actions = [];
         if (channel.canManage && member.nickname !== ownNickname) {
-          const roleSelect = consoleUi.makeSelect([
-            ["OWNER", "Владелец"], ["MODERATOR", "Модератор"], ["TRUSTED", "Доверенный"], ["MEMBER", "Участник"], ["LISTENER", "Слушатель"]
-          ], member.role, async (role) => {
+          const roleSelect = consoleUi.makeSelect([["OWNER", "Владелец"], ["MODERATOR", "Модератор"], ["TRUSTED", "Доверенный"], ["MEMBER", "Участник"], ["LISTENER", "Слушатель"]], member.role, async (role) => {
             if (role === "OWNER" && !window.confirm(`Передать владение каналом пользователю ${member.nickname}?`)) return showMembers();
             try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "PATCH", body: { role } }); await refreshOverview(); showMembers(); }
             catch (error) { setState(friendlyRadioError(error), "error"); }
@@ -679,16 +593,8 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
         }
         const removable = channel.canModerate && member.nickname !== ownNickname && member.role !== "OWNER" && !(channel.role === "MODERATOR" && member.role === "MODERATOR");
         if (removable) {
-          actions.push(consoleUi.makeAction("Убрать", async () => {
-            if (!window.confirm(`Убрать ${member.nickname} из канала?`)) return;
-            try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "DELETE", body: { ban: false } }); await refreshOverview(); showMembers(); }
-            catch (error) { setState(friendlyRadioError(error), "error"); }
-          }));
-          actions.push(consoleUi.makeAction("Бан", async () => {
-            if (!window.confirm(`Заблокировать ${member.nickname} в этом канале?`)) return;
-            try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "DELETE", body: { ban: true } }); await refreshOverview(); showMembers(); }
-            catch (error) { setState(friendlyRadioError(error), "error"); }
-          }));
+          actions.push(consoleUi.makeAction("Убрать", async () => { if (!window.confirm(`Убрать ${member.nickname} из канала?`)) return; try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "DELETE", body: { ban: false } }); await refreshOverview(); showMembers(); } catch (error) { setState(friendlyRadioError(error), "error"); } }));
+          actions.push(consoleUi.makeAction("Бан", async () => { if (!window.confirm(`Заблокировать ${member.nickname} в этом канале?`)) return; try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "DELETE", body: { ban: true } }); await refreshOverview(); showMembers(); } catch (error) { setState(friendlyRadioError(error), "error"); } }));
         }
         wrap.append(consoleUi.makeRow({ title: member.nickname, subtitle: `${RADIO_ROLE_LABELS[member.role] || member.role} · ${member.driverType}`, actions }));
       }
@@ -713,9 +619,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
         try { await api(`/api/driver/radio/channels/${channel.id}`, { method: "DELETE", body: {} }); channel = null; await refreshOverview({ initial: true }); if (channels.size) await selectChannel(channels.values().next().value); consoleUi.closeDialog(); setState("Канал удалён.", "ready"); }
         catch (error) { setState(friendlyRadioError(error), "error"); }
       });
-      form.append(remove);
-      consoleUi.showDialog(`Настройки · ${channel.title}`, form);
-      return;
+      form.append(remove); consoleUi.showDialog(`Настройки · ${channel.title}`, form); return;
     }
     if (channel.kind === "GROUP") {
       const leave = consoleUi.makeAction("Выйти из канала", async () => {
@@ -728,20 +632,15 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   }
 
   function carStep(delta) {
-    const items = [...channels.values()];
-    if (!items.length) return;
+    const items = [...channels.values()]; if (!items.length) return;
     const index = Math.max(0, items.findIndex((item) => Number(item.id) === Number(channel?.id)));
-    const next = items[(index + delta + items.length) % items.length];
-    selectChannel(next);
+    selectChannel(items[(index + delta + items.length) % items.length]);
   }
 
   async function sendChannelAlert() {
     if (!channel) return;
-    try {
-      const data = await api(`/api/driver/radio/channels/${channel.id}/alerts`, { method: "POST", body: {} });
-      consoleUi.showAlert({ ...data.alert, channelTitle: channel.title });
-      setState("Сигнал внимания отправлен участникам канала.", "ready");
-    } catch (error) { setState(friendlyRadioError(error), "error"); }
+    try { const data = await api(`/api/driver/radio/channels/${channel.id}/alerts`, { method: "POST", body: {} }); consoleUi.showAlert({ ...data.alert, channelTitle: channel.title }); setState("Сигнал внимания отправлен участникам канала.", "ready"); }
+    catch (error) { setState(friendlyRadioError(error), "error"); }
   }
 
   function bindConsole() {
@@ -764,246 +663,121 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     c.liveButton.addEventListener("click", () => updateSettings({ autoPlay: !settings.autoPlay }));
     c.speedSelect.addEventListener("change", async () => {
       const rate = Number(c.speedSelect.value);
-      if (await updateSettings({ playbackRate: rate })) {
-        for (const player of historyPlayers) player.audio.playbackRate = rate;
-        if (activeAudio) activeAudio.playbackRate = rate;
-      }
+      if (await updateSettings({ playbackRate: rate })) { for (const player of historyPlayers) player.audio.playbackRate = rate; if (activeAudio) activeAudio.playbackRate = rate; }
     });
     c.favoriteButton.addEventListener("click", () => updateChannelPreferences({ favorite: !channel?.favorite }));
     c.muteButton.addEventListener("click", () => updateChannelPreferences({ muted: !channel?.muted }));
-    c.defaultButton.addEventListener("click", async () => {
-      if (!channel) return;
-      await updateSettings({ defaultChannelId: channel.isDefault ? null : channel.id });
-      await refreshOverview({ initial: true });
-    });
+    c.defaultButton.addEventListener("click", async () => { if (!channel) return; await updateSettings({ defaultChannelId: channel.isDefault ? null : channel.id }); await refreshOverview({ initial: true }); });
     c.membersButton.addEventListener("click", showMembers);
     c.alertButton.addEventListener("click", sendChannelAlert);
     c.settingsButton.addEventListener("click", showChannelSettings);
   }
 
-  function closeStream() {
-    for (const track of stream?.getTracks?.() || []) track.stop();
-    stream = null;
-  }
+  function closeStream() { for (const track of stream?.getTracks?.() || []) track.stop(); stream = null; }
 
   async function cancelTransmission(session) {
     if (!session) return false;
-    try {
-      await api(`/api/driver/radio/transmissions/${session.transmissionId}/audio`, {
-        method: "DELETE", headers: { "X-Radio-Upload-Token": session.uploadToken }
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    try { await api(`/api/driver/radio/transmissions/${session.transmissionId}/audio`, { method: "DELETE", headers: { "X-Radio-Upload-Token": session.uploadToken } }); return true; }
+    catch { return false; }
   }
 
   async function finishRecording(chunks, mimeType, session) {
-    recording = null;
-    recordingStartedAt = 0;
-    pointerCancelOnRelease = false;
-    stopRecordingClock();
-    uploading = true;
-    ptt.classList.remove("recording");
-    updatePtt();
-    closeStream();
-
+    recording = null; recordingStartedAt = 0; pointerCancelOnRelease = false; stopRecordingClock(); uploading = true;
+    ptt.classList.remove("recording"); updatePtt(); closeStream();
     if (cancelUpload) {
-      const message = cancelReason || "Передача отменена.";
-      cancelUpload = false;
-      cancelReason = "";
-      uploading = false;
-      await cancelTransmission(session);
-      setState(message, message.includes("не отправлена") ? "error" : "ready");
-      updatePtt();
-      return;
+      const message = cancelReason || "Передача отменена."; cancelUpload = false; cancelReason = ""; uploading = false;
+      await cancelTransmission(session); setState(message, message.includes("не отправлена") ? "error" : "ready"); updatePtt(); return;
     }
-
     const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
-    if (!blob.size) {
-      uploading = false;
-      updatePtt();
-      await cancelTransmission(session);
-      return setState("Пустая запись не отправлена.", "error");
-    }
-    if (blob.size > MAX_AUDIO_BYTES) {
-      uploading = false;
-      updatePtt();
-      await cancelTransmission(session);
-      return setState("Запись больше 3 МиБ и не отправлена.", "error");
-    }
-
+    if (!blob.size) { uploading = false; updatePtt(); await cancelTransmission(session); return setState("Пустая запись не отправлена.", "error"); }
+    if (blob.size > MAX_AUDIO_BYTES) { uploading = false; updatePtt(); await cancelTransmission(session); return setState("Запись больше 3 МиБ и не отправлена.", "error"); }
     setState("Отправляем передачу. Пока нет подтверждения сервера, она не считается доставленной.", "sending");
     try {
-      await uploadBinary(`/api/driver/radio/transmissions/${session.transmissionId}/audio`, blob, {
-        headers: { "X-Radio-Upload-Token": session.uploadToken }
-      });
-      await refreshChannels();
-      await loadTransmissions();
-      setState("Передача доставлена.", "sent", { lockMs: 2500 });
+      await uploadBinary(`/api/driver/radio/transmissions/${session.transmissionId}/audio`, blob, { headers: { "X-Radio-Upload-Token": session.uploadToken } });
+      await refreshChannels(); await loadTransmissions(); setState("Передача доставлена.", "sent", { lockMs: 2500 });
     } catch (error) {
-      if (error.status === 401) {
-        onAuthLost();
-      } else {
+      if (error.status === 401) onAuthLost();
+      else {
         const firstCheck = await loadTransmissions({ silent: true });
         const firstCommitted = transmissionCommitted(firstCheck, session.transmissionId);
-        if (firstCommitted) {
-          setState("Передача доставлена. Ответ загрузки был потерян, но передача уже есть в канале.", "sent", { lockMs: 2500 });
-        } else if (firstCommitted === false) {
+        if (firstCommitted) setState("Передача доставлена. Ответ загрузки был потерян, но передача уже есть в канале.", "sent", { lockMs: 2500 });
+        else if (firstCommitted === false) {
           const cancelled = await cancelTransmission(session);
           if (!cancelled) {
             const secondCheck = await loadTransmissions({ silent: true });
             const secondCommitted = transmissionCommitted(secondCheck, session.transmissionId);
-            if (secondCommitted) {
-              setState("Передача доставлена. Сервер подтвердил её после повторной проверки канала.", "sent", { lockMs: 2500 });
-              return;
-            }
-            if (secondCommitted === null) {
-              setState("Не удалось подтвердить доставку. Проверьте канал после восстановления сети.", "error");
-              return;
-            }
+            if (secondCommitted) { setState("Передача доставлена. Сервер подтвердил её после повторной проверки канала.", "sent", { lockMs: 2500 }); return; }
+            if (secondCommitted === null) { setState("Не удалось подтвердить доставку. Проверьте канал после восстановления сети.", "error"); return; }
           }
           if (cancelled) {
-            if (error.message === "radio_upload_not_authorized") {
-              setState("Время передачи истекло. Запись не отправлена.", "error");
-            } else if (globalThis.navigator?.onLine === false) {
-              setState("Нет сети. Передача не отправлена.", "error");
-            } else {
-              setState("Сервер не подтвердил передачу. Запись отменена и не отправлена.", "error");
-            }
-          } else {
-            setState("Передача не найдена в канале, но сервер не подтвердил отмену. Проверьте канал ещё раз.", "error");
-          }
-        } else {
-          setState("Не удалось подтвердить доставку. Проверьте канал после восстановления сети.", "error");
-        }
+            if (error.message === "radio_upload_not_authorized") setState("Время передачи истекло. Запись не отправлена.", "error");
+            else if (globalThis.navigator?.onLine === false) setState("Нет сети. Передача не отправлена.", "error");
+            else setState("Сервер не подтвердил передачу. Запись отменена и не отправлена.", "error");
+          } else setState("Передача не найдена в канале, но сервер не подтвердил отмену. Проверьте канал ещё раз.", "error");
+        } else setState("Не удалось подтвердить доставку. Проверьте канал после восстановления сети.", "error");
       }
-    } finally {
-      uploading = false;
-      updatePtt();
-    }
+    } finally { uploading = false; updatePtt(); }
   }
 
   async function startRecording(event) {
     event?.preventDefault?.();
     if (ptt.disabled || recording || starting || uploading || !channel) return;
-    if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
-      return setState("Этот браузер не поддерживает запись с микрофона.", "error");
-    }
-    pttHeld = true;
-    pointerCancelOnRelease = false;
-    starting = true;
-    cancelUpload = false;
-    cancelReason = "";
+    if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) return setState("Этот браузер не поддерживает запись с микрофона.", "error");
+    pttHeld = true; pointerCancelOnRelease = false; starting = true; cancelUpload = false; cancelReason = "";
     if (event?.pointerId !== undefined) ptt.setPointerCapture?.(event.pointerId);
-    setState(`Подключаем микрофон для канала «${channel.title}»…`, "requesting");
-    updatePtt();
+    setState(`Подключаем микрофон для канала «${channel.title}»…`, "requesting"); updatePtt();
     try {
       stream = await navigator.mediaDevices.getUserMedia(radioAudioConstraints());
-      if (!pttHeld) {
-        closeStream();
-        setState(cancelReason || "Передача отменена до начала записи.", "ready");
-        return;
-      }
+      if (!pttHeld) { closeStream(); setState(cancelReason || "Передача отменена до начала записи.", "ready"); return; }
       const lease = await api(`/api/driver/radio/channels/${channel.id}/ptt`, { method: "POST", body: {} });
-      if (!pttHeld) {
-        closeStream();
-        await cancelTransmission(lease);
-        setState(cancelReason || "Передача отменена до начала записи.", "ready");
-        return;
-      }
-      const mimeType = supportedMimeType();
-      recorder = createVoiceRecorder(stream, mimeType);
-      const chunks = [];
-      const recordedMimeType = recorder.mimeType;
-      recording = lease;
+      if (!pttHeld) { closeStream(); await cancelTransmission(lease); setState(cancelReason || "Передача отменена до начала записи.", "ready"); return; }
+      const mimeType = supportedMimeType(); recorder = createVoiceRecorder(stream, mimeType); const chunks = []; const recordedMimeType = recorder.mimeType; recording = lease;
       recorder.addEventListener("dataavailable", (item) => { if (item.data?.size) chunks.push(item.data); });
       recorder.addEventListener("stop", () => finishRecording(chunks, recordedMimeType, lease), { once: true });
-      recorder.start(1_000);
-      recordingStartedAt = Date.now();
-      startRecordingClock();
-      ptt.classList.add("recording");
-      setState(`Вы говорите в канал «${channel.title}».`, "recording");
-      updatePtt();
-      stopTimer = window.setTimeout(() => {
-        if (pointerCancelOnRelease) cancelRecording(undefined);
-        else stopRecording(undefined);
-      }, MAX_RECORDING_MS);
+      recorder.start(1_000); recordingStartedAt = Date.now(); startRecordingClock(); ptt.classList.add("recording"); setState(`Вы говорите в канал «${channel.title}».`, "recording"); updatePtt();
+      stopTimer = window.setTimeout(() => { if (pointerCancelOnRelease) cancelRecording(undefined); else stopRecording(undefined); }, MAX_RECORDING_MS);
     } catch (error) {
-      closeStream();
-      recording = null;
-      recordingStartedAt = 0;
-      pointerCancelOnRelease = false;
-      stopRecordingClock();
+      closeStream(); recording = null; recordingStartedAt = 0; pointerCancelOnRelease = false; stopRecordingClock();
       if (error.status === 401) onAuthLost();
       else if (error.message === "radio_channel_busy") setState(error.speaker ? `Сейчас говорит ${error.speaker}.` : "Канал уже занят другим водителем.", "listening");
       else if (error.message === "radio_talk_not_allowed") setState("В этом канале у вас режим только прослушивания.", "error");
       else if (error.name === "NotAllowedError") setState("Микрофон запрещён. Разрешите доступ к микрофону в настройках браузера и попробуйте снова.", "error");
       else if (globalThis.navigator?.onLine === false) setState("Нет сети. Передача не начиналась.", "error");
       else setState("Не удалось начать передачу.", "error");
-    } finally {
-      starting = false;
-      updatePtt();
-    }
+    } finally { starting = false; updatePtt(); }
   }
 
   function stopRecording(event) {
     event?.preventDefault?.();
     const elapsed = recordingStartedAt ? Date.now() - recordingStartedAt : 0;
-    pttHeld = false;
-    pointerCancelOnRelease = false;
-    if (stopTimer) window.clearTimeout(stopTimer);
-    stopTimer = null;
-    if (starting && !recording) {
-      cancelUpload = true;
-      cancelReason = "Передача отменена до начала записи.";
-      setState(cancelReason, "ready");
-      return;
-    }
-    if (recording && isAccidentalRecording(elapsed, MIN_RECORDING_MS)) {
-      cancelUpload = true;
-      cancelReason = "Слишком короткая запись. Передача не отправлена.";
-    }
+    pttHeld = false; pointerCancelOnRelease = false;
+    if (stopTimer) window.clearTimeout(stopTimer); stopTimer = null;
+    if (starting && !recording) { cancelUpload = true; cancelReason = "Передача отменена до начала записи."; setState(cancelReason, "ready"); return; }
+    if (recording && isAccidentalRecording(elapsed, MIN_RECORDING_MS)) { cancelUpload = true; cancelReason = "Слишком короткая запись. Передача не отправлена."; }
     if (recorder?.state === "recording") recorder.stop();
   }
 
   function cancelRecording(event, reason = "Передача отменена.") {
     event?.preventDefault?.();
     if (!pttHeld && !recording && !starting) return;
-    cancelUpload = true;
-    cancelReason = reason;
-    pttHeld = false;
-    pointerCancelOnRelease = false;
-    if (stopTimer) window.clearTimeout(stopTimer);
-    stopTimer = null;
-    setState("Отменяем передачу…", "requesting");
-    if (recorder?.state === "recording") recorder.stop();
+    cancelUpload = true; cancelReason = reason; pttHeld = false; pointerCancelOnRelease = false;
+    if (stopTimer) window.clearTimeout(stopTimer); stopTimer = null;
+    setState("Отменяем передачу…", "requesting"); if (recorder?.state === "recording") recorder.stop();
   }
 
   function updateCancelGesture(event) {
     if (!pttHeld || event?.pointerId === undefined) return;
     const rect = ptt.getBoundingClientRect();
-    const outside = event.clientX < rect.left - CANCEL_GESTURE_MARGIN_PX ||
-      event.clientX > rect.right + CANCEL_GESTURE_MARGIN_PX ||
-      event.clientY < rect.top - CANCEL_GESTURE_MARGIN_PX ||
-      event.clientY > rect.bottom + CANCEL_GESTURE_MARGIN_PX;
+    const outside = event.clientX < rect.left - CANCEL_GESTURE_MARGIN_PX || event.clientX > rect.right + CANCEL_GESTURE_MARGIN_PX || event.clientY < rect.top - CANCEL_GESTURE_MARGIN_PX || event.clientY > rect.bottom + CANCEL_GESTURE_MARGIN_PX;
     if (outside === pointerCancelOnRelease) return;
     pointerCancelOnRelease = outside;
-    if (outside) {
-      cancelReason = "Передача отменена.";
-      setState("Отпустите палец — передача будет отменена.", "requesting");
-    } else if (recording) {
-      setState(`Вы говорите в канал «${channel.title}».`, "recording");
-    } else if (starting) {
-      setState(`Подключаем микрофон для канала «${channel.title}»…`, "requesting");
-    }
+    if (outside) { cancelReason = "Передача отменена."; setState("Отпустите палец — передача будет отменена.", "requesting"); }
+    else if (recording) setState(`Вы говорите в канал «${channel.title}».`, "recording");
+    else if (starting) setState(`Подключаем микрофон для канала «${channel.title}»…`, "requesting");
     updatePtt();
   }
 
-  function finishPointerHold(event) {
-    if (pointerCancelOnRelease) { cancelRecording(event); return; }
-    stopRecording(event);
-  }
+  function finishPointerHold(event) { if (pointerCancelOnRelease) { cancelRecording(event); return; } stopRecording(event); }
 
   ptt.addEventListener("pointerdown", startRecording);
   ptt.addEventListener("pointermove", updateCancelGesture);
@@ -1017,89 +791,35 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     if (event.key === "Escape" && (recording || starting || pttHeld)) { cancelRecording(event); return; }
     if ((event.key === " " || event.key === "Enter") && !event.repeat) startRecording(event);
   });
-  ptt.addEventListener("keyup", (event) => {
-    if (event.key === " " || event.key === "Enter") stopRecording(event);
-  });
+  ptt.addEventListener("keyup", (event) => { if (event.key === " " || event.key === "Enter") stopRecording(event); });
   ptt.addEventListener("blur", (event) => { if (pttHeld) cancelRecording(event, "Передача отменена: кнопка потеряла фокус."); });
 
-  bindConsole();
-  experience.reset();
-  consoleUi.setCarMode(false);
-  updatePtt();
+  bindConsole(); experience.reset(); consoleUi.setCarMode(false); updatePtt();
 
   return {
     async activate() {
       activated = true;
       if (!profileReady) return setState("Сначала сохраните профиль водителя.", "error");
       await refreshOverview({ initial: true });
-      if (channel) await selectChannel(channel, { keepStatus: true });
-      else setState("Нет доступного канала рации.", "disabled");
-      schedulePoll();
+      if (channel) await selectChannel(channel, { keepStatus: true }); else setState("Нет доступного канала рации.", "disabled");
+      connectEventStream(); schedulePoll();
     },
-    setSession({ profile }) {
-      profileReady = Boolean(profile);
-      ownNickname = profile?.nickname || "";
-      navButton.disabled = !profileReady;
-      updatePtt();
-    },
-    setProfileReady(profile) {
-      profileReady = Boolean(profile);
-      ownNickname = profile?.nickname || ownNickname;
-      navButton.disabled = !profileReady;
-      updatePtt();
-    },
+    setSession({ profile }) { profileReady = Boolean(profile); ownNickname = profile?.nickname || ""; navButton.disabled = !profileReady; updatePtt(); },
+    setProfileReady(profile) { profileReady = Boolean(profile); ownNickname = profile?.nickname || ownNickname; navButton.disabled = !profileReady; updatePtt(); },
     async openDirect(nickname) {
       if (!profileReady) throw new Error("driver_profile_required");
       const data = await api("/api/driver/radio/direct", { method: "POST", body: { nickname } });
-      channels.set(Number(data.channel.id), data.channel);
-      await refreshOverview({ initial: true });
-      await selectChannel(channels.get(Number(data.channel.id)) || data.channel);
+      channels.set(Number(data.channel.id), data.channel); await refreshOverview({ initial: true }); await selectChannel(channels.get(Number(data.channel.id)) || data.channel);
     },
     reset() {
-      activated = false;
-      profileReady = false;
-      ownNickname = "";
-      pttHeld = false;
-      pointerCancelOnRelease = false;
-      starting = false;
-      uploading = false;
-      cancelUpload = true;
-      cancelReason = "";
-      statusLockUntil = 0;
-      pauseActiveAudio();
-      if (pollTimer) window.clearInterval(pollTimer);
-      if (stopTimer) window.clearTimeout(stopTimer);
-      pollTimer = null;
-      stopTimer = null;
-      stopRecordingClock();
-      if (recorder?.state === "recording") recorder.stop();
-      closeStream();
-      recorder = null;
-      recording = null;
-      recordingStartedAt = 0;
-      channel = null;
-      channels.clear();
-      knownLastIds.clear();
-      pinnedIds.clear();
-      historyItems = [];
-      historyPlayers = [];
-      invites = [];
-      alerts = [];
-      settings = { status: "AVAILABLE", soloChannelId: null, defaultChannelId: null, autoPlay: false, playbackRate: 1 };
-      carMode = false;
-      renderChannelList();
-      renderTransmissions();
-      consoleUi.renderPins([]);
-      consoleUi.showAlert(null);
-      consoleUi.setInvitesCount(0);
-      consoleUi.setSettings(settings);
-      consoleUi.setCarMode(false);
-      navButton.disabled = true;
-      ptt.classList.remove("recording");
-      currentPhase = "disabled";
-      experience.reset();
-      updatePtt();
-      setState("Рация отключена", "disabled");
+      activated = false; profileReady = false; ownNickname = ""; pttHeld = false; pointerCancelOnRelease = false; starting = false; uploading = false; cancelUpload = true; cancelReason = ""; statusLockUntil = 0;
+      pauseActiveAudio(); closeEventStream();
+      if (pollTimer) window.clearInterval(pollTimer); if (stopTimer) window.clearTimeout(stopTimer); pollTimer = null; stopTimer = null; stopRecordingClock();
+      if (recorder?.state === "recording") recorder.stop(); closeStream(); recorder = null; recording = null; recordingStartedAt = 0; channel = null;
+      channels.clear(); knownLastIds.clear(); pinnedIds.clear(); historyItems = []; historyPlayers = []; invites = []; alerts = [];
+      settings = { status: "AVAILABLE", soloChannelId: null, defaultChannelId: null, autoPlay: false, playbackRate: 1 }; carMode = false; refreshInFlight = null;
+      renderChannelList(); renderTransmissions(); consoleUi.renderPins([]); consoleUi.showAlert(null); consoleUi.setInvitesCount(0); consoleUi.setSettings(settings); consoleUi.setCarMode(false);
+      navButton.disabled = true; ptt.classList.remove("recording"); currentPhase = "disabled"; experience.reset(); updatePtt(); setState("Рация отключена", "disabled");
     }
   };
 }
