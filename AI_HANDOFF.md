@@ -1,4 +1,26 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: PRODUCT_DISCOVERY
+TASK_ID: PRODUCT-DISCOVERY-20260818-001
+STATUS: ACCEPTED
+SOURCE_BRANCH: chatgpt/product-discovery-concept
+SOURCE_COMMIT: 159c87325231efb1f353222413c2cd6944e61bcd
+
+Что принято:
+- В snapshot добавлен только docs/PRODUCT_CONCEPT.md. Production-код, сервер, SQLite, runtime и main не изменялись.
+- Документ исправляет непроверенный тезис Kimi о «пустой нише»: независимая проверка подтверждает, что Truckfly и LKW.APP уже имеют европейские parking/community-возможности.
+- Подтверждён приоритет не «догонять всё», а проверить один малый гипотетический блок PARKING_STATUS: три временных статуса парковки с timestamp/TTL, без бронирования, прогнозов, скрытого GPS, Push/PWA или тяжёлой геосистемы.
+
+Проверка Codex:
+- Тезис о дефиците safe/secure parking в ЕС подтверждён Европейской комиссией (2025).
+- Truckfly и LKW.APP проверены по официальным материалам как реальные конкуренты с парковочными/community-возможностями.
+- Документ содержит источники и явно отделяет факты от гипотез.
+- Функциональные тесты не запускались и не требуются: это документ, а не изменение кода.
+
+Следующий блок:
+- Не начинать реализацию PARKING_STATUS автоматически. Сначала отдельная AI_TASK.md с точными продуктовым и юридическим источником POI, TTL, приватностью и границами первого пилота.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: RADIO_RELIABILITY
 TASK_ID: RADIO-RELIABILITY-20260818-001
 STATUS: DEPLOYED
