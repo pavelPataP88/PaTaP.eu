@@ -128,7 +128,7 @@ function createChatRoutes({ db, json, requireSession, requireCsrf, checkRate, au
           type: "chat.reaction.updated",
           roomId: result.roomId,
           messageId: result.messageId,
-          reactions: result.reactions
+          reactions: result.reactions.map(({ reactedByMe, ...item }) => item)
         });
         json(res, 200, result);
       } catch (error) {
