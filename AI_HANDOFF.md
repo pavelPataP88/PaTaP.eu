@@ -1,3 +1,53 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: ROAD_REPORTS_FIX_01
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/road-reports-fix-01
+SOURCE_COMMIT: 1e3918ed53e4f5fe01428bff23537304ffadc2c9
+BASE: codex/local-workspace-snapshot @ 9f38a7039f69b53f06e4f6b55cb57fb6364df5e7
+ORIGINAL_MVP_COMMIT: f11ef2c18be892edddc220bbd908b4d0cc2b6c96
+
+Исправлены только замечания CHANGES_REQUIRED:
+- GET /api/driver/road-reports теперь read-only доступен без сессии и отдаёт только publicReport без authorId/userId/nickname/голосов по пользователям.
+- В гостевом Driver реальная карта дорожных отметок открывается только после явного нажатия вкладки «Карта»: guest-road-reports.mjs динамически импортируется после клика, затем вызывает ensureMapLibre(). До явного открытия MapLibre не загружается. Гостевой модуль не содержит POST/confirm/create.
+- Для ACTIVE/GONE чужой отметки сервер требует Driver-профиль, включённый GPS, свежую позицию из существующего locations.getFresh() и расстояние <= MAX_REPORT_DISTANCE_KM.
+- Автор может закрыть собственную отметку статусом GONE без GPS. ACTIVE автора и любые подтверждения чужой отметки проходят обычную proximity-проверку.
+
+Файлы кандидата относительно актуального snapshot:
+- server/road-reports/repository.js
+- server/driver/routes.js
+- driver/map/index.js (восстановлен исходный ROAD_REPORTS_MVP без дополнительных изменений; blob совпадает с исходной веткой)
+- driver/map/guest-road-reports.mjs
+- driver/app.js
+- tests/auth/road-reports.test.js
+- tests/driver/road-reports.test.mjs
+- scripts/run-auth-tests.js
+- package.json
+
+Тесты добавлены/сохранены:
+- guest GET 200 и отсутствие authorId/userId/nickname/author/votes;
+- profile-only без GPS не подтверждает чужой report: 409 road_report_location_required;
+- удалённый Driver не подтверждает: 400 road_report_too_far;
+- близкий Driver подтверждает ACTIVE;
+- автор закрывает собственный GONE;
+- сохранены store TTL/distinct-peer closure, create profile check, invalid lane/type, create distance и invalid confirmation;
+- client test проверяет отдельные маркеры, отсутствие свободного текста/фото и то, что guest map импортируется только после явного guest-map click и не содержит POST/confirm.
+
+Фактические проверки в среде ChatGPT:
+- GitHub compare BASE..SOURCE_COMMIT: кандидат содержит только ROAD_REPORTS_MVP + два точечных fix и тестовую интеграцию; SQLite/Caddy/chat/radio/main не затронуты.
+- driver/map/index.js content blob на fix-ветке = 3a5d05b80f4e8ea998c6d34b34a2d51b66dd5eb8 — тот же blob, что в исходном ROAD_REPORTS_MVP.
+- Полный npm run test:auth / npm run verify / npm run test:browser здесь НЕ запускался: доступного checkout GitHub в среде ChatGPT нет; PASS не заявляется.
+
+Не менялось:
+- SQLite schema/runtime data;
+- парковки, чат, рация, Caddy, minimum password 6, main;
+- свободный текст, фото, speed-trap, обход контроля;
+- новый фоновый GPS-трекинг не добавлялся.
+
+Codex: повторно проверить этот кандидат, запустить реальные auth/driver/build/verify/browser тесты и только затем переносить локально. Следующий блок ChatGPT не начинал.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_MVP
 TASK_ID: ROAD-REPORTS-20260818-001
@@ -320,7 +370,7 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 - ChatGPT берёт на себя исследование, проектирование, основное написание кода и исправление замечаний.
 - Codex выступает как ревьюер, контролирующий орган и интегратор на рабочем ноутбуке.
 - Работа идёт строго блоками: карта отдельно, чат отдельно, рация отдельно, интерфейс отдельно и т.д.
-- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\\WWW.PATAP.EU`.
+- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\WWW.PATAP.EU`.
 - После успешного production-применения Codex создаёт/обновляет безопасный snapshot, и только после этого начинается следующий блок.
 
 Что требуется от Codex:
