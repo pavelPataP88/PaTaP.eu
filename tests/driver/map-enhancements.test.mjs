@@ -14,6 +14,7 @@ import { clusterRoadReports, reportFreshness } from "../../driver/map/road-repor
 const mapSource = await readFile(new URL("../../driver/map/index.js", import.meta.url), "utf8");
 const gpsSource = await readFile(new URL("../../driver/gps/index.js", import.meta.url), "utf8");
 const experienceSource = await readFile(new URL("../../driver/map/map-experience.mjs", import.meta.url), "utf8");
+const stylesSource = await readFile(new URL("../../driver/map/map-ui-styles.mjs", import.meta.url), "utf8");
 const reportsSource = await readFile(new URL("../../driver/map/road-reports-panel.mjs", import.meta.url), "utf8");
 const guestSource = await readFile(new URL("../../driver/map/guest-road-reports.mjs", import.meta.url), "utf8");
 
@@ -75,6 +76,7 @@ test("road reports cluster at distant zoom and split at street zoom", () => {
 
 test("map integrates follow mode, accuracy, layers, driver clusters and auto radius without eager MapLibre", () => {
   assert.match(mapSource, /createMapExperience/);
+  assert.match(mapSource, /installMapUiStyles/);
   assert.match(mapSource, /driver-map-marker/);
   assert.match(mapSource, /driver-map-cluster/);
   assert.match(mapSource, /patap:map-radius/);
@@ -88,6 +90,17 @@ test("map integrates follow mode, accuracy, layers, driver clusters and auto rad
   assert.match(experienceSource, /Впереди/);
   assert.doesNotMatch(experienceSource, /ensureMapLibre|new window\.maplibregl\.Map/);
   assert.match(mapSource, /await ensureMapLibre\(\)/);
+});
+
+test("mobile overlay moves GPS and radius controls onto the map without replacing their handlers", () => {
+  assert.match(stylesSource, /moveLegacyControlsIntoOverlay/);
+  assert.match(stylesSource, /\.map-layers-panel/);
+  assert.match(stylesSource, /#map-view \.privacy-controls/);
+  assert.match(stylesSource, /#map-view \.radius-control/);
+  assert.match(stylesSource, /#gps-state/);
+  assert.match(stylesSource, /Рядом · 5 км/);
+  assert.match(stylesSource, /Район · 25 км/);
+  assert.match(stylesSource, /MutationObserver/);
 });
 
 test("offline road report queue is short-lived and guarded by fresh nearby GPS", () => {
