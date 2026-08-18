@@ -1,3 +1,103 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: ROAD_REPORTS_YANDEX_PATTERN_REDESIGN
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/road-reports-yandex-pattern-redesign
+SOURCE_COMMIT: ca451eccec6650cbb23c748bf8221d66cfcc1705
+BASE: codex/local-workspace-snapshot @ f43a3507906baae63f4ec9f6715ec2c8c5db5606
+
+Цель:
+- Пересобран законченный кандидат Road Reports для Driver по проверенным общим продуктовым принципам Яндекс.Карт и Waze, но полностью оригинальным кодом/текстами/маркером PaTaP.
+- Production не трогался; всё только в отдельной GitHub-ветке.
+
+Официальные источники, реально открытые при исследовании:
+- Яндекс.Карты, Road events: https://yandex.com/support/m-maps/en/events
+- Яндекс.Карты, Navigator: https://yandex.com/support/m-maps/en/navigator
+- Waze Help, ДТП: https://support.google.com/waze/answer/13739612?hl=ru
+- Waze Help, traffic report: https://support.google.com/waze/answer/13740207?hl=en
+- Waze Partners Help, traffic data / incident lifecycle: https://support.google.com/waze/partners/answer/10618035?hl=en
+
+Краткие проверенные факты из официальной справки:
+- Яндекс описывает дорожные события как временные точки на карте; добавление включает выбор типа, а для ДТП/работ — выбор затронутой полосы; другие пользователи могут подтвердить «ещё есть» или «уже нет», подтверждение продлевает время показа; для типов заданы разные сроки жизни; добавление ограничивается близостью к событию; события проходят модерацию.
+- Waze рекомендует сообщать только о событии, которое водитель видит сейчас, и быть как можно ближе к нему; для отдельных report-сценариев интерфейс идёт через быструю кнопку Report -> категория -> уточнение -> отправка. В партнёрской документации указано, что инцидент удаляется по окончанию срока или после нескольких отметок «not there», а пользовательские реакции участвуют в оценке надёжности.
+- В PaTaP не переносились Waze routing/reliability score, Яндекс-комментарии, камеры/speed traps, чужие moderation UI, брендинг или их численные TTL.
+
+Принцип конкурента → реализация PaTaP:
+
+| Принцип конкурента | Оригинальная реализация PaTaP | Причина выбора / ограничение |
+|---|---|---|
+| Waze: сообщать то, что видишь сейчас и рядом с собой | Событие создаётся только из текущего `ownLocation`; сервер дополнительно требует включённый добровольный GPS и `getFresh()` | Минимизирует удалённые/ложные события; ручного выбора точки нет |
+| Waze: быстрая кнопка Report и крупные мобильные действия | Одна кнопка `+ событие` поверх карты, затем крупные кнопки 48px+ | Удобно на телефоне/планшете одной рукой; дизайн/тексты свои |
+| Яндекс: сначала тип события | 5 существующих типов PaTaP: ДТП, работы, препятствие, дорожный контроль, транспортная инспекция | Сохраняется продуктовый scope PaTaP; speed trap не добавлен |
+| Яндекс: полоса для ДТП/работ | После ДТП/работ появляется только необязательное уточнение: без уточнения / все / левая / средняя / правая / обочина | Сохраняет полезную структуру без текста; в PaTaP полоса необязательна |
+| Яндекс/Waze: короткая последовательность перед отправкой | `+ событие` -> тип -> при необходимости полоса -> подтверждение `Создать сейчас` | Снижает случайные отправки; без автосенд и без копирования чужого экрана |
+| Яндекс: событие ограничено сроком жизни и подтверждение продлевает его | PaTaP TTL остаются своими: ДТП 60м, работы 180м, препятствие 45м, контроль/инспекция 30м; ACTIVE продлевает на TTL типа | Не копируются численные TTL Яндекса; сохраняется ранее выбранная модель PaTaP |
+| Яндекс/Waze: пользователи подтверждают актуальность/отсутствие | На маркере PaTaP: `Ещё актуально` / `Уже нет`; чужое подтверждение требует свежий GPS и расстояние <=2км; автор может закрыть собственное GONE | Crowd verification без скрытого tracking; сервер остаётся авторитетным |
+| Waze: несколько `not there` могут убрать incident | В PaTaP два разных GONE закрывают чужое событие; повтор одного пользователя не удваивается | Простая MVP-защита без репутационного рейтинга Waze |
+| Яндекс: события видны как отдельные map points | Оригинальный янтарный rounded marker PaTaP с белой рамкой; при той же геоточке имеет `offset: [0,-30]` относительно синего GPS marker | Событие видно сразу и не скрывается под own GPS; чужие иконки не копируются |
+| Яндекс/Waze: временность понятна пользователю | `formatExpiry()` показывает примерный оставшийся срок; после POST marker создаётся немедленно через `upsertMarker(data.report)` | Пользователь видит успех и TTL без ожидания 30-секундного refresh |
+| Яндекс: модерация; Waze: reactions/reliability | PaTaP MVP: фиксированные категории, без free text/photo, CSRF, rate limits, fresh GPS, distance check, distinct confirmations | Не копируется moderation/reputation система конкурентов; меньше surface для abuse |
+| Оба: карта остаётся основным контекстом | Панель `position:absolute` живёт внутри `#driver-map`; нет отдельной полосы над картой | Мобильный map-first UX, но собственная компоновка |
+| Гостевой безопасный просмотр | Гость после явного открытия вкладки карты lazy-import'ит `guest-road-reports.mjs`; только GET list, без POST/confirm и без автора | Сохраняет lazy MapLibre и read-only privacy |
+
+Реализовано:
+- `server/road-reports/repository.js`: in-memory временное хранилище; public response без автора; свои PaTaP TTL; ACTIVE продление; два разных GONE для чужого; автор может закрыть своё; lane для ДТП/работ теперь необязательна.
+- `server/driver/routes.js`: guest-safe GET; create с session+CSRF+Driver profile+rate limit+fresh voluntary GPS+distance protection; confirm с profile+CSRF+rate limit, fresh nearby GPS для чужих ACTIVE/GONE, исключение только для автора закрывающего собственную ошибку.
+- `driver/map/road-reports-panel.mjs`: оригинальная mobile overlay UI; GPS-first creation; type -> optional lane -> create confirmation; cancel; 48px+ controls; aria/status; immediate marker; TTL indication; ACTIVE/GONE panel.
+- `driver/map/index.js`: минимальная интеграция панели в существующий lazy MapLibre controller, `ownLocation` передаётся только через getter; существующий синий GPS marker и radius/nearby логика сохранены.
+- `driver/map/guest-road-reports.mjs` + `driver/app.js`: реальный guest read-only list только после явного открытия карты; MapLibre грузится lazy.
+- Свободный текст, фото, speed trap, маршрут в обход контроля, Waze/Yandex data feeds, чужие icons/CSS/text не добавлялись.
+
+Тесты:
+- `tests/auth/road-reports.test.js`: optional lane semantics; PaTaP TTL; author privacy; ACTIVE extension; distinct GONE closure; create по fresh GPS; guest GET privacy; nearby confirmation; rejection без GPS/слишком далеко; author self-close.
+- `tests/driver/road-reports-redesign.test.mjs`: GPS-first без map-click; staged mobile controls; optional lane только для ДТП/работ; no text/photo; immediate `upsertMarker(data.report)`; marker offset над blue GPS; TTL display; ACTIVE/GONE actions; guest explicit read-only lazy map.
+- `scripts/run-auth-tests.js` и `package.json` включают новые тесты в существующие suites.
+
+Изменённые файлы относительно BASE:
+- driver/app.js
+- driver/map/guest-road-reports.mjs
+- driver/map/index.js
+- driver/map/road-reports-panel.mjs
+- package.json
+- scripts/run-auth-tests.js
+- server/driver/routes.js
+- server/road-reports/repository.js
+- tests/auth/road-reports.test.js
+- tests/driver/road-reports-redesign.test.mjs
+
+Проверки, реально выполненные ChatGPT:
+- Официальные страницы Yandex и Waze выше реально открыты и прочитаны.
+- GitHub compare после синхронизации с обновившимся snapshot: base `f43a3507906baae63f4ec9f6715ec2c8c5db5606`, branch ahead, behind 0; diff только 10 файлов выше до handoff.
+- На SOURCE_COMMIT GitHub combined statuses отсутствуют (`statuses: []`).
+- Полный локальный `npm run test:auth`, `npm run build`, `npm run verify`, `npm run test:browser` в среде ChatGPT НЕ запускались и PASS не заявляется.
+
+Риски/ограничения:
+- Road Reports store остаётся volatile in-memory MVP: рестарт auth backend удалит активные события раньше TTL. SQLite/schema/runtime data намеренно не менялись.
+- Клиент использует последнюю `ownLocation`, но свежесть окончательно проверяет сервер через существующий `locations.getFresh()`; при устаревшей позиции UI покажет server rejection.
+- У PaTaP нет Waze-style reliability score и Яндекс-style human moderation; MVP компенсирует это структурой без текста, rate limits, fresh GPS и crowd confirmations.
+- Marker находится на той же GPS-геоточке события, но визуально смещён вверх на 30px; это только display offset, координата события не подделывается.
+
+Codex проверить локально:
+1. Сравнить BASE..SOURCE_COMMIT и убедиться, что auth/SQLite/Caddy/chat/radio/main/minimum password 6 не изменены.
+2. `npm ci`.
+3. `npm run test:auth`.
+4. `npm run test:driver-modules`.
+5. `npm run build` и `npm run verify`.
+6. `npm run test:browser`.
+7. На телефоне/планшете: `+ событие` находится поверх карты; выбор типа; ДТП/работ -> необязательная полоса; `Создать сейчас`; нет map-click; marker виден над синим GPS сразу; TTL читается; cancel работает.
+8. Проверить ACTIVE/GONE рядом и rejection без свежего GPS/слишком далеко.
+9. Проверить guest: MapLibre не грузится до явного открытия карты; после открытия видны только safe reports; нет create/confirm/author.
+10. Production применять только после успешных тестов; этот ChatGPT-блок после handoff остановлен.
+
+Не менялось / production не трогался:
+- `main`;
+- SQLite schema и runtime DB;
+- auth/password policy (minimum 6);
+- Caddy/Cloudflare;
+- chat/radio/parking;
+- реальные users/GPS/messages/tokens/logs/processes.
+
+---
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_TEST_FIX_02
 TASK_ID: ROAD-REPORTS-20260818-001
