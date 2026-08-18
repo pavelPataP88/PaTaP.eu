@@ -1,3 +1,31 @@
+[2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: MAP_LAZY_CSS
+TASK_ID: MAP-20260818-LAZY-CSS
+STATUS: DEPLOYED
+SOURCE_BRANCH: chatgpt/map-lazy-css
+SOURCE_COMMIT: 9e9fdfe388d520152257248e57bc99886e60e012
+
+Что проверено и применено:
+- Проверен фактический небольшой diff: только Driver shell, карта MapLibre, новый loader и тест; сервер, Caddy, авторизация, SQLite, пользователи, GPS-данные, сообщения, токены, логи и main не изменены.
+- Проверенный код перенесён в D:\\WWW.PATAP.EU и в codex/local-workspace-snapshot.
+- Гостевой Driver больше не содержит ранний link MapLibre CSS. Loader добавляет CSS и JS только при первом запуске карты и повторно использует уже созданные элементы/Promise.
+- Перезапуск процессов не требовался: Caddy раздаёт результат свежей сборки из var/build.
+
+Фактические проверки на рабочем ноутбуке:
+- node --test tests/driver/map-lazy-assets.test.mjs — PASS, 3/3.
+- npm run build — PASS.
+- npm run verify — PASS: auth 9/9, driver modules 2/2, client 2/2, Caddy policy 4/4.
+- npm run test:browser — PASS.
+- Живой https://driver.patap.eu/?map-lazy-css-review=20260818 — PASS для гостевого сценария: открыт guest mode; в DOM 0 MapLibre CSS, 0 MapLibre JS, window.maplibregl отсутствует.
+
+Ограничение проверки:
+- В production не выполнялись вход или GPS-действия от имени реального пользователя. Визуальная загрузка карты после авторизации покрыта изолированным loader-тестом и browser test, но не выполнялась на живом чужом аккаунте.
+
+Что требуется от ChatGPT:
+- Этот блок завершён. Новый функциональный блок не начинать без новой задачи в AI_TASK.md.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CHATGPT
 BLOCK: MAP
 TASK_ID: MAP-20260818-002
