@@ -3,6 +3,8 @@ const MAX_LIVE_CHUNK_BYTES = 12 * 1024;
 const MAX_LIVE_CHUNKS = 320;
 const MAX_LIVE_TOTAL_BYTES = 2_400_000;
 const LIVE_HEARTBEAT_MS = 20_000;
+const LIVE_SESSION_RECHECK_MS = 60_000;
+const LIVE_COUNTER_TTL_MS = 120_000;
 
 function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso, readBinaryBody }) {
   const listeners = new Set();
@@ -20,20 +22,30 @@ function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso,
     return session;
   }
 
+  function removeListener(client) {
+    listeners.delete(client);
+    if (client.recheckTimer) clearTimeout(client.recheckTimer);
+    client.recheckTimer = null;
+  }
+
   function sendEvent(client, payload) {
     try {
       client.res.write(`event: radio-live\ndata: ${JSON.stringify(payload)}\n\n`);
       return true;
     } catch {
-      listeners.delete(client);
+      removeListener(client);
       return false;
     }
   }
 
   const heartbeat = setInterval(() => {
+    const cutoff = Date.now() - LIVE_COUNTER_TTL_MS;
+    for (const [transmissionId, counter] of counters) {
+      if (Number(counter.updatedAt || 0) < cutoff) counters.delete(transmissionId);
+    }
     for (const client of [...listeners]) {
       try { client.res.write(`: live-keepalive ${Date.now()}\n\n`); }
-      catch { listeners.delete(client); }
+      catch { removeListener(client); }
     }
   }, LIVE_HEARTBEAT_MS);
   heartbeat.unref?.();
@@ -75,7 +87,7 @@ function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso,
 
   function acceptCounter(transmissionId, sequence, byteLength) {
     const id = Number(transmissionId);
-    const current = counters.get(id) || { chunks: 0, bytes: 0, lastSequence: -1 };
+    const current = counters.get(id) || { chunks: 0, bytes: 0, lastSequence: -1, updatedAt: Date.now() };
     if (sequence <= current.lastSequence) return { error: "sequence" };
     const nextChunks = current.chunks + 1;
     const nextBytes = current.bytes + Number(byteLength || 0);
@@ -83,6 +95,7 @@ function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso,
     current.chunks = nextChunks;
     current.bytes = nextBytes;
     current.lastSequence = sequence;
+    current.updatedAt = Date.now();
     counters.set(id, current);
     return { counter: current };
   }
@@ -103,10 +116,15 @@ function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso,
         "X-Accel-Buffering": "no"
       });
       res.write("retry: 3000\n\n");
-      const client = { res, userId: session.user.id };
+      const client = { res, userId: session.user.id, recheckTimer: null };
       listeners.add(client);
       sendEvent(client, { type: "radio.live.ready" });
-      const close = () => listeners.delete(client);
+      client.recheckTimer = setTimeout(() => {
+        removeListener(client);
+        try { res.end(); } catch {}
+      }, LIVE_SESSION_RECHECK_MS);
+      client.recheckTimer.unref?.();
+      const close = () => removeListener(client);
       req.once("close", close);
       req.once("aborted", close);
       return true;
@@ -126,6 +144,7 @@ function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso,
       }
       const target = radio.uploadTarget(session.user.id, transmissionId, uploadToken, nowIso());
       if (!target) {
+        clearTransmission(transmissionId);
         json(res, 409, { error: "radio_upload_not_authorized" });
         return true;
       }
@@ -180,6 +199,7 @@ function createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso,
     close() {
       clearInterval(heartbeat);
       for (const client of [...listeners]) {
+        removeListener(client);
         try { client.res.end(); } catch {}
       }
       listeners.clear();
@@ -194,5 +214,7 @@ module.exports = {
   MAX_LIVE_CHUNK_BYTES,
   MAX_LIVE_CHUNKS,
   MAX_LIVE_TOTAL_BYTES,
-  LIVE_HEARTBEAT_MS
+  LIVE_HEARTBEAT_MS,
+  LIVE_SESSION_RECHECK_MS,
+  LIVE_COUNTER_TTL_MS
 };
