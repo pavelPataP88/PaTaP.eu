@@ -12,7 +12,12 @@ function moveLegacyControlsIntoOverlay() {
   heading.className = "map-legacy-tools-title";
   layersPanel.append(heading);
   if (privacy) layersPanel.append(privacy);
-  if (radius) layersPanel.append(radius);
+  if (radius) {
+    const radiusLabels = new Map([["5", "Рядом · 5 км"], ["25", "Район · 25 км"], ["50", "Далеко · 50 км"], ["100", "Очень далеко · 100 км"]]);
+    const select = radius.querySelector("select");
+    for (const option of select?.options || []) option.textContent = radiusLabels.get(option.value) || option.textContent;
+    layersPanel.append(radius);
+  }
   if (gpsState) layersPanel.append(gpsState);
   layersPanel.dataset.controlsMoved = "true";
   controlsObserver?.disconnect?.();
