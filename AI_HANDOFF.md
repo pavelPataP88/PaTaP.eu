@@ -1,3 +1,90 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: MAP_ENHANCEMENTS_V1
+TASK_ID: MAP-ENHANCEMENTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/map-enhancements-v1
+SOURCE_COMMIT: 88157649a76ac0332f84dd6c615ecee402219765
+BASE: codex/local-workspace-snapshot @ efe27d39d3864301a445a8c120b69ab94820fc58
+
+Цель блока:
+- Превратить текущую карту Driver из простого GPS/nearby экрана в рабочий мобильный экран водителя, не добавляя полноценный route engine, traffic engine или выдуманные POI.
+- Сохранить существующий ROAD_REPORTS redesign, lazy MapLibre, privacy GPS и guest read-only.
+
+Что реализовано:
+1. GPS camera modes: FREE / FOLLOW / HEADING. Кнопка режима находится поверх карты. Ручной drag/rotate автоматически возвращает FREE, чтобы камера не перетягивала пользователя обратно.
+2. GPS accuracy circle: отдельный GeoJSON circle вокруг own GPS + текст качества (good/fair/poor) и фактическая точность в метрах.
+3. GPS heading/speed/timestamp передаются только в клиентскую карту; серверный PUT /api/driver/location по-прежнему получает только latitude/longitude/accuracy.
+4. Улучшенные driver markers: TIR/TAXI/DELIVERY/GENERAL, nickname/flag на широком экране, компактный вид на мобильном.
+5. Driver clustering на дальнем zoom: близкие водители объединяются в count-marker; клик приближает карту.
+6. Road Report freshness: маркеры постепенно теряют насыщенность/opacity по доле оставшегося TTL, без изменения server TTL.
+7. Road Report clustering на дальнем zoom, отдельные markers на street zoom.
+8. Панель «Впереди»: максимум 3 ближайших road reports до 10 км; если браузер дал heading, используется передний сектор, а не события позади.
+9. «Слои»: road reports / drivers / search radius; выбор сохраняется только как локальные UI preferences.
+10. «Что рядом»: безопасные счётчики текущих road reports и nearby drivers + разбивка TIR/Taxi/Delivery без новых персональных данных.
+11. Opt-in авторадиус: существующие серверные 5/25/50/100 км выбираются от zoom только если пользователь сам включил «Авторадиус по масштабу».
+12. Радиусы получили понятные подписи: «Рядом · 5 км», «Район · 25 км», «Далеко · 50 км», «Очень далеко · 100 км».
+13. Mobile/tablet layout: существующие GPS switch, radius select и GPS status физически переносятся в overlay «Слои» без пересоздания элементов, поэтому их старые event handlers сохраняются, а карта получает больше высоты.
+14. Road Report offline queue: только если navigator.onLine уже false до POST. Queue хранится в sessionStorage максимум 2 минуты; retry только при GPS не старше 30 сек и если водитель остался не дальше 250 м от исходной точки. Это специально снижает риск дублей и отправки устаревших событий.
+15. Guest map остаётся read-only и lazy, но получает ту же TTL-свежесть и clustering; POST/confirm/GPS для гостя не добавлены.
+16. Добавлен docs/MAP_ENHANCEMENT_PLAN.md с полным чек-листом и явными границами блока.
+
+Изменённые файлы:
+- docs/MAP_ENHANCEMENT_PLAN.md
+- driver/gps/index.js
+- driver/map/index.js
+- driver/map/map-experience.mjs
+- driver/map/map-ui-styles.mjs
+- driver/map/road-reports-panel.mjs
+- driver/map/guest-road-reports.mjs
+- tests/driver/map-enhancements.test.mjs
+- tests/driver/road-reports.test.mjs
+- package.json (только добавление нового driver test в test:driver-modules)
+
+Что намеренно НЕ делалось:
+- server/driver routes, auth, SQLite schema/data, Caddy, chat, radio, minimum password, main и runtime production data не менялись;
+- реальные parking/TIR parking/fuel/AdBlue/service POI не выдумывались: нужен отдельный проверенный источник и правовые условия;
+- полноценное offline скачивание OSM tiles не добавлялось;
+- автоматические voice/sound alerts не включались: нужен отдельный opt-in/safety UX; control/inspection нельзя превращать в систему уклонения;
+- route engine, live traffic, 3D, speed trap и маршруты обхода не добавлялись.
+
+Тесты/проверки, добавленные в код:
+- pure math: haversine, bearing, angle delta, zoom→radius;
+- «Впереди» отбрасывает событие позади при известном heading;
+- GPS accuracy thresholds;
+- TTL freshness phases/opacity;
+- road-report clustering на distant zoom и split на street zoom;
+- source contracts для follow/accuracy/layers/driver clusters/auto radius/lazy MapLibre;
+- mobile relocation GPS/radius/status в overlay и human radius labels;
+- offline queue max-age/fresh-GPS/max-distance guards;
+- guest road report source остаётся read-only;
+- старый tests/driver/road-reports.test.mjs обновлён под текущую panel architecture и больше не проверяет уже удалённую старую реализацию map/index.js.
+
+Фактическое состояние проверки в среде ChatGPT:
+- GitHub compare BASE..SOURCE_BRANCH: ahead, behind 0; diff ограничен 10 файлами выше, server/auth/SQLite/Caddy/chat/radio/main отсутствуют.
+- Прямой git checkout/ls-remote из среды ChatGPT НЕ работает: Could not resolve host github.com.
+- Поэтому npm run test:driver-modules, npm run build, npm run verify и npm run test:browser здесь НЕ заявляются как PASS.
+- Production не трогался.
+
+Codex проверить на полной локальной копии:
+1. Сравнить BASE efe27d39... с SOURCE_COMMIT 88157649... и убедиться, что scope совпадает со списком файлов.
+2. Запустить node --test tests/driver/map-enhancements.test.mjs tests/driver/road-reports.test.mjs и остальные текущие driver tests.
+3. Запустить npm run test:driver-modules, npm run build, npm run verify, npm run test:browser.
+4. Планшет/телефон: карта должна занимать больше высоты; GPS switch/radius/status должны находиться внутри «Слои», а старые обработчики включения GPS/радиуса работать.
+5. Проверить режимы камеры: FREE -> FOLLOW -> HEADING; после ручного drag/rotate режим становится FREE; кнопка locate возвращает FOLLOW.
+6. Проверить accuracy circle и подпись ±N м при реальном GPS.
+7. Проверить layers on/off, persistence после reload и opt-in авторадиус.
+8. Проверить «Впереди» с road report впереди и событием позади; без heading допустимы ближайшие события вокруг.
+9. Создать Road Report: marker должен появиться сразу, TTL отображаться, затем визуально стареть; на дальнем zoom несколько близких reports должны стать cluster count.
+10. Проверить nearby drivers: тип marker и cluster на дальнем zoom; «Что рядом» показывает counts без новых приватных данных.
+11. Offline smoke: перед create перевести браузер offline; событие не должно POST-иться сразу. После online оно отправляется только если queue <2 мин, текущий GPS <30 сек и водитель остался <=250 м; иначе queue удаляется/не отправляется.
+12. Guest: открыть Map явно; MapLibre остаётся lazy до этого; после открытия road reports видны read-only, clustering/TTL работают, create/confirm отсутствуют.
+13. Проверить производительность на планшете при нескольких десятках markers и отсутствие layout overlap между MapLibre top-right controls, «Слои», «Что рядом», «Впереди» и +событие.
+14. Если любой пункт ломает текущий рабочий UI, вернуть конкретный TEST_FAILURE/CHANGES_REQUIRED без применения production.
+
+После этого блока ChatGPT не начинать следующий функциональный блок до результата Codex.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_TEST_FIX_02
 TASK_ID: ROAD-REPORTS-20260818-001
