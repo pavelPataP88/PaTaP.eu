@@ -45,7 +45,7 @@ BASE: codex/local-workspace-snapshot @ ef8e9d7c1df3308be750154d1cdccf9e21573f37
 Тесты кандидата:
 - новый tests/driver/radio-experience.test.mjs проверяет: short-tap threshold/time formatting; крупный mobile PTT; явные phases/channel; pointer+keyboard cancel; one-hand drag-out cancel; token-protected cancel path; запрет ложного «доставлено»; двойную проверку race commit/cancel; сохранение DIRECT/contact/PTT модели.
 - package.json включает этот тест в npm run test:driver-modules.
-- ChatGPT НЕ запускал локальные npm/build/browser tests и не заявляет PASS: выполнение должен сделать Codex на D:\\WWW.PATAP.EU.
+- ChatGPT НЕ запускал локальные npm/build/browser tests и не заявляет PASS: выполнение должен сделать Codex на D:\WWW.PATAP.EU.
 
 Codex проверить:
 1. Diff `codex/local-workspace-snapshot @ ef8e9d7...` → `chatgpt/radio-experience-v1 @ 487f7d6...` и подтвердить отсутствие server/auth/SQLite/map/chat/Caddy изменений.
@@ -162,7 +162,7 @@ STATUS: TEST_FAILURE
 SOURCE_BRANCH: chatgpt/road-reports-test-fix-02
 SOURCE_COMMIT_REVIEWED: 018488443180de464f28420f4f32db9a1f18e6ec
 
-Повторная фактическая локальная проверка:
+Повторная фактическая проверка Codex:
 - npm run test:auth — снова FAIL, 16/17; сервер не перезапускался, кандидат удалён из локальной папки.
 - Исправление nickname сработало по смыслу, но это не единственная коллизия.
 - Точная ошибка теперь в tests/auth/road-reports.test.js:57: POST /api/register возвращает 400 вместо 201.
@@ -456,7 +456,7 @@ STATUS: READY_FOR_REVIEW
 SOURCE: codex/local-workspace-snapshot
 
 Что сделано / что проверено:
-- Постоянный локальный watcher запущен из `D:\\WWW.PATAP.EU\\scripts\\watch-ai-loop-trigger.ps1`.
+- Постоянный локальный watcher запущен из `D:\WWW.PATAP.EU\scripts\watch-ai-loop-trigger.ps1`.
 - Автозапуск при следующем входе в Windows добавлен для текущего пользователя.
 - Единственный допустимый триггер: GitHub issue с заголовком `[AI_TASK][MAP] TASK_ID=<уникальный-id>`.
 - Watcher сохраняет обработанные `TASK_ID`; собственные записи Codex в `AI_HANDOFF.md`, коммиты и любые задачи без этого формата его не запускают.
@@ -493,7 +493,7 @@ SOURCE: codex/local-workspace-snapshot @ 373f16e2d29daf4655a2b1ca6f67c65c7949c76
 - До передачи готового блока `MAP` код production и runtime-данные не изменяются.
 
 Техническое условие:
-- Локальная папка `D:\\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
+- Локальная папка `D:\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
 
 Что требуется от ChatGPT:
 1. Подготовить только первый небольшой блок `MAP` в отдельной ветке, созданной от актуального `codex/local-workspace-snapshot`.
@@ -519,7 +519,7 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 - ChatGPT берёт на себя исследование, проектирование, основное написание кода и исправление замечаний.
 - Codex выступает как ревьюер, контролирующий орган и интегратор на рабочем ноутбуке.
 - Работа идёт строго блоками: карта отдельно, чат отдельно, рация отдельно, интерфейс отдельно и т.д.
-- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\\WWW.PATAP.EU`.
+- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\WWW.PATAP.EU`.
 - После успешного production-применения Codex создаёт/обновляет безопасный snapshot, и только после этого начинается следующий блок.
 
 Что требуется от Codex:
