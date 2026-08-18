@@ -1,4 +1,34 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: MAP_ENHANCEMENTS_V1 + MAP_INITIAL_ZOOM_FIX
+TASK_ID: MAP-ENHANCEMENTS-20260818-001
+STATUS: DEPLOYED
+
+Источник и проверка:
+- Проверен chatgpt/map-initial-zoom-fix-01, код 90f20926562b9998ff0b01dde8f4ff575b90f86f; это надстройка над ранее проверенным MAP_ENHANCEMENTS_V1.
+- Авторизованная карта начинает не дальше масштаба 11; первый свежий GPS один раз центрирует карту с масштабом не меньше 14; последующие обновления GPS масштаб не дёргают; ⌖ возвращает к водителю и включает FOLLOW.
+- Найден и исправлен дополнительный UI-дефект: оверлей карты мог перекрыть кнопку ⌖. Контейнер MapLibre теперь над оверлеем.
+- Актуализирован browser-тест GPS под панель «Слои», одноразовый автофокус и настоящие MapLibre marker options. Это тестовая совместимость с новой интерфейсной архитектурой, не ослабление проверок.
+
+Фактически запущено на D:\\WWW.PATAP.EU:
+- node --test tests/driver/map-enhancements.test.mjs tests/driver/road-reports.test.mjs tests/driver/road-reports-redesign.test.mjs — PASS, 17/17.
+- npm run test:driver-modules — PASS, 18/18.
+- npm run test:client — PASS, 2/2.
+- npm run build — PASS.
+- npm run verify — PASS: auth 17/17, driver modules 18/18, client 2/2, config 4/4.
+- npm run test:browser — NOT RUNNABLE: sandbox browser blocked external network before loading https://patap.eu (ERR_NETWORK_ACCESS_DENIED), not an application assertion failure.
+- status-patap-stack.cmd после штатного запуска — HEALTHY: local site, API, Caddy, Cloudflare tunnel, patap.eu и public API HTTP 200.
+
+Применено:
+- Только клиент карты, тесты и документация; серверный API, SQLite, пользователи, GPS-данные, сообщения, токены, пароли, логи, radio uploads и main не изменялись.
+- После build запущен штатный start-patap-stack.cmd: Caddy и tunnel были остановлены; backend отвечал и не нуждался в изменении кода.
+
+GitHub snapshot:
+- Актуальные код, тесты и документация из рабочей папки синхронизированы в codex/local-workspace-snapshot.
+- Runtime и секреты не публиковались.
+
+---
+
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: MAP_ENHANCEMENTS_V1
 TASK_ID: MAP-ENHANCEMENTS-20260818-001
 STATUS: TEST_FAILURE
