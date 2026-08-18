@@ -144,10 +144,16 @@ document.querySelector("#show-driver-register").addEventListener("click", () => 
 document.querySelector("#show-driver-login").addEventListener("click", () => showAuthForm("login"));
 document.querySelectorAll("#guest-map-login, #guest-chat-login, #guest-contacts-login, #guest-profile-login").forEach((button) => button.addEventListener("click", openLogin));
 document.querySelectorAll("[data-guest-driver-view]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     const view = button.dataset.guestDriverView;
     document.querySelectorAll("[data-guest-driver-view]").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll("[data-guest-driver-panel]").forEach((panel) => { panel.hidden = panel.dataset.guestDriverPanel !== view; });
+    if (view === "map") {
+      try {
+        const { openGuestRoadReportMap } = await import("./map/guest-road-reports.mjs?v=20260818-redesign1");
+        await openGuestRoadReportMap({ api, showError });
+      } catch {}
+    }
   });
 });
 
