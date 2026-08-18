@@ -1,3 +1,85 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: ROAD_REPORTS_MVP
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/road-reports-mvp
+SOURCE_COMMIT: f11ef2c18be892edddc220bbd908b4d0cc2b6c96
+BASE: codex/local-workspace-snapshot @ d4ab0abe530760b8caa46381633adf5cb4461c0c
+
+Краткое исследование общих паттернов:
+- Официальная справка Yandex Maps описывает временные road events, фиксированный тип события, уточнение полосы для ДТП/работ и подтверждения Still there / Not anymore; также прямо указывает, что данные события не содержат персональные или автомобильные данные автора. Источник: https://yandex.com/support/m-maps/en/events
+- Официальная справка Waze для hazards использует структурированные типы без необходимости свободного текста, а для ДТП рекомендует сообщать о событии, которое пользователь видит сейчас и находиться как можно ближе к нему. Источники: https://support.google.com/waze/answer/13739290 и https://support.google.com/waze/answer/13739612
+- Waze Partners описывает общий crowdsourcing-паттерн: временное событие удаляется по сроку или после подтверждений Not there. Источник: https://support.google.com/waze/partners/answer/10618035
+- В PaTaP использованы только эти общие продуктовые принципы. Код, тексты, иконки, визуальная композиция и дизайн Yandex/Waze не копировались.
+
+Что реализовано:
+- Пять фиксированных типов: ДТП, дорожные работы, препятствие, дорожный контроль, транспортная инспекция.
+- Для ДТП и работ только структурированная полоса: все / левая / средняя / правая / обочина.
+- Свободного текста, комментария, фото или файла нет.
+- TTL по типам: ДТП 60 мин, работы 180 мин, препятствие 45 мин, дорожный контроль 30 мин, транспортная инспекция 30 мин.
+- Отчёты отображаются отдельной коллекцией MapLibre markers и не смешиваются с marker-ами водителей.
+- Создание требует действующей сессии, Driver-профиля, CSRF и rate limit.
+- Создание использует только уже существующую явно включённую свежую GPS-позицию Driver: клиент ставит событие в своей текущей позиции, сервер повторно проверяет свежую позицию и не принимает точку дальше 2 км. Новый/скрытый GPS-сбор не добавлен.
+- Автор, nickname и GPS автора никогда не входят в public report. Server-side хранится только userId, необходимый для rate/protection/closure.
+- Подтверждение ACTIVE продлевает TTL от текущего времени.
+- Автор может закрыть собственную ошибочную отметку одним GONE. Для чужой отметки нужны GONE от двух разных Driver-пользователей; повтор одного пользователя не увеличивает число голосов.
+- Список live road reports доступен только авторизованной сессии. Гостевой demo остаётся синтетическим и не получает реальные дорожные точки — это консервативное решение по приватности первого MVP.
+- Для ROAD_CONTROL / TRANSPORT_INSPECTION нет speed-trap, маршрутизации в обход, подсказок по уклонению или иных функций обхода контроля.
+
+Хранение / TTL:
+- Первый MVP намеренно использует volatile in-memory store внутри auth/server process, без новой SQLite-схемы и без изменения существующих runtime-данных.
+- Это означает: после штатного перезапуска активные дорожные отметки исчезнут раньше своего TTL. Для временных safety-событий это безопаснее, чем случайно сохранить устаревшие данные, но Codex должен отдельно решить, приемлемо ли это для production MVP.
+
+Изменённые файлы SOURCE_COMMIT:
+- server/road-reports/repository.js
+- server/driver/routes.js
+- driver/map/index.js
+- tests/auth/road-reports.test.js
+- tests/driver/road-reports.test.mjs
+- scripts/run-auth-tests.js
+- package.json
+
+Тесты, добавленные в ветку:
+- server/auth integration: unauthenticated rights, profile requirement, invalid structured input, too-far coordinate rejection, create/list, no author leak, ACTIVE confirmation, author closure, invalid confirmation.
+- repository unit: TTL expiry и закрытие только после двух разных GONE для чужого события.
+- client static regression: отдельная marker collection, пять фиксированных типов, отсутствие text/photo input, использование ownLocation, ACTIVE/GONE endpoint.
+- tests/auth/road-reports.test.js подключён к npm run test:auth.
+- tests/driver/road-reports.test.mjs подключён к npm run test:driver-modules и соответственно npm run verify.
+
+Фактические проверки в среде ChatGPT:
+- GitHub compare BASE..SOURCE_COMMIT: PASS — ровно 7 файлов блока; SQLite/db.js, чат, рация, Caddy, parking, password policy и main не изменены.
+- Локальный изолированный node --test для логики нового repository (TTL, privacy, distinct-GONE closure, structured input, distance helper): PASS 2/2.
+- GitHub combined status для SOURCE_COMMIT: автоматических CI statuses нет.
+- Полный checkout ветки через git clone НЕ получен: среда ChatGPT возвращает `Could not resolve host: github.com`.
+
+Поэтому НЕ заявляется как пройденное:
+- npm run test:auth на полном checkout;
+- npm run test:driver-modules на полном checkout;
+- npm run build;
+- npm run verify;
+- npm run test:browser;
+- реальный mobile/GPS production сценарий.
+
+Риски / что проверить Codex:
+1. npm run test:auth; npm run test:driver-modules; npm run build; npm run verify; npm run test:browser.
+2. На мобильном браузере проверить, что динамический блок «Дорожная отметка» не ломает высоту/скролл карты и отдельные markers нажимаются нормально.
+3. Проверить существующие GPS privacy flows: GPS off -> создание невозможно; сервер не принимает точку без fresh location.
+4. Проверить, что список/ответы API не содержат authorId/userId/nickname или иных идентификаторов автора.
+5. Проверить поведение после server restart: in-memory reports очищаются. Если для production требуется persistence, это должен быть отдельный следующий узкий блок с отдельной migration; в этом MVP SQLite сознательно не трогалась.
+6. Проверить нейтральность ROAD_CONTROL / TRANSPORT_INSPECTION: только точка ситуации, без avoidance/routing функций.
+
+Что намеренно НЕ менялось:
+- parking / PRODUCT_DISCOVERY следующий блок;
+- SQLite schema и существующие runtime-данные;
+- chat, reactions, radio;
+- Caddy/Cloudflare;
+- auth/password semantics и минимум пароля 6;
+- main;
+- реальные пользователи, GPS, сообщения, аудио, токены и логи.
+
+Следующий блок ChatGPT не начинал. После review остановиться на решении ACCEPT / CHANGES_REQUIRED для этого SOURCE_COMMIT.
+
+---
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: PRODUCT_DISCOVERY
 TASK_ID: PRODUCT-DISCOVERY-20260818-001
