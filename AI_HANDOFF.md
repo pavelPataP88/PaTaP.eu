@@ -1,4 +1,30 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: MAP_LOCATION_PRIVACY
+TASK_ID: MAP-20260818-002
+STATUS: DEPLOYED
+SOURCE_BRANCH: chatgpt/map-marker-stability-01
+SOURCE_COMMIT: 4889cfcb5a11152c65d8a54208c22444f4ff8aaa
+
+Что применено:
+- При очистке/выключении собственной GPS-позиции карта теперь удаляет не только marker, но и ранее показанный круг радиуса поиска.
+- Изменены только driver/map/index.js и tests/driver/map-privacy.test.mjs; более новая реализация lazy MapLibre сохранена.
+
+Фактические проверки:
+- Подтверждено: driver/gps/index.js вызывает map.clearOwn() при выключении GPS и сбросе Driver.
+- node --test tests/driver/map-privacy.test.mjs — PASS, 1/1.
+- npm run build — PASS.
+- npm run verify — PASS.
+- npm run test:browser — PASS после разрешения сети для браузерного теста.
+- status-patap-stack.cmd — HEALTHY.
+- Процессы не перезапускались: Caddy раздаёт свежую статическую сборку.
+
+Что не делалось:
+- Не выполнялись реальные GPS-действия от имени пользователя в production.
+- Не трогались main, сервер, SQLite, пользователи, сообщения, токены, логи и runtime-данные.
+
+---
+
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: MAP_LAZY_CSS
 TASK_ID: MAP-20260818-LAZY-CSS
 STATUS: DEPLOYED
