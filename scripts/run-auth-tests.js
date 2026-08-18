@@ -25,7 +25,11 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   let exitCode = 1;
   try {
     environment = await createIsolatedAuth();
-    testProcess = spawn(process.execPath, ["--test", path.join("tests", "auth", "api.test.js")], {
+    testProcess = spawn(process.execPath, [
+      "--test",
+      path.join("tests", "auth", "api.test.js"),
+      path.join("tests", "auth", "chat-reactions.test.js")
+    ], {
       cwd: environment.root,
       env: { ...environment.env, PATAP_AUTH_BASE_URL: environment.baseUrl },
       stdio: "inherit",
