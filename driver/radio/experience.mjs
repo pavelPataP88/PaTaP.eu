@@ -68,7 +68,7 @@ export function createRadioExperienceUi({ card, ptt, mount = null }) {
   const hint = document.createElement("p");
   hint.className = "radio-ptt-hint";
   hint.id = "radio-ptt-hint";
-  hint.textContent = "Зажмите и говорите. Отпустите для отправки. Для отмены уведите палец за пределы кнопки и отпустите; с клавиатуры — Esc.";
+  hint.textContent = "Зажмите и говорите. Отпустите для завершения и сохранения. Короткий тап не выходит в эфир. Увод пальца или Esc останавливает передачу и не сохраняет её; уже прозвучавшую часть живого эфира отозвать нельзя.";
 
   live.append(channelBox, phaseBox, timing);
   if (mount) mount.append(live);
