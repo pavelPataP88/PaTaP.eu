@@ -1,10 +1,11 @@
-import { createRadioExperienceUi, isAccidentalRecording } from "./experience.mjs?v=20260818-radio1";
+import { createRadioExperienceUi, isAccidentalRecording } from "./experience.mjs?v=20260818-radio2";
+import { createRadioConsoleUi, RADIO_ROLE_LABELS, RADIO_POLICY_LABELS } from "./console.mjs?v=20260818-radio2";
 
 const MAX_RECORDING_MS = 60_000;
 const MIN_RECORDING_MS = 550;
 const RECORDING_TICK_MS = 200;
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
-const POLL_MS = 4_000;
+const POLL_MS = 2_000;
 const VOICE_BITRATE = 32_000;
 const CANCEL_GESTURE_MARGIN_PX = 12;
 
@@ -44,6 +45,27 @@ function createVoiceRecorder(stream, mimeType) {
   }
 }
 
+function formatAudioTime(value) {
+  const seconds = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function friendlyRadioError(error) {
+  const code = String(error?.message || "");
+  const labels = {
+    radio_channel_not_found: "Канал больше недоступен.",
+    radio_channel_forbidden: "Недостаточно прав для этого действия.",
+    radio_channel_banned: "Доступ к этому каналу закрыт модератором.",
+    radio_talk_not_allowed: "В этом канале у вас сейчас режим только прослушивания.",
+    radio_contact_required: "Для этого действия нужен подтверждённый контакт.",
+    radio_rate_limited: "Слишком много действий подряд. Попробуйте немного позже.",
+    radio_owner_transfer_required: "Сначала передайте права владельца другому участнику.",
+    radio_pin_limit: "Можно закрепить максимум три передачи.",
+    radio_alert_forbidden: "В этом канале вызов недоступен."
+  };
+  return labels[code] || "Не удалось выполнить действие рации.";
+}
+
 export function createRadioController({ api, uploadBinary, onAuthLost }) {
   const navButton = document.querySelector('[data-driver-target="radio"]');
   const radioCard = document.querySelector(".radio-card");
@@ -53,8 +75,11 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   const help = document.querySelector("#radio-help");
   const transmissionsElement = document.querySelector("#radio-transmissions");
   const ptt = document.querySelector("#radio-ptt");
-  const experience = createRadioExperienceUi({ card: radioCard, ptt });
+  const consoleUi = createRadioConsoleUi({ card: radioCard, title, state, channelsElement, help, transmissionsElement, ptt });
+  const experience = createRadioExperienceUi({ card: radioCard, ptt, mount: consoleUi.liveMount });
   const channels = new Map();
+  const knownLastIds = new Map();
+  const pinnedIds = new Set();
   let channel = null;
   let profileReady = false;
   let ownNickname = "";
@@ -75,6 +100,14 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   let activeAudio = null;
   let currentPhase = "disabled";
   let statusLockUntil = 0;
+  let settings = { status: "AVAILABLE", soloChannelId: null, defaultChannelId: null, autoPlay: false, playbackRate: 1 };
+  let invites = [];
+  let alerts = [];
+  let historyItems = [];
+  let historyPlayers = [];
+  let cascadePlayback = false;
+  let carMode = false;
+  let echoRunning = false;
 
   function setState(text, kind = "ready", { lockMs = 0 } = {}) {
     currentPhase = PHASE_LABELS[kind] ? kind : "ready";
@@ -84,12 +117,17 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     experience.setPhase(currentPhase, PHASE_LABELS[currentPhase]);
   }
 
+  function effectiveBusy() {
+    return channel?.speaker && !channel.speaker.isSelf;
+  }
+
   function updatePtt() {
-    const busy = channel?.speaker && !channel.speaker.isSelf;
-    // Keep the held control enabled while starting/recording so release/cancel remains reliable.
-    ptt.disabled = !profileReady || !channel || Boolean(busy) || uploading;
+    const busy = effectiveBusy();
+    // Keep this exact rule: a held control must remain enabled during starting/recording so release/cancel is reliable.
+    ptt.disabled = !profileReady || !channel || Boolean(busy) || uploading || channel?.canTalk === false;
     ptt.setAttribute("aria-pressed", recording || starting ? "true" : "false");
     experience.setChannel(channel);
+    consoleUi.setChannel(channel);
     if (pointerCancelOnRelease && (recording || starting)) {
       ptt.textContent = "Отпустите — передача отменится";
       experience.setPhase("requesting", "Отмена");
@@ -105,6 +143,9 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     } else if (busy) {
       ptt.textContent = `Говорит ${channel.speaker.nickname}`;
       experience.setPhase("listening", PHASE_LABELS.listening);
+    } else if (channel?.canTalk === false) {
+      ptt.textContent = "Только прослушивание";
+      experience.setPhase("ready", "Слушатель");
     } else {
       ptt.textContent = "Зажми и говори";
       if (!profileReady || !channel) experience.setPhase("disabled", PHASE_LABELS.disabled);
@@ -116,7 +157,9 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
         ? `Идёт передача в канал ${channel?.title || "рации"}. Отпустите для отправки, уведите палец с кнопки или нажмите Escape для отмены.`
         : busy
           ? `Канал занят. Сейчас говорит ${channel.speaker.nickname}.`
-          : `Зажмите, чтобы говорить в канал ${channel?.title || "рации"}.`);
+          : channel?.canTalk === false
+            ? `Канал ${channel?.title || "рации"}. У вас режим только прослушивания.`
+            : `Зажмите, чтобы говорить в канал ${channel?.title || "рации"}.`);
   }
 
   function stopRecordingClock() {
@@ -133,17 +176,51 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     }, RECORDING_TICK_MS);
   }
 
+  function pauseActiveAudio() {
+    if (activeAudio) activeAudio.pause();
+    activeAudio = null;
+  }
+
+  function playbackAllowed(targetChannel) {
+    if (!settings.autoPlay || !targetChannel || targetChannel.muted) return false;
+    if (settings.status === "BUSY") return false;
+    if (settings.status === "SOLO") return Number(settings.soloChannelId) === Number(targetChannel.id);
+    return true;
+  }
+
+  async function playIncoming(item, { force = false } = {}) {
+    if (!item || item.sender?.nickname === ownNickname) return false;
+    const targetChannel = channels.get(Number(item.channelId));
+    if (!force && !playbackAllowed(targetChannel)) return false;
+    pauseActiveAudio();
+    const audio = document.createElement("audio");
+    audio.src = `/api/driver/radio/transmissions/${item.id}/audio`;
+    audio.playsInline = true;
+    audio.preload = "auto";
+    audio.playbackRate = Number(settings.playbackRate || 1);
+    activeAudio = audio;
+    audio.addEventListener("ended", () => { if (activeAudio === audio) activeAudio = null; }, { once: true });
+    try {
+      await audio.play();
+      return true;
+    } catch {
+      if (activeAudio === audio) activeAudio = null;
+      if (force) setState("Браузер не разрешил автоматическое воспроизведение. Нажмите «Повтор».", "error");
+      return false;
+    }
+  }
+
   async function deleteTransmission(item) {
     if (item.sender.nickname !== ownNickname || !window.confirm("Удалить голосовое сообщение у всех?")) return;
     try {
       await api(`/api/driver/radio/transmissions/${item.id}`, { method: "DELETE", body: {} });
       setState("Голосовое сообщение удалено.", "ready");
-      await refreshChannels();
+      await refreshOverview();
       await loadTransmissions();
     } catch (error) {
       if (error.status === 401) onAuthLost();
       else if (error.status === 404) await loadTransmissions();
-      else setState("Не удалось удалить голосовое сообщение.", "error");
+      else setState(friendlyRadioError(error), "error");
     }
   }
 
@@ -153,12 +230,57 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     return "webm";
   }
 
-  function formatAudioTime(value) {
-    const seconds = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  async function togglePin(item) {
+    if (!channel?.canModerate || channel.kind === "DIRECT") return;
+    const pinned = pinnedIds.has(Number(item.id));
+    try {
+      await api(`/api/driver/radio/channels/${channel.id}/pins/${item.id}`, { method: pinned ? "DELETE" : "POST", body: {} });
+      await loadPins();
+      renderTransmissions(historyItems);
+      setState(pinned ? "Закрепление снято." : "Передача закреплена в канале.", "ready");
+    } catch (error) {
+      setState(friendlyRadioError(error), "error");
+    }
   }
 
-  function createAudioPlayer(item) {
+  function createTransmissionMenu(item) {
+    const menu = document.createElement("details");
+    menu.className = "message-menu";
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      const boundary = menu.closest(".radio-transmissions")?.getBoundingClientRect();
+      const trigger = menu.getBoundingClientRect();
+      if (boundary) menu.classList.toggle("open-up", trigger.top - boundary.top > boundary.bottom - trigger.bottom);
+    });
+    const trigger = document.createElement("summary");
+    trigger.setAttribute("aria-label", "Действия с голосовым сообщением");
+    trigger.textContent = "⋮";
+    const actions = document.createElement("div");
+    const download = document.createElement("a");
+    download.href = `/api/driver/radio/transmissions/${item.id}/audio`;
+    download.download = `driver-radio-${item.id}.${audioExtension(item.mimeType)}`;
+    download.textContent = "Скачать";
+    actions.append(download);
+    if (channel?.canModerate && channel.kind !== "DIRECT") {
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.textContent = pinnedIds.has(Number(item.id)) ? "Открепить" : "Закрепить";
+      pin.addEventListener("click", () => { menu.open = false; togglePin(item); });
+      actions.append(pin);
+    }
+    if (item.sender.nickname === ownNickname) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "danger";
+      remove.textContent = "Удалить";
+      remove.addEventListener("click", () => { menu.open = false; deleteTransmission(item); });
+      actions.append(remove);
+    }
+    menu.append(trigger, actions);
+    return menu;
+  }
+
+  function createAudioPlayer(item, index) {
     const player = document.createElement("div");
     player.className = "radio-audio-player";
     const play = document.createElement("button");
@@ -182,21 +304,18 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     audio.preload = "metadata";
     audio.playsInline = true;
     audio.src = `/api/driver/radio/transmissions/${item.id}/audio`;
+    audio.playbackRate = Number(settings.playbackRate || 1);
 
-    play.addEventListener("click", async () => {
-      if (!audio.paused) {
-        audio.pause();
-        return;
-      }
+    async function playHere({ cascade = true } = {}) {
+      if (!audio.paused) { audio.pause(); return; }
       if (activeAudio && activeAudio !== audio) activeAudio.pause();
       activeAudio = audio;
-      try {
-        await audio.play();
-      } catch {
-        if (activeAudio === audio) activeAudio = null;
-        setState("Не удалось воспроизвести голосовое сообщение.", "error");
-      }
-    });
+      cascadePlayback = cascade;
+      audio.playbackRate = Number(settings.playbackRate || 1);
+      try { await audio.play(); }
+      catch { if (activeAudio === audio) activeAudio = null; setState("Не удалось воспроизвести голосовое сообщение.", "error"); }
+    }
+    play.addEventListener("click", () => playHere({ cascade: true }));
     audio.addEventListener("play", () => {
       activeAudio = audio;
       play.textContent = "❚❚";
@@ -220,74 +339,26 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     audio.addEventListener("ended", () => {
       progress.value = "0";
       play.textContent = "▶";
-      play.setAttribute("aria-label", "Воспроизвести голосовое сообщение");
       if (activeAudio === audio) activeAudio = null;
+      if (cascadePlayback && historyPlayers[index + 1]) historyPlayers[index + 1].playHere({ cascade: true });
     });
-    progress.addEventListener("input", () => {
-      audio.currentTime = Number(progress.value);
-    });
+    progress.addEventListener("input", () => { audio.currentTime = Number(progress.value); });
     player.append(play, progress, time, audio);
-    return player;
-  }
-
-  function createTransmissionMenu(item) {
-    const menu = document.createElement("details");
-    menu.className = "message-menu";
-    menu.addEventListener("toggle", () => {
-      if (!menu.open) return;
-      const boundary = menu.closest(".radio-transmissions")?.getBoundingClientRect();
-      const trigger = menu.getBoundingClientRect();
-      if (boundary) menu.classList.toggle("open-up", trigger.top - boundary.top > boundary.bottom - trigger.bottom);
-    });
-    const trigger = document.createElement("summary");
-    trigger.setAttribute("aria-label", "Действия с голосовым сообщением");
-    trigger.textContent = "⋮";
-    const actions = document.createElement("div");
-    const download = document.createElement("a");
-    download.href = `/api/driver/radio/transmissions/${item.id}/audio`;
-    download.download = `driver-radio-${item.id}.${audioExtension(item.mimeType)}`;
-    download.textContent = "Скачать";
-    actions.append(download);
-    if (item.sender.nickname === ownNickname) {
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "danger";
-      remove.textContent = "Удалить";
-      remove.addEventListener("click", () => {
-        menu.open = false;
-        deleteTransmission(item);
-      });
-      actions.append(remove);
-    }
-    menu.append(trigger, actions);
-    return menu;
-  }
-
-  function renderChannels() {
-    channelsElement.replaceChildren();
-    for (const item of channels.values()) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = item.speaker && !item.speaker.isSelf ? `${item.title} · в эфире` : item.title;
-      button.setAttribute("aria-label", item.kind === "DIRECT" ? `Прямой канал с ${item.title}` : `Канал ${item.title}`);
-      button.classList.toggle("active", item.id === channel?.id);
-      button.disabled = item.id === channel?.id;
-      button.addEventListener("click", () => selectChannel(item));
-      channelsElement.append(button);
-    }
-    help.hidden = channels.size > 0;
+    return { element: player, audio, playHere };
   }
 
   function renderTransmissions(items = []) {
+    historyItems = Array.isArray(items) ? items.slice() : [];
+    historyPlayers = [];
     transmissionsElement.replaceChildren();
-    if (!items.length) {
+    if (!historyItems.length) {
       const empty = document.createElement("p");
       empty.className = "radio-empty";
       empty.textContent = channel ? "В этом канале ещё нет передач." : "Выберите канал рации.";
       transmissionsElement.append(empty);
       return;
     }
-    for (const item of items) {
+    historyItems.forEach((item, index) => {
       const article = document.createElement("article");
       article.className = "radio-transmission";
       article.dataset.transmissionId = String(item.id);
@@ -298,21 +369,19 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       time.dateTime = item.committedAt;
       time.textContent = new Date(item.committedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
       const menu = createTransmissionMenu(item);
-      header.append(author, time);
-      header.append(menu);
-      article.append(header, createAudioPlayer(item));
+      header.append(author, time, menu);
+      const player = createAudioPlayer(item, index);
+      historyPlayers.push(player);
+      article.append(header, player.element);
       transmissionsElement.append(article);
-    }
+    });
     transmissionsElement.scrollTop = transmissionsElement.scrollHeight;
   }
 
-  async function loadTransmissions({ silent = false } = {}) {
-    if (!channel) {
-      renderTransmissions();
-      return [];
-    }
+  async function loadTransmissions({ silent = false, limit = 50 } = {}) {
+    if (!channel) { renderTransmissions(); return []; }
     try {
-      const data = await api(`/api/driver/radio/channels/${channel.id}/transmissions?limit=30`);
+      const data = await api(`/api/driver/radio/channels/${channel.id}/transmissions?limit=${limit}`);
       const items = data.transmissions || [];
       renderTransmissions(items);
       return items;
@@ -324,54 +393,392 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   }
 
   function transmissionCommitted(items, transmissionId) {
-    return Array.isArray(items)
-      ? items.some((item) => Number(item.id) === Number(transmissionId))
-      : null;
+    return Array.isArray(items) ? items.some((item) => Number(item.id) === Number(transmissionId)) : null;
   }
 
-  async function selectChannel(next) {
+  async function loadPins() {
+    pinnedIds.clear();
+    if (!channel || channel.kind === "DIRECT") { consoleUi.renderPins([]); return []; }
+    try {
+      const data = await api(`/api/driver/radio/channels/${channel.id}/pins`);
+      for (const item of data.pins || []) pinnedIds.add(Number(item.id));
+      consoleUi.renderPins(data.pins || [], (item) => playIncoming(item, { force: true }));
+      return data.pins || [];
+    } catch {
+      consoleUi.renderPins([]);
+      return [];
+    }
+  }
+
+  async function markCurrentRead() {
+    if (!channel?.lastTransmissionId) return;
+    try {
+      await api(`/api/driver/radio/channels/${channel.id}/preferences`, {
+        method: "PATCH", body: { lastReadTransmissionId: channel.lastTransmissionId }
+      });
+      channel.unreadCount = 0;
+      channels.set(channel.id, channel);
+      renderChannelList();
+    } catch { /* read marker is convenience only */ }
+  }
+
+  function renderChannelList() {
+    consoleUi.renderChannels([...channels.values()], { activeId: channel?.id, onSelect: selectChannel });
+  }
+
+  async function selectChannel(next, { keepStatus = false } = {}) {
     if (!next || recording || starting || uploading) return;
-    channel = next;
-    title.textContent = `Рация: ${next.title}`;
-    experience.setChannel(next);
-    renderChannels();
-    setState("Канал выбран. Зажмите кнопку, чтобы говорить.", "ready");
+    pauseActiveAudio();
+    channel = channels.get(Number(next.id)) || next;
+    title.textContent = `Рация: ${channel.title}`;
+    experience.setChannel(channel);
+    consoleUi.setChannel(channel);
+    renderChannelList();
+    if (settings.status === "SOLO" && !keepStatus && Number(settings.soloChannelId) !== Number(channel.id)) {
+      await updateSettings({ status: "SOLO", soloChannelId: channel.id }, { quiet: true });
+    }
+    if (channel.speaker && !channel.speaker.isSelf) setState(`Сейчас говорит ${channel.speaker.nickname}.`, "listening");
+    else if (channel.canTalk === false) setState("Канал выбран. Вы можете слушать передачи.", "ready");
+    else setState("Канал выбран. Зажмите кнопку, чтобы говорить.", "ready");
     updatePtt();
-    await loadTransmissions();
+    await Promise.all([loadTransmissions(), loadPins()]);
+    await markCurrentRead();
   }
 
-  async function refreshChannels() {
+  async function fetchLatest(channelId) {
+    try {
+      const data = await api(`/api/driver/radio/channels/${channelId}/transmissions?limit=1`);
+      return data.transmissions?.at(-1) || null;
+    } catch { return null; }
+  }
+
+  async function handleNewTransmission(targetChannel, oldId, newId) {
+    if (!newId || Number(newId) <= Number(oldId || 0)) return;
+    const latest = await fetchLatest(targetChannel.id);
+    if (!latest || Number(latest.id) !== Number(newId)) return;
+    if (Number(channel?.id) === Number(targetChannel.id) && !recording && !starting) {
+      await loadTransmissions({ silent: true });
+      await markCurrentRead();
+    }
+    if (latest.sender.nickname !== ownNickname) await playIncoming(latest);
+  }
+
+  async function refreshOverview({ initial = false } = {}) {
     if (!profileReady) return;
     try {
-      const data = await api("/api/driver/radio/channels");
+      const data = await api("/api/driver/radio/overview");
       const previousId = channel?.id;
+      const previousLast = new Map(knownLastIds);
       channels.clear();
-      for (const item of data.channels || []) channels.set(item.id, item);
-      channel = previousId ? channels.get(previousId) || null : channel;
-      renderChannels();
+      for (const item of data.channels || []) {
+        channels.set(Number(item.id), item);
+        knownLastIds.set(Number(item.id), Number(item.lastTransmissionId || 0));
+      }
+      settings = data.settings || settings;
+      invites = data.invites || [];
+      alerts = data.alerts || [];
+      consoleUi.setSettings(settings);
+      consoleUi.setInvitesCount(invites.length);
+      const latestAlert = alerts[0] || null;
+      consoleUi.showAlert(latestAlert);
+      const preferred = previousId && channels.get(Number(previousId))
+        || settings.defaultChannelId && channels.get(Number(settings.defaultChannelId))
+        || channels.values().next().value
+        || null;
+      channel = preferred;
+      renderChannelList();
+      consoleUi.setChannel(channel);
       experience.setChannel(channel);
       updatePtt();
-      if (channel?.speaker && !channel.speaker.isSelf) {
+      if (!initial) {
+        for (const item of channels.values()) {
+          const oldId = Number(previousLast.get(item.id) || 0);
+          const newId = Number(item.lastTransmissionId || 0);
+          if (newId > oldId) handleNewTransmission(item, oldId, newId);
+        }
+      }
+      if (channel?.speaker && !channel.speaker.isSelf && !recording && !starting && !uploading) {
         setState(`Сейчас говорит ${channel.speaker.nickname}.`, "listening");
       } else if (!recording && !starting && !uploading && channel && Date.now() >= statusLockUntil) {
-        setState("Канал свободен. Можно говорить.", "ready");
+        setState(channel.canTalk === false ? "Канал активен. Режим прослушивания." : "Канал свободен. Можно говорить.", "ready");
       }
     } catch (error) {
       if (error.status === 401) onAuthLost();
-      else setState("Не удалось обновить каналы рации.", "error");
+      else if (!initial) setState("Не удалось обновить состояние рации.", "error");
     }
+  }
+
+  async function refreshChannels() {
+    return refreshOverview();
   }
 
   function schedulePoll() {
     if (pollTimer) window.clearInterval(pollTimer);
-    pollTimer = activated ? window.setInterval(async () => {
-      const lastTransmissionId = channel?.lastTransmissionId;
-      const transmissionCount = channel?.transmissionCount;
-      await refreshChannels();
-      if (channel && (channel.lastTransmissionId !== lastTransmissionId || channel.transmissionCount !== transmissionCount) && !recording) {
-        await loadTransmissions();
+    pollTimer = activated ? window.setInterval(() => refreshOverview(), POLL_MS) : null;
+  }
+
+  async function updateSettings(patch, { quiet = false } = {}) {
+    try {
+      const data = await api("/api/driver/radio/settings", { method: "PATCH", body: patch });
+      settings = data.settings;
+      consoleUi.setSettings(settings);
+      if (!quiet) setState("Настройки рации сохранены.", "ready");
+      return true;
+    } catch (error) {
+      consoleUi.setSettings(settings);
+      if (!quiet) setState(friendlyRadioError(error), "error");
+      return false;
+    }
+  }
+
+  async function updateChannelPreferences(patch) {
+    if (!channel) return false;
+    try {
+      const data = await api(`/api/driver/radio/channels/${channel.id}/preferences`, { method: "PATCH", body: patch });
+      Object.assign(channel, data.preferences || {});
+      channels.set(channel.id, channel);
+      consoleUi.setChannel(channel);
+      renderChannelList();
+      return true;
+    } catch (error) {
+      setState(friendlyRadioError(error), "error");
+      return false;
+    }
+  }
+
+  async function replayLast() {
+    let item = historyItems.at(-1);
+    if (!item && channel) item = await fetchLatest(channel.id);
+    if (!item) return setState("В этом канале пока нечего повторять.", "ready");
+    if (historyItems.length && historyPlayers.length) {
+      historyPlayers.at(-1).playHere({ cascade: false });
+    } else {
+      await playIncoming(item, { force: true });
+    }
+  }
+
+  async function runEchoTest() {
+    if (echoRunning || recording || starting || uploading) return;
+    if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) return setState("Тест микрофона не поддерживается этим браузером.", "error");
+    echoRunning = true;
+    setState("Тест микрофона: скажите несколько слов…", "requesting");
+    let localStream;
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia(radioAudioConstraints());
+      const mimeType = supportedMimeType();
+      const echoRecorder = createVoiceRecorder(localStream, mimeType);
+      const chunks = [];
+      echoRecorder.addEventListener("dataavailable", (event) => { if (event.data?.size) chunks.push(event.data); });
+      const stopped = new Promise((resolve) => echoRecorder.addEventListener("stop", resolve, { once: true }));
+      echoRecorder.start(250);
+      await new Promise((resolve) => window.setTimeout(resolve, 3_000));
+      echoRecorder.stop();
+      await stopped;
+      for (const track of localStream.getTracks()) track.stop();
+      localStream = null;
+      const blob = new Blob(chunks, { type: echoRecorder.mimeType || "audio/webm" });
+      if (!blob.size) throw new Error("empty_echo");
+      pauseActiveAudio();
+      const audio = document.createElement("audio");
+      audio.src = URL.createObjectURL(blob);
+      audio.playbackRate = 1;
+      activeAudio = audio;
+      audio.addEventListener("ended", () => { URL.revokeObjectURL(audio.src); if (activeAudio === audio) activeAudio = null; }, { once: true });
+      await audio.play();
+      setState("Тест микрофона воспроизводится только на этом устройстве. На сервер ничего не отправлено.", "ready");
+    } catch (error) {
+      for (const track of localStream?.getTracks?.() || []) track.stop();
+      setState(error.name === "NotAllowedError" ? "Микрофон запрещён браузером." : "Не удалось выполнить тест микрофона.", "error");
+    } finally { echoRunning = false; }
+  }
+
+  function showCreateChannel() {
+    const form = consoleUi.makeForm([
+      { name: "title", label: "Название канала", required: true, maxLength: 48 },
+      { name: "description", label: "Описание", type: "textarea", maxLength: 240 },
+      { name: "visibility", label: "Доступ", type: "select", options: [["PRIVATE", "Закрытый — только по приглашению"], ["PUBLIC", "Открытый — можно найти и вступить"]] },
+      { name: "talkPolicy", label: "Кто может говорить", type: "select", options: [["EVERYONE", "Все участники"], ["TRUSTED", "Владелец, модераторы и доверенные"], ["BROADCAST", "Только владелец и модераторы"]] }
+    ], "Создать канал", async (values) => {
+      try {
+        const data = await api("/api/driver/radio/channels", { method: "POST", body: values });
+        await refreshOverview();
+        await selectChannel(channels.get(Number(data.channel.id)) || data.channel);
+        setState("Канал создан.", "ready");
+      } catch (error) { setState(friendlyRadioError(error), "error"); return false; }
+    });
+    consoleUi.showDialog("Новый канал", form);
+  }
+
+  async function showDiscover() {
+    const wrap = document.createElement("div");
+    const input = document.createElement("input"); input.type = "search"; input.placeholder = "Название открытого канала"; input.setAttribute("aria-label", "Поиск открытых каналов");
+    const results = document.createElement("div"); results.style.display = "grid"; results.style.gap = "8px";
+    wrap.append(input, results);
+    let timer = null;
+    async function search() {
+      try {
+        const data = await api(`/api/driver/radio/discover?q=${encodeURIComponent(input.value.trim())}`);
+        results.replaceChildren();
+        for (const item of data.channels || []) {
+          const join = consoleUi.makeAction(item.joined ? "Уже в канале" : "Вступить", async () => {
+            if (item.joined) return;
+            try { await api(`/api/driver/radio/channels/${item.id}/join`, { method: "POST", body: {} }); await refreshOverview(); join.textContent = "Уже в канале"; join.disabled = true; }
+            catch (error) { setState(friendlyRadioError(error), "error"); }
+          });
+          join.disabled = item.joined;
+          results.append(consoleUi.makeRow({ title: item.title, subtitle: `${item.memberCount} участн. · ${item.description || RADIO_POLICY_LABELS[item.talkPolicy] || ""}`, actions: [join] }));
+        }
+        if (!results.childNodes.length) { const p = document.createElement("p"); p.className = "radio-empty"; p.textContent = "Открытые каналы не найдены."; results.append(p); }
+      } catch { results.textContent = "Не удалось загрузить список каналов."; }
+    }
+    input.addEventListener("input", () => { if (timer) window.clearTimeout(timer); timer = window.setTimeout(search, 250); });
+    consoleUi.showDialog("Найти канал", wrap);
+    await search();
+  }
+
+  function showInvites() {
+    const rows = [];
+    for (const invite of invites) {
+      const accept = consoleUi.makeAction("Принять", async () => {
+        try { await api(`/api/driver/radio/invites/${invite.channelId}/respond`, { method: "POST", body: { action: "ACCEPT" } }); await refreshOverview(); showInvites(); }
+        catch (error) { setState(friendlyRadioError(error), "error"); }
+      });
+      const decline = consoleUi.makeAction("Отклонить", async () => {
+        try { await api(`/api/driver/radio/invites/${invite.channelId}/respond`, { method: "POST", body: { action: "DECLINE" } }); await refreshOverview(); showInvites(); }
+        catch (error) { setState(friendlyRadioError(error), "error"); }
+      });
+      rows.push(consoleUi.makeRow({ title: invite.title, subtitle: `${invite.invitedBy} · ${invite.memberCount} участн.`, actions: [accept, decline] }));
+    }
+    if (!rows.length) { const p = document.createElement("p"); p.className = "radio-empty"; p.textContent = "Новых приглашений нет."; rows.push(p); }
+    consoleUi.showDialog("Приглашения в каналы", rows);
+  }
+
+  async function showMembers() {
+    if (!channel || channel.kind === "DIRECT") return;
+    const wrap = document.createElement("div"); wrap.style.display = "grid"; wrap.style.gap = "8px";
+    if (channel.canModerate) {
+      const inviteForm = consoleUi.makeForm([{ name: "nickname", label: "Пригласить подтверждённый контакт по нику", required: true, maxLength: 32 }], "Пригласить", async ({ nickname }) => {
+        try { await api(`/api/driver/radio/channels/${channel.id}/invites`, { method: "POST", body: { nickname } }); setState(`Приглашение отправлено: ${nickname}.`, "ready"); return true; }
+        catch (error) { setState(friendlyRadioError(error), "error"); return false; }
+      });
+      wrap.append(inviteForm);
+    }
+    try {
+      const data = await api(`/api/driver/radio/channels/${channel.id}/members`);
+      for (const member of data.members || []) {
+        const actions = [];
+        if (channel.canManage && member.nickname !== ownNickname) {
+          const roleSelect = consoleUi.makeSelect([
+            ["OWNER", "Владелец"], ["MODERATOR", "Модератор"], ["TRUSTED", "Доверенный"], ["MEMBER", "Участник"], ["LISTENER", "Слушатель"]
+          ], member.role, async (role) => {
+            if (role === "OWNER" && !window.confirm(`Передать владение каналом пользователю ${member.nickname}?`)) return showMembers();
+            try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "PATCH", body: { role } }); await refreshOverview(); showMembers(); }
+            catch (error) { setState(friendlyRadioError(error), "error"); }
+          });
+          actions.push(roleSelect);
+        }
+        const removable = channel.canModerate && member.nickname !== ownNickname && member.role !== "OWNER" && !(channel.role === "MODERATOR" && member.role === "MODERATOR");
+        if (removable) {
+          actions.push(consoleUi.makeAction("Убрать", async () => {
+            if (!window.confirm(`Убрать ${member.nickname} из канала?`)) return;
+            try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "DELETE", body: { ban: false } }); await refreshOverview(); showMembers(); }
+            catch (error) { setState(friendlyRadioError(error), "error"); }
+          }));
+          actions.push(consoleUi.makeAction("Бан", async () => {
+            if (!window.confirm(`Заблокировать ${member.nickname} в этом канале?`)) return;
+            try { await api(`/api/driver/radio/channels/${channel.id}/members/${encodeURIComponent(member.nickname)}`, { method: "DELETE", body: { ban: true } }); await refreshOverview(); showMembers(); }
+            catch (error) { setState(friendlyRadioError(error), "error"); }
+          }));
+        }
+        wrap.append(consoleUi.makeRow({ title: member.nickname, subtitle: `${RADIO_ROLE_LABELS[member.role] || member.role} · ${member.driverType}`, actions }));
       }
-    }, POLL_MS) : null;
+      consoleUi.showDialog(`Участники · ${channel.title}`, wrap);
+    } catch (error) { setState(friendlyRadioError(error), "error"); }
+  }
+
+  function showChannelSettings() {
+    if (!channel) return;
+    if (channel.kind === "GROUP" && channel.canManage) {
+      const form = consoleUi.makeForm([
+        { name: "title", label: "Название", value: channel.title, required: true, maxLength: 48 },
+        { name: "description", label: "Описание", type: "textarea", value: channel.description || "", maxLength: 240 },
+        { name: "visibility", label: "Доступ", type: "select", value: channel.visibility, options: [["PRIVATE", "Закрытый"], ["PUBLIC", "Открытый"]] },
+        { name: "talkPolicy", label: "Кто может говорить", type: "select", value: channel.talkPolicy, options: [["EVERYONE", "Все"], ["TRUSTED", "Доверенные"], ["BROADCAST", "Вещание"]] }
+      ], "Сохранить", async (values) => {
+        try { await api(`/api/driver/radio/channels/${channel.id}`, { method: "PATCH", body: values }); await refreshOverview(); setState("Канал обновлён.", "ready"); }
+        catch (error) { setState(friendlyRadioError(error), "error"); return false; }
+      });
+      const remove = consoleUi.makeAction("Удалить канал", async () => {
+        if (!window.confirm(`Удалить канал «${channel.title}» и его голосовую историю?`)) return;
+        try { await api(`/api/driver/radio/channels/${channel.id}`, { method: "DELETE", body: {} }); channel = null; await refreshOverview({ initial: true }); if (channels.size) await selectChannel(channels.values().next().value); consoleUi.closeDialog(); setState("Канал удалён.", "ready"); }
+        catch (error) { setState(friendlyRadioError(error), "error"); }
+      });
+      form.append(remove);
+      consoleUi.showDialog(`Настройки · ${channel.title}`, form);
+      return;
+    }
+    if (channel.kind === "GROUP") {
+      const leave = consoleUi.makeAction("Выйти из канала", async () => {
+        if (!window.confirm(`Выйти из канала «${channel.title}»?`)) return;
+        try { await api(`/api/driver/radio/channels/${channel.id}/leave`, { method: "POST", body: {} }); channel = null; await refreshOverview({ initial: true }); consoleUi.closeDialog(); }
+        catch (error) { setState(friendlyRadioError(error), "error"); }
+      });
+      consoleUi.showDialog(`Канал · ${channel.title}`, [leave]);
+    }
+  }
+
+  function carStep(delta) {
+    const items = [...channels.values()];
+    if (!items.length) return;
+    const index = Math.max(0, items.findIndex((item) => Number(item.id) === Number(channel?.id)));
+    const next = items[(index + delta + items.length) % items.length];
+    selectChannel(next);
+  }
+
+  async function sendChannelAlert() {
+    if (!channel) return;
+    try {
+      const data = await api(`/api/driver/radio/channels/${channel.id}/alerts`, { method: "POST", body: {} });
+      consoleUi.showAlert({ ...data.alert, channelTitle: channel.title });
+      setState("Сигнал внимания отправлен участникам канала.", "ready");
+    } catch (error) { setState(friendlyRadioError(error), "error"); }
+  }
+
+  function bindConsole() {
+    const c = consoleUi.controls;
+    c.statusSelect.addEventListener("change", async () => {
+      const status = c.statusSelect.value;
+      if (status === "SOLO" && !channel) { c.statusSelect.value = settings.status; return setState("Сначала выберите канал для Solo.", "error"); }
+      await updateSettings({ status, soloChannelId: status === "SOLO" ? channel.id : null });
+    });
+    c.createButton.addEventListener("click", showCreateChannel);
+    c.discoverButton.addEventListener("click", showDiscover);
+    c.invitesButton.addEventListener("click", showInvites);
+    c.echoButton.addEventListener("click", runEchoTest);
+    c.carButton.addEventListener("click", () => { carMode = !carMode; consoleUi.setCarMode(carMode); });
+    c.exitCarButton.addEventListener("click", () => { carMode = false; consoleUi.setCarMode(false); });
+    c.prevButton.addEventListener("click", () => carStep(-1));
+    c.nextButton.addEventListener("click", () => carStep(1));
+    c.carReplayButton.addEventListener("click", replayLast);
+    c.replayButton.addEventListener("click", replayLast);
+    c.liveButton.addEventListener("click", () => updateSettings({ autoPlay: !settings.autoPlay }));
+    c.speedSelect.addEventListener("change", async () => {
+      const rate = Number(c.speedSelect.value);
+      if (await updateSettings({ playbackRate: rate })) {
+        for (const player of historyPlayers) player.audio.playbackRate = rate;
+        if (activeAudio) activeAudio.playbackRate = rate;
+      }
+    });
+    c.favoriteButton.addEventListener("click", () => updateChannelPreferences({ favorite: !channel?.favorite }));
+    c.muteButton.addEventListener("click", () => updateChannelPreferences({ muted: !channel?.muted }));
+    c.defaultButton.addEventListener("click", async () => {
+      if (!channel) return;
+      await updateSettings({ defaultChannelId: channel.isDefault ? null : channel.id });
+      await refreshOverview({ initial: true });
+    });
+    c.membersButton.addEventListener("click", showMembers);
+    c.alertButton.addEventListener("click", sendChannelAlert);
+    c.settingsButton.addEventListener("click", showChannelSettings);
   }
 
   function closeStream() {
@@ -387,7 +794,6 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       });
       return true;
     } catch {
-      // If the browser is already offline, the existing server-side lease still expires safely.
       return false;
     }
   }
@@ -531,6 +937,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       stopRecordingClock();
       if (error.status === 401) onAuthLost();
       else if (error.message === "radio_channel_busy") setState(error.speaker ? `Сейчас говорит ${error.speaker}.` : "Канал уже занят другим водителем.", "listening");
+      else if (error.message === "radio_talk_not_allowed") setState("В этом канале у вас режим только прослушивания.", "error");
       else if (error.name === "NotAllowedError") setState("Микрофон запрещён. Разрешите доступ к микрофону в настройках браузера и попробуйте снова.", "error");
       else if (globalThis.navigator?.onLine === false) setState("Нет сети. Передача не начиналась.", "error");
       else setState("Не удалось начать передачу.", "error");
@@ -594,10 +1001,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   }
 
   function finishPointerHold(event) {
-    if (pointerCancelOnRelease) {
-      cancelRecording(event);
-      return;
-    }
+    if (pointerCancelOnRelease) { cancelRecording(event); return; }
     stopRecording(event);
   }
 
@@ -610,10 +1014,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   ptt.addEventListener("selectstart", (event) => event.preventDefault());
   ptt.addEventListener("dragstart", (event) => event.preventDefault());
   ptt.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && (recording || starting || pttHeld)) {
-      cancelRecording(event);
-      return;
-    }
+    if (event.key === "Escape" && (recording || starting || pttHeld)) { cancelRecording(event); return; }
     if ((event.key === " " || event.key === "Enter") && !event.repeat) startRecording(event);
   });
   ptt.addEventListener("keyup", (event) => {
@@ -621,17 +1022,18 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
   });
   ptt.addEventListener("blur", (event) => { if (pttHeld) cancelRecording(event, "Передача отменена: кнопка потеряла фокус."); });
 
+  bindConsole();
   experience.reset();
+  consoleUi.setCarMode(false);
   updatePtt();
 
   return {
     async activate() {
       activated = true;
       if (!profileReady) return setState("Сначала сохраните профиль водителя.", "error");
-      await refreshChannels();
-      if (!channel && channels.size) await selectChannel(channels.values().next().value);
-      else if (channel) await loadTransmissions();
-      if (!channel && !channels.size) setState("Нет доступного канала рации.", "disabled");
+      await refreshOverview({ initial: true });
+      if (channel) await selectChannel(channel, { keepStatus: true });
+      else setState("Нет доступного канала рации.", "disabled");
       schedulePoll();
     },
     setSession({ profile }) {
@@ -649,8 +1051,9 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     async openDirect(nickname) {
       if (!profileReady) throw new Error("driver_profile_required");
       const data = await api("/api/driver/radio/direct", { method: "POST", body: { nickname } });
-      channels.set(data.channel.id, data.channel);
-      await selectChannel(data.channel);
+      channels.set(Number(data.channel.id), data.channel);
+      await refreshOverview({ initial: true });
+      await selectChannel(channels.get(Number(data.channel.id)) || data.channel);
     },
     reset() {
       activated = false;
@@ -663,8 +1066,7 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       cancelUpload = true;
       cancelReason = "";
       statusLockUntil = 0;
-      if (activeAudio) activeAudio.pause();
-      activeAudio = null;
+      pauseActiveAudio();
       if (pollTimer) window.clearInterval(pollTimer);
       if (stopTimer) window.clearTimeout(stopTimer);
       pollTimer = null;
@@ -677,8 +1079,21 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       recordingStartedAt = 0;
       channel = null;
       channels.clear();
-      renderChannels();
+      knownLastIds.clear();
+      pinnedIds.clear();
+      historyItems = [];
+      historyPlayers = [];
+      invites = [];
+      alerts = [];
+      settings = { status: "AVAILABLE", soloChannelId: null, defaultChannelId: null, autoPlay: false, playbackRate: 1 };
+      carMode = false;
+      renderChannelList();
       renderTransmissions();
+      consoleUi.renderPins([]);
+      consoleUi.showAlert(null);
+      consoleUi.setInvitesCount(0);
+      consoleUi.setSettings(settings);
+      consoleUi.setCarMode(false);
       navButton.disabled = true;
       ptt.classList.remove("recording");
       currentPhase = "disabled";
