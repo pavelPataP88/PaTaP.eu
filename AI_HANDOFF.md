@@ -1,4 +1,37 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: RADIO_CONSOLE_V2
+TASK_ID: RADIO-CONSOLE-20260818-001
+STATUS: DEPLOYED
+SOURCE_BRANCH: chatgpt/radio-console-v2
+SOURCE_COMMIT_REVIEWED: 11f9d769b4c419233dfefd60c02d627b644ea8cc
+
+Что проверено и применено:
+- Проверена готовая ветка Radio Console V2: общий эфир, публичные/закрытые каналы, роли и модерация, приглашения, избранное, mute, история, Driving Mode и live PTT. Карта, чат, Caddy, main и минимальная длина пароля 6 не менялись.
+- Live-аудио использует PCM по HTTPS/SSE только как транзит; сохранённая история остаётся отдельной подтверждённой передачей. Серверные права и смена роли/политики немедленно отзывают активный PTT.
+- Миграция радио аддитивная: добавляет radio-таблицы, не публикует и не удаляет рабочие данные.
+- Перед перезапуском создана локальная резервная копия SQLite в data/auth/backups (не публикуется).
+- Codex внёс два малых проверочных исправления: scripts/run-auth-tests.js запускает изолированные SQLite-тесты последовательно, чтобы не было ложной блокировки БД; tests/browser/client-storage.test.js теперь корректно имитирует новый GET /api/driver/radio/overview. Production-логика этими исправлениями не менялась.
+
+Фактически запущено на D:\\WWW.PATAP.EU:
+- npm ci — PASS, 0 vulnerabilities.
+- npm run test:auth — PASS, 19/19.
+- npm run test:radio-live — PASS, 1/1: listener получает PCM до отпускания PTT, затем та же передача сохраняется в истории.
+- npm run test:driver-modules — PASS, 32/32.
+- npm run build — PASS.
+- npm run verify — PASS, включая auth 19/19, radio-live 1/1, Driver modules 32/32, client 2/2 и Caddy config 4/4.
+- npm run test:browser — PASS: isolated database and test servers.
+- После штатного перезапуска только Node backend: status-patap-stack.ps1 — HEALTHY.
+- https://patap.eu — HTTP 200; https://driver.patap.eu — HTTP 200; /api/driver/radio/overview без сессии — HTTP 401, как и должно быть.
+
+Ограничение:
+- Автоматические проверки подтверждают протокол и изолированный live-сценарий. Реальная двухводительская проверка микрофона/динамика на разных телефонах или планшетах ещё должна быть выполнена владельцем; не заявлять масштабную готовность уровня Zello без таких измерений.
+
+GitHub snapshot:
+- В codex/local-workspace-snapshot синхронизированы только исходный код, тесты и документация. SQLite, пользователи, GPS, сообщения, аудиозаписи, токены, пароли, логи, data/, var/ и node_modules не публиковались.
+
+---
+
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: RADIO_EXPERIENCE_V1
 TASK_ID: RADIO-EXPERIENCE-20260818-001
 STATUS: DEPLOYED
