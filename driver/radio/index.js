@@ -323,6 +323,12 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
     }
   }
 
+  function transmissionCommitted(items, transmissionId) {
+    return Array.isArray(items)
+      ? items.some((item) => Number(item.id) === Number(transmissionId))
+      : null;
+  }
+
   async function selectChannel(next) {
     if (!next || recording || starting || uploading) return;
     channel = next;
@@ -433,20 +439,34 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       if (error.status === 401) {
         onAuthLost();
       } else {
-        const items = await loadTransmissions({ silent: true });
-        const committed = Array.isArray(items)
-          ? items.some((item) => Number(item.id) === Number(session.transmissionId))
-          : null;
-        if (committed) {
+        const firstCheck = await loadTransmissions({ silent: true });
+        const firstCommitted = transmissionCommitted(firstCheck, session.transmissionId);
+        if (firstCommitted) {
           setState("Передача доставлена. Ответ загрузки был потерян, но передача уже есть в канале.", "sent", { lockMs: 2500 });
-        } else if (committed === false) {
-          await cancelTransmission(session);
-          if (error.message === "radio_upload_not_authorized") {
-            setState("Время передачи истекло. Запись не отправлена.", "error");
-          } else if (globalThis.navigator?.onLine === false) {
-            setState("Нет сети. Передача не отправлена.", "error");
+        } else if (firstCommitted === false) {
+          const cancelled = await cancelTransmission(session);
+          if (!cancelled) {
+            const secondCheck = await loadTransmissions({ silent: true });
+            const secondCommitted = transmissionCommitted(secondCheck, session.transmissionId);
+            if (secondCommitted) {
+              setState("Передача доставлена. Сервер подтвердил её после повторной проверки канала.", "sent", { lockMs: 2500 });
+              return;
+            }
+            if (secondCommitted === null) {
+              setState("Не удалось подтвердить доставку. Проверьте канал после восстановления сети.", "error");
+              return;
+            }
+          }
+          if (cancelled) {
+            if (error.message === "radio_upload_not_authorized") {
+              setState("Время передачи истекло. Запись не отправлена.", "error");
+            } else if (globalThis.navigator?.onLine === false) {
+              setState("Нет сети. Передача не отправлена.", "error");
+            } else {
+              setState("Сервер не подтвердил передачу. Запись отменена и не отправлена.", "error");
+            }
           } else {
-            setState("Сервер не подтвердил передачу. Запись не отправлена.", "error");
+            setState("Передача не найдена в канале, но сервер не подтвердил отмену. Проверьте канал ещё раз.", "error");
           }
         } else {
           setState("Не удалось подтвердить доставку. Проверьте канал после восстановления сети.", "error");
@@ -499,7 +519,10 @@ export function createRadioController({ api, uploadBinary, onAuthLost }) {
       ptt.classList.add("recording");
       setState(`Вы говорите в канал «${channel.title}».`, "recording");
       updatePtt();
-      stopTimer = window.setTimeout(stopRecording, MAX_RECORDING_MS);
+      stopTimer = window.setTimeout(() => {
+        if (pointerCancelOnRelease) cancelRecording(undefined);
+        else stopRecording(undefined);
+      }, MAX_RECORDING_MS);
     } catch (error) {
       closeStream();
       recording = null;
