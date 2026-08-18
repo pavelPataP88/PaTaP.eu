@@ -1,4 +1,5 @@
 const { createChatRepository } = require("./repository");
+const { createChatReactionRepository, normalizeReaction } = require("./reactions");
 
 const CLIENT_MESSAGE_ID = /^[A-Za-z0-9_-]{8,100}$/;
 
@@ -11,6 +12,7 @@ function normalizeMessage(value) {
 
 function createChatRoutes({ db, json, requireSession, requireCsrf, checkRate, audit, nowIso, publish }) {
   const chat = createChatRepository(db);
+  const reactions = createChatReactionRepository(db);
 
   function requireChatAccess(req, res, roomId = null) {
     const session = requireSession(req, res);
@@ -89,6 +91,52 @@ function createChatRoutes({ db, json, requireSession, requireCsrf, checkRate, au
       return true;
     }
 
+    const reactionMatch = url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)\/reactions$/);
+    if (req.method === "POST" && reactionMatch) {
+      if (body === undefined) return false;
+      const messageId = Number(reactionMatch[1]);
+      const roomId = reactions.messageRoomId(messageId);
+      if (roomId === null) {
+        const session = requireChatAccess(req, res);
+        if (session) json(res, 404, { error: "chat_message_not_found" });
+        return true;
+      }
+      const session = requireChatAccess(req, res, roomId);
+      if (!session || !requireCsrf(req, res, session)) return true;
+      const reaction = normalizeReaction(body?.reaction);
+      if (!reaction) {
+        json(res, 400, { error: "invalid_chat_reaction" });
+        return true;
+      }
+      if (!checkRate(`chat-reaction:user:${session.user.id}`, 60, 1)) {
+        json(res, 429, { error: "chat_rate_limited" });
+        return true;
+      }
+      try {
+        const result = reactions.toggleReaction({
+          messageId,
+          userId: session.user.id,
+          reaction,
+          createdAt: nowIso()
+        });
+        audit(req, result.added ? "chat_reaction_added" : "chat_reaction_removed", {
+          userId: session.user.id,
+          success: true,
+          details: { roomId: result.roomId, messageId: result.messageId, reaction }
+        });
+        publish({
+          type: "chat.reaction.updated",
+          roomId: result.roomId,
+          messageId: result.messageId,
+          reactions: result.reactions
+        });
+        json(res, 200, result);
+      } catch (error) {
+        json(res, error.status || 500, { error: error.status ? error.message : "chat_reaction_failed" });
+      }
+      return true;
+    }
+
     const deleteMatch = url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/);
     if (req.method === "DELETE" && deleteMatch) {
       const session = requireChatAccess(req, res);
@@ -129,7 +177,9 @@ function createChatRoutes({ db, json, requireSession, requireCsrf, checkRate, au
         json(res, 400, { error: "invalid_chat_cursor" });
         return true;
       }
-      json(res, 200, chat.listMessages(roomId, { after, before, limit }));
+      const result = chat.listMessages(roomId, { after, before, limit });
+      result.messages = reactions.attachToMessages(result.messages, session.user.id);
+      json(res, 200, result);
       return true;
     }
 
@@ -148,6 +198,7 @@ function createChatRoutes({ db, json, requireSession, requireCsrf, checkRate, au
         return true;
       }
       const stored = chat.insertMessage({ roomId, senderId: session.user.id, clientMessageId, text, createdAt: nowIso() });
+      stored.message.reactions = reactions.listForMessage(stored.message.id, session.user.id);
       if (!stored.duplicate) {
         audit(req, "chat_message_sent", { userId: session.user.id, success: true, details: { roomId } });
         publish({
