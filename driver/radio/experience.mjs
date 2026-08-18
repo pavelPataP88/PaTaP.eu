@@ -67,7 +67,7 @@ export function createRadioExperienceUi({ card, ptt }) {
   const hint = document.createElement("p");
   hint.className = "radio-ptt-hint";
   hint.id = "radio-ptt-hint";
-  hint.textContent = "Зажмите кнопку и говорите. Отпустите для отправки. Esc отменяет передачу.";
+  hint.textContent = "Зажмите и говорите. Отпустите для отправки. Для отмены уведите палец за пределы кнопки и отпустите; с клавиатуры — Esc.";
 
   live.append(channelBox, phaseBox, timing);
   card?.insertBefore(live, card.querySelector(".radio-channels"));
