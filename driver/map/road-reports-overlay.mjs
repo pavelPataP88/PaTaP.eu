@@ -43,12 +43,24 @@ function reportTitle(report) {
   return [type, lane, expires ? `до ${expires}` : ""].filter(Boolean).join(" · ");
 }
 
+function styleButton(button, { active = false } = {}) {
+  button.style.minHeight = "34px";
+  button.style.padding = "6px 10px";
+  button.style.border = active ? "1px solid #68e0ad" : "1px solid rgba(255,255,255,.24)";
+  button.style.borderRadius = "999px";
+  button.style.background = active ? "#68e0ad" : "rgba(7,17,14,.9)";
+  button.style.color = active ? "#06130e" : "#f4f8f6";
+  button.style.fontWeight = "800";
+  button.style.cursor = "pointer";
+}
+
 function createChoiceButton(label, value, onChoose) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "road-report-choice";
   button.textContent = label;
   button.dataset.value = value;
+  styleButton(button);
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     onChoose(value, button);
@@ -63,34 +75,63 @@ export function createRoadReportsOverlay({ map, mapElement, api, getOwnLocation,
   let timer = null;
   const markers = new Map();
 
+  if (getComputedStyle(mapElement).position === "static") mapElement.style.position = "relative";
+
   const overlay = document.createElement("div");
   overlay.className = "road-report-overlay";
   overlay.dataset.roadReports = "map-overlay";
+  overlay.style.position = "absolute";
+  overlay.style.left = "10px";
+  overlay.style.top = "10px";
+  overlay.style.zIndex = "8";
+  overlay.style.display = "grid";
+  overlay.style.gap = "8px";
+  overlay.style.maxWidth = "min(92%, 440px)";
+  overlay.style.pointerEvents = "auto";
 
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "road-report-toggle";
   toggle.textContent = "+ событие";
   toggle.setAttribute("aria-expanded", "false");
+  styleButton(toggle, { active: true });
+  toggle.style.justifySelf = "start";
+  toggle.style.boxShadow = "0 3px 12px rgba(0,0,0,.35)";
 
   const panel = document.createElement("div");
   panel.className = "road-report-panel";
   panel.hidden = true;
+  panel.style.padding = "9px";
+  panel.style.border = "1px solid rgba(255,255,255,.18)";
+  panel.style.borderRadius = "14px";
+  panel.style.background = "rgba(7,17,14,.94)";
+  panel.style.boxShadow = "0 8px 24px rgba(0,0,0,.42)";
+  panel.style.backdropFilter = "blur(10px)";
 
   const typeRow = document.createElement("div");
   typeRow.className = "road-report-choice-row";
+  typeRow.style.display = "flex";
+  typeRow.style.flexWrap = "wrap";
+  typeRow.style.gap = "6px";
   const laneRow = document.createElement("div");
   laneRow.className = "road-report-choice-row road-report-lanes";
   laneRow.hidden = true;
+  laneRow.style.display = "flex";
+  laneRow.style.flexWrap = "wrap";
+  laneRow.style.gap = "6px";
+  laneRow.style.marginTop = "8px";
 
   const hint = document.createElement("div");
   hint.className = "road-report-hint";
   hint.setAttribute("role", "status");
   hint.setAttribute("aria-live", "polite");
   hint.textContent = "Выберите тип события.";
+  hint.style.marginTop = "8px";
+  hint.style.fontSize = ".8rem";
+  hint.style.color = "#d8e4df";
 
   function markSelected(row, selected) {
-    for (const button of row.querySelectorAll("button")) button.classList.toggle("active", button === selected);
+    for (const button of row.querySelectorAll("button")) styleButton(button, { active: button === selected });
   }
 
   for (const [type, config] of Object.entries(ROAD_REPORT_TYPES)) {
@@ -155,6 +196,18 @@ export function createRoadReportsOverlay({ map, mapElement, api, getOwnLocation,
     element.textContent = ROAD_REPORT_TYPES[report.type].marker;
     element.title = reportTitle(report);
     element.setAttribute("aria-label", reportTitle(report));
+    element.style.minWidth = "42px";
+    element.style.height = "42px";
+    element.style.padding = "0 7px";
+    element.style.border = "3px solid #fff";
+    element.style.borderRadius = "12px";
+    element.style.background = report.type === "ROADWORK" ? "#ff7a00" : "#ffb000";
+    element.style.color = "#111";
+    element.style.fontWeight = "900";
+    element.style.fontSize = ".75rem";
+    element.style.boxShadow = "0 4px 14px rgba(0,0,0,.6)";
+    element.style.cursor = "pointer";
+    element.style.zIndex = "6";
     element.addEventListener("click", (event) => {
       event.stopPropagation();
       confirmReport(report);
