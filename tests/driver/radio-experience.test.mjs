@@ -47,6 +47,7 @@ test("PTT hold remains releasable and supports pointer, one-hand cancel and keyb
   assert.match(radioSource, /event\.key === "Escape"/);
   assert.match(radioSource, /event\.key === " " \|\| event\.key === "Enter"/);
   assert.match(radioSource, /blur/);
+  assert.match(radioSource, /if \(pointerCancelOnRelease\) cancelRecording\(undefined\)/);
 });
 
 test("short recordings and explicit cancellation use the existing token-protected cancel path", () => {
@@ -67,7 +68,11 @@ test("delivery success is shown only after upload confirmation and ambiguous net
   assert.ok(uploadIndex >= 0);
   assert.ok(successIndex > uploadIndex);
   assert.match(radioSource, /Пока нет подтверждения сервера, она не считается доставленной/);
-  assert.match(radioSource, /loadTransmissions\(\{ silent: true \}\)/);
+  assert.match(radioSource, /firstCheck = await loadTransmissions\(\{ silent: true \}\)/);
+  assert.match(radioSource, /cancelled = await cancelTransmission\(session\)/);
+  assert.match(radioSource, /secondCheck = await loadTransmissions\(\{ silent: true \}\)/);
+  assert.match(radioSource, /Сервер подтвердил её после повторной проверки канала/);
+  assert.match(radioSource, /сервер не подтвердил отмену\. Проверьте канал ещё раз/);
   assert.match(radioSource, /Не удалось подтвердить доставку\. Проверьте канал после восстановления сети\./);
   assert.match(radioSource, /Нет сети\. Передача не отправлена\./);
   assert.match(radioSource, /Ответ загрузки был потерян, но передача уже есть в канале/);
