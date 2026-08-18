@@ -171,7 +171,17 @@ test("live PCM reaches an authorized listener before commit and the same PTT ses
       `/api/driver/radio/live/${lease.transmissionId}`,
       pcm,
       {
-        "Content-Type": "application/octet-stream",
+        "X-Radio-Upload-Token": "wrong-token",
+        "X-Radio-Live-Sequence": "0",
+        "X-Radio-Live-Sample-Rate": "16000"
+      }
+    );
+    assert.equal(response.status, 409);
+
+    response = await speaker.client.binaryRequest(
+      `/api/driver/radio/live/${lease.transmissionId}`,
+      pcm,
+      {
         "X-Radio-Upload-Token": lease.uploadToken,
         "X-Radio-Live-Sequence": "0",
         "X-Radio-Live-Sample-Rate": "16000"
@@ -190,6 +200,24 @@ test("live PCM reaches an authorized listener before commit and the same PTT ses
     assert.equal(Buffer.from(live.audio, "base64").length, pcm.length);
 
     response = await speaker.client.binaryRequest(
+      `/api/driver/radio/live/${lease.transmissionId}`,
+      Buffer.alloc(0),
+      {
+        "X-Radio-Upload-Token": lease.uploadToken,
+        "X-Radio-Live-End": "1",
+        "X-Radio-Live-Sequence": "0"
+      }
+    );
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).finalSequence, 0);
+
+    const end = await liveEvents.nextPayload();
+    assert.equal(end.type, "radio.live");
+    assert.equal(end.end, true);
+    assert.equal(end.transmissionId, lease.transmissionId);
+    assert.equal(end.finalSequence, 0);
+
+    response = await speaker.client.binaryRequest(
       `/api/driver/radio/transmissions/${lease.transmissionId}/audio`,
       Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]),
       {
@@ -200,12 +228,6 @@ test("live PCM reaches an authorized listener before commit and the same PTT ses
     assert.equal(response.status, 201);
     const committed = await response.json();
     assert.equal(committed.transmission.id, lease.transmissionId);
-
-    const end = await liveEvents.nextPayload();
-    assert.equal(end.type, "radio.live");
-    assert.equal(end.end, true);
-    assert.equal(end.transmissionId, lease.transmissionId);
-    assert.equal(end.finalSequence, 0);
 
     result = await listener.client.request(`/api/driver/radio/channels/${general.id}/transmissions?limit=10`);
     assert.equal(result.response.status, 200);
