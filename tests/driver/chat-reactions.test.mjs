@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const source = fs.readFileSync(path.join(root, "driver", "chat", "index.js"), "utf8");
@@ -41,9 +40,10 @@ test("reaction display model shows count, own state, and people safely", () => {
   });
 });
 
-test("client handles realtime reaction updates and preserves message text on reaction errors", () => {
+test("client personalizes realtime updates and preserves message text on reaction errors", () => {
   assert.match(source, /payload\.type === "chat\.reaction\.updated"/);
-  assert.match(source, /messages\.set\(payload\.messageId, \{ \.\.\.current, reactions: payload\.reactions \|\| \[\] \}\)/);
+  assert.match(source, /item\.people\.includes\(ownNickname\)/);
+  assert.match(source, /messages\.set\(payload\.messageId, \{ \.\.\.current, reactions: personalized \}\)/);
   assert.match(source, /Не удалось изменить реакцию\. Сообщение осталось без изменений\./);
   assert.match(source, /body\.textContent = message\.text/);
 });
