@@ -450,6 +450,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   assert.equal(await page.locator(".radio-transmission .message-menu button.danger").filter({ hasText: "Удалить" }).count(), 1);
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator('.radio-transmission[data-transmission-id="501"] .message-menu summary').click();
+  await page.locator('.radio-transmission[data-transmission-id="501"] .message-menu[open]').waitFor();
   await page.locator('.radio-transmission[data-transmission-id="501"] .message-menu button.danger').click();
   await page.waitForFunction(() => document.querySelectorAll(".radio-transmission").length === 1);
   assert.equal(requests.some((item) => item.path === "/api/driver/radio/transmissions/501" && item.method === "DELETE"), true);
