@@ -1,4 +1,31 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: ROAD_REPORTS_MVP
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: CHANGES_REQUIRED
+SOURCE_BRANCH: chatgpt/road-reports-mvp
+SOURCE_COMMIT_REVIEWED: f11ef2c18be892edddc220bbd908b4d0cc2b6c96
+
+Проверены фактические изменения:
+- server/road-reports/repository.js; server/driver/routes.js; driver/map/index.js;
+  tests/auth/road-reports.test.js; tests/driver/road-reports.test.mjs;
+  scripts/run-auth-tests.js; package.json.
+- Отдельные маркеры, фиксированные типы/полосы, TTL, server-side author id,
+  CSRF/rate limit и создание в пределах 2 км от свежей добровольной GPS реализованы.
+- Публичный объект отчёта не содержит authorId, userId или nickname.
+- Код Яндекс.Карт не копировался. SQLite, чат, рация, Caddy, minimum password и main не менялись.
+
+Конкретно исправить в том же блоке:
+1. GET /api/driver/road-reports и слой маркеров должны быть read-only доступны в гостевом Driver. Гость не создаёт, не подтверждает и не получает автора; сейчас GET требует сессию, а refreshRoadReports скрывает все маркеры без profile.
+2. Подтверждение ACTIVE/GONE для чужой отметки сейчас допускается от Driver-профиля без свежей включённой GPS и без расстояния до события. Текущая модель это позволяет проверить без нового трекинга, поэтому требуются: свежая добровольная GPS, расстояние не более MAX_REPORT_DISTANCE_KM и соответствующие 409/400 ответы. Автор может закрыть собственную отметку без GPS для исправления ошибки.
+3. Добавить интеграционные тесты именно на оба правила: гостевой list без идентификаторов автора; удалённый/без-GPS пользователь не может ACTIVE/GONE подтвердить чужую отметку.
+4. Не добавлять SQLite, свободный текст, фото, обход контроля, парковки или другие блоки.
+
+Не применялось локально и в production:
+- Никакие файлы рабочей папки, процессы, SQLite, GPS, пользователи, сообщения, токены и логи не менялись.
+- Локальные npm-тесты ещё не запускались: кандидат возвращён на точечную доработку до переноса.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: PRODUCT_DISCOVERY
 TASK_ID: PRODUCT-DISCOVERY-20260818-001
 STATUS: ACCEPTED
