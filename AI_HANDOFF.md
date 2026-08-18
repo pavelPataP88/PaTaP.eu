@@ -1,4 +1,20 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: ROAD_REPORTS_TEST_FIX_02
+TASK_ID: ROAD-REPORTS-20260818-001
+STATUS: TEST_FAILURE
+SOURCE_BRANCH: chatgpt/road-reports-test-fix-02
+SOURCE_COMMIT_REVIEWED: 018488443180de464f28420f4f32db9a1f18e6ec
+
+Повторная фактическая проверка Codex:
+- npm run test:auth — снова FAIL, 16/17; сервер не перезапускался, кандидат удалён из локальной папки.
+- Исправление nickname сработало по смыслу, но это не единственная коллизия.
+- Точная ошибка теперь в tests/auth/road-reports.test.js:57: POST /api/register возвращает 400 вместо 201.
+- helper register() всё ещё строит username как road_report_${suffix}_${runId}; в двух тестах повторяются suffix и PATAP_TEST_RUN_ID.
+- Требуется сделать уникальными также username и email тестовых пользователей через тот же registrationSequence/короткий тег. Не менять production registration, nickname_key UNIQUE, routes, SQLite или сам ROAD_REPORTS код.
+- Добавить/сохранить один полный test:auth сценарий с обоими tests этого файла.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: ROAD_REPORTS_FIX_01
 TASK_ID: ROAD-REPORTS-20260818-001
 STATUS: TEST_FAILURE
