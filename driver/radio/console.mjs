@@ -34,7 +34,6 @@ export function createRadioConsoleUi({ card, title, state, channelsElement, help
   card.classList.add("radio-console-card");
   const heading = card.querySelector(".radio-heading");
   const note = card.querySelector(".radio-note");
-
   const topbar = document.createElement("div");
   topbar.className = "radio-console-topbar";
   const statusSelect = document.createElement("select");
@@ -94,7 +93,6 @@ export function createRadioConsoleUi({ card, title, state, channelsElement, help
   const settingsButton = button("Настройки");
   tools.append(favoriteButton, muteButton, defaultButton, replayButton, membersButton, alertButton, settingsButton);
   talkHead.append(talkTitle, tools);
-
   const alertBanner = document.createElement("div");
   alertBanner.className = "radio-console-alert";
   alertBanner.hidden = true;
@@ -117,7 +115,6 @@ export function createRadioConsoleUi({ card, title, state, channelsElement, help
   const exitCarButton = button("Выйти");
   carControls.append(prevButton, carReplayButton, nextButton, exitCarButton);
   talk.append(carControls);
-
   shell.append(sidebar, talk);
   card.replaceChildren(heading, topbar, shell);
 
@@ -146,6 +143,7 @@ export function createRadioConsoleUi({ card, title, state, channelsElement, help
 
   function renderChannelItems() {
     channelsElement.replaceChildren();
+    if (help) help.hidden = currentItems.length > 0;
     const query = searchInput.value.trim().toLocaleLowerCase();
     const items = currentItems.filter(matchesFilter).filter((item) => !query || item.title.toLocaleLowerCase().includes(query));
     if (!items.length) {
@@ -218,7 +216,7 @@ export function createRadioConsoleUi({ card, title, state, channelsElement, help
       defaultButton.classList.toggle("active", Boolean(item?.isDefault));
       membersButton.hidden = !item || item.kind === "DIRECT";
       alertButton.hidden = !item || item.kind === "GENERAL" || (item.kind === "GROUP" && !item.canModerate);
-      settingsButton.hidden = !item || !item.canManage;
+      settingsButton.hidden = !item || item.kind !== "GROUP";
       renderChannelItems();
     },
     renderPins(items, onPlay) {
@@ -237,11 +235,11 @@ export function createRadioConsoleUi({ card, title, state, channelsElement, help
       alertBanner.hidden = false;
       alertBanner.textContent = `Вызов: ${alert.sender?.nickname || "Driver"} · ${alert.channelTitle || "канал"}`;
     },
-    setSettings(settings) {
-      statusSelect.value = settings?.status || "AVAILABLE";
-      liveButton.textContent = settings?.autoPlay ? "Живой звук: вкл" : "Живой звук: выкл";
-      liveButton.classList.toggle("active", Boolean(settings?.autoPlay));
-      speedSelect.value = String(settings?.playbackRate || 1);
+    setSettings(nextSettings) {
+      statusSelect.value = nextSettings?.status || "AVAILABLE";
+      liveButton.textContent = nextSettings?.autoPlay ? "Живой звук: вкл" : "Живой звук: выкл";
+      liveButton.classList.toggle("active", Boolean(nextSettings?.autoPlay));
+      speedSelect.value = String(nextSettings?.playbackRate || 1);
     },
     setInvitesCount(count) {
       invitesButton.textContent = count ? `Приглашения · ${count}` : "Приглашения";
