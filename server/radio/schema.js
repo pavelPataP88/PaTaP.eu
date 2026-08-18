@@ -32,16 +32,6 @@ function ensureRadioSchema(db, now) {
       FOREIGN KEY(channel_id, user_id) REFERENCES radio_channel_members(channel_id, user_id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS radio_member_audio_preferences (
-      channel_id INTEGER NOT NULL REFERENCES radio_channels(id) ON DELETE CASCADE,
-      listener_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      speaker_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      volume REAL NOT NULL DEFAULT 1.0 CHECK(volume IN (0.0,0.25,0.5,0.75,1.0)),
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY(channel_id, listener_user_id, speaker_user_id),
-      CHECK(listener_user_id != speaker_user_id)
-    );
-
     CREATE TABLE IF NOT EXISTS radio_channel_invites (
       channel_id INTEGER NOT NULL REFERENCES radio_channels(id) ON DELETE CASCADE,
       target_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -93,8 +83,6 @@ function ensureRadioSchema(db, now) {
       ON radio_channel_alerts(channel_id, expires_at);
     CREATE INDEX IF NOT EXISTS radio_member_state_favorite_idx
       ON radio_channel_member_state(user_id, favorite, channel_id);
-    CREATE INDEX IF NOT EXISTS radio_member_audio_listener_idx
-      ON radio_member_audio_preferences(listener_user_id, channel_id, speaker_user_id);
   `);
 
   db.prepare(`INSERT OR IGNORE INTO radio_channels(channel_key, kind, created_at)
