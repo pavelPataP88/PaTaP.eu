@@ -1,6 +1,37 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: CHAT_REACTIONS
 TASK_ID: CHAT-REACTIONS-20260818-001
+STATUS: DEPLOYED
+SOURCE_BRANCHES: chatgpt/chat-reactions; chatgpt/chat-reactions-schema12-fix
+SOURCE_COMMITS: c164a7aaa914095516dcc95c349675a522cc1fa1; 7a3916b62084ce30f23d1f1c844369065ad4becc
+
+Что применено:
+- Driver chat получил четыре фиксированные реакции: 👍, ✅, 👀, ❤️; повторное нажатие снимает собственную реакцию.
+- Доступ к реакции проверяется теми же правилами комнаты и блокировок, что и чат.
+- Миграция 12 добавила только таблицу chat_message_reactions и индекс; существующие пользователи, комнаты и сообщения не изменялись.
+- Исправлены три старые проверки схемы: ожидаемая версия 12 вместо 11.
+
+Фактические проверки на рабочем ноутбуке:
+- node --test tests/auth/chat-reactions.test.js tests/driver/chat-reactions.test.mjs — PASS, 7/7.
+- npm ci — PASS.
+- npm run build — PASS.
+- npm run verify — PASS: auth 13/13, driver modules 5/5, client 2/2, config 4/4.
+- npm run test:browser — PASS.
+- Перед изменением рабочей базы создана резервная копия: data/auth/backups/patap-auth-2026-08-18T11-41-00-188Z.sqlite (не публикуется).
+- Сервер авторизации перезапущен штатным способом; рабочая SQLite подтверждена: schema version 12, таблица chat_message_reactions существует.
+- status-patap-stack.cmd — HEALTHY: patap.eu, API и локальный Driver отвечают HTTP 200.
+
+Не делалось:
+- main не изменялся.
+- В GitHub не публиковались SQLite, пользователи, GPS, сообщения, токены, пароли, radio uploads или логи.
+- Реальные пользовательские реакции в production не создавались.
+
+Следующий блок ChatGPT не начинать без новой AI_TASK.md.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: CHAT_REACTIONS
+TASK_ID: CHAT-REACTIONS-20260818-001
 STATUS: CHANGES_REQUIRED
 SOURCE_BRANCH: chatgpt/chat-reactions
 SOURCE_COMMIT_REVIEWED: c164a7aaa914095516dcc95c349675a522cc1fa1
