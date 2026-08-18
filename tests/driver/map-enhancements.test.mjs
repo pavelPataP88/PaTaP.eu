@@ -117,3 +117,13 @@ test("guest road report map remains read-only", () => {
   assert.match(guestSource, /api\("\/api\/driver\/road-reports"\)/);
   assert.doesNotMatch(guestSource, /\/confirm|method:\s*"POST"|authorId|userId|nickname/);
 });
+
+test("authenticated map starts closer and first GPS focuses once without repeated zoom jumps", () => {
+  assert.match(mapSource, /const INITIAL_MAP_ZOOM = 11/);
+  assert.match(mapSource, /const GPS_FOCUS_ZOOM = 14/);
+  assert.match(mapSource, /zoom: Math\.max\(INITIAL_MAP_ZOOM, configuredZoom\)/);
+  assert.match(mapSource, /let initialGpsFocused = false/);
+  assert.match(mapSource, /if \(!initialGpsFocused\) \{ initialGpsFocused = true; focusOwn\(\); \}/);
+  assert.match(mapSource, /initialGpsFocused = false; clearRadiusOverlay/);
+  assert.match(mapSource, /zoom: Math\.max\(GPS_FOCUS_ZOOM/);
+});
