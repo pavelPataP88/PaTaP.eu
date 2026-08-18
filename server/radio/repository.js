@@ -128,6 +128,11 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     return ["OWNER", "MODERATOR"].includes(roleFor(userId, channelId));
   }
 
+  function releasePendingForUser(channelId, userId) {
+    db.prepare("DELETE FROM radio_speaker_leases WHERE channel_id = ? AND speaker_id = ?").run(channelId, userId);
+    db.prepare("DELETE FROM radio_transmissions WHERE channel_id = ? AND sender_id = ? AND state = 'UPLOADING'").run(channelId, userId);
+  }
+
   function talkPermission(userId, channelId) {
     const access = channelAccessError(userId, channelId);
     if (access) return { allowed: false, error: access };
@@ -144,6 +149,15 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     return ["OWNER", "MODERATOR"].includes(state.role)
       ? { allowed: true }
       : { allowed: false, error: "radio_talk_not_allowed" };
+  }
+
+  function releaseDisallowedSpeaker(channelId) {
+    const lease = db.prepare("SELECT speaker_id FROM radio_speaker_leases WHERE channel_id = ?").get(channelId);
+    if (!lease) return false;
+    const speakerId = Number(lease.speaker_id);
+    if (talkPermission(speakerId, channelId).allowed) return false;
+    releasePendingForUser(channelId, speakerId);
+    return true;
   }
 
   function channelRowForUser(userId, channelId, now) {
@@ -167,8 +181,8 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     const memberCount = db.prepare("SELECT COUNT(*) AS n FROM radio_channel_members WHERE channel_id = ?").get(channelId).n;
     const lastTransmissionId = stats.last_transmission_id === null ? null : Number(stats.last_transmission_id);
     const unreadCount = lastTransmissionId === null ? 0 : db.prepare(`SELECT COUNT(*) AS n FROM radio_transmissions
-      WHERE channel_id = ? AND state = 'COMMITTED' AND id > ?`)
-      .get(channelId, Number(state?.last_read_transmission_id || 0)).n;
+      WHERE channel_id = ? AND state = 'COMMITTED' AND id > ? AND sender_id != ?`)
+      .get(channelId, Number(state?.last_read_transmission_id || 0), userId).n;
     const effectiveKind = profile?.space_kind || "DIRECT";
     const permission = talkPermission(userId, channelId);
     return {
@@ -212,6 +226,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     ensureGeneralMembership(userId, now);
     const settings = ensureSettings(userId, now);
     db.prepare("DELETE FROM radio_speaker_leases WHERE expires_at <= ?").run(now);
+    db.prepare("DELETE FROM radio_transmissions WHERE state = 'UPLOADING' AND expires_at <= ?").run(now);
     const rows = db.prepare("SELECT channel_id FROM radio_channel_members WHERE user_id = ?").all(userId);
     const channels = rows.map((row) => channelRowForUser(userId, Number(row.channel_id), now)).filter(Boolean);
     channels.sort((a, b) => {
@@ -248,7 +263,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
       JOIN radio_channel_members mine ON mine.channel_id = a.channel_id AND mine.user_id = ?
       JOIN driver_profiles p ON p.user_id = a.sender_id
       LEFT JOIN radio_channel_profiles cp ON cp.channel_id = a.channel_id
-      LEFT JOIN radio_channel_members peer_member ON peer_member.channel_id = a.channel_id AND peer_member.user_id != ?
+      LEFT JOIN radio_channel_members peer_member ON peer_member.channel_id = a.channel_id AND peer_member.user_id != ? AND cp.channel_id IS NULL
       LEFT JOIN driver_profiles peer ON peer.user_id = peer_member.user_id
       WHERE a.expires_at > ? ORDER BY a.id DESC LIMIT 20`).all(userId, userId, now)
       .map((row) => ({
@@ -357,6 +372,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     if (!target) return { error: "driver_not_found", status: 404 };
     const targetId = Number(target.user_id);
     if (targetId === Number(userId)) return { error: "radio_self_forbidden", status: 400 };
+    if (areBlocked(userId, targetId)) return { error: "driver_blocked", status: 403 };
     if (!areContacts(userId, targetId)) return { error: "radio_contact_required", status: 403 };
     if (db.prepare("SELECT 1 FROM radio_channel_bans WHERE channel_id = ? AND user_id = ?").get(channelId, targetId)) return { error: "radio_channel_banned", status: 403 };
     if (isMember(channelId, targetId)) return { error: "radio_already_member", status: 409 };
@@ -391,6 +407,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     if (!title || description === null || !VISIBILITIES.has(visibility) || !TALK_POLICIES.has(talkPolicy)) return { error: "invalid_radio_channel", status: 400 };
     db.prepare("UPDATE radio_channel_profiles SET title = ?, description = ?, visibility = ?, talk_policy = ?, updated_at = ? WHERE channel_id = ?")
       .run(title, description, visibility, talkPolicy, now, channelId);
+    releaseDisallowedSpeaker(channelId);
     return { channel: channelRowForUser(userId, channelId, now) };
   }
 
@@ -425,6 +442,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
       if (role === "OWNER" && targetId !== Number(userId)) db.prepare("UPDATE radio_channel_member_state SET role = 'MODERATOR' WHERE channel_id = ? AND user_id = ?").run(channelId, userId);
       ensureMemberState(channelId, targetId);
       db.prepare("UPDATE radio_channel_member_state SET role = ? WHERE channel_id = ? AND user_id = ?").run(role, channelId, targetId);
+      releaseDisallowedSpeaker(channelId);
       db.exec("COMMIT");
       return { ok: true, role };
     } catch (error) {
@@ -446,6 +464,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     if (targetId === Number(userId) || target.role === "OWNER" || (requesterRole === "MODERATOR" && target.role === "MODERATOR")) return { error: "radio_channel_forbidden", status: 403 };
     db.exec("BEGIN IMMEDIATE");
     try {
+      releasePendingForUser(channelId, targetId);
       db.prepare("DELETE FROM radio_channel_members WHERE channel_id = ? AND user_id = ?").run(channelId, targetId);
       db.prepare("DELETE FROM radio_channel_invites WHERE channel_id = ? AND target_user_id = ?").run(channelId, targetId);
       if (ban) db.prepare("INSERT OR REPLACE INTO radio_channel_bans(channel_id, user_id, blocked_by, created_at) VALUES(?, ?, ?, ?)").run(channelId, targetId, userId, now);
@@ -470,6 +489,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     if (!profile || profile.space_kind !== "GROUP") return { error: "radio_leave_forbidden", status: 400 };
     if (!isMember(channelId, userId)) return { error: "radio_channel_not_found", status: 404 };
     if (roleFor(userId, channelId) === "OWNER") return { error: "radio_owner_transfer_required", status: 409 };
+    releasePendingForUser(channelId, userId);
     const changes = db.prepare("DELETE FROM radio_channel_members WHERE channel_id = ? AND user_id = ?").run(channelId, userId).changes;
     return changes ? { left: true } : { error: "radio_channel_not_found", status: 404 };
   }
@@ -531,6 +551,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     db.exec("BEGIN IMMEDIATE");
     try {
       db.prepare("DELETE FROM radio_speaker_leases WHERE channel_id = ? AND expires_at <= ?").run(channelId, now);
+      db.prepare("DELETE FROM radio_transmissions WHERE channel_id = ? AND state = 'UPLOADING' AND expires_at <= ?").run(channelId, now);
       const active = db.prepare(`SELECT l.speaker_id, p.nickname FROM radio_speaker_leases l
         JOIN driver_profiles p ON p.user_id = l.speaker_id WHERE l.channel_id = ?`).get(channelId);
       if (active) {
@@ -561,7 +582,7 @@ function createRadioRepository(db, { hashToken, randomToken, nowIso = () => new 
     if (!row || Number(row.sender_id) !== userId || row.state !== "UPLOADING" || row.expires_at <= now ||
       Number(row.speaker_id) !== Number(userId) || row.lease_expires_at <= now || !uploadToken ||
       hashToken(uploadToken) !== row.upload_token_hash || hashToken(uploadToken) !== row.lease_token_hash) return null;
-    if (channelAccessError(userId, Number(row.channel_id))) return null;
+    if (!talkPermission(userId, Number(row.channel_id)).allowed) return null;
     return row;
   }
 
