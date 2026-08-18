@@ -1,3 +1,66 @@
+[2026-08-18 Europe/Warsaw] FROM: CHATGPT
+BLOCK: CHAT_REACTIONS
+TASK_ID: CHAT-REACTIONS-20260818-001
+STATUS: READY_FOR_REVIEW
+SOURCE_BRANCH: chatgpt/chat-reactions
+SOURCE_COMMIT: c164a7aaa914095516dcc95c349675a522cc1fa1
+BASE: codex/local-workspace-snapshot @ 896012335b83f7ea8a41cfab6befa3b4dec4f7e1
+
+Что сделано:
+- Добавлены четыре фиксированные быстрые реакции для Driver chat: 👍 «Понял», ✅ «Подтверждаю», 👀 «Проверяю», ❤️ «Поддерживаю».
+- Повторное нажатие того же пользователя на ту же реакцию снимает её.
+- В истории сообщений сервер отдаёт счётчик, признак собственной реакции и nicknames отреагировавших; клиент показывает счётчик и имена через безопасные text/title/aria поля.
+- Добавлен отдельный realtime event `chat.reaction.updated`. Событие передаёт нейтральный список реакций, а каждый клиент сам вычисляет `reactedByMe`, чтобы чужая реакция не подсвечивалась как собственная.
+- Реакция разрешена только через существующую проверку доступа к комнате; DIRECT учитывает membership и `driver_blocks`.
+- При ошибке реакции исходное сообщение не изменяется. В том числе `driver_blocked` показывает понятную русскую ошибку реакции и не удаляет текущий текст сообщения из UI.
+- Добавлена SQLite migration 12: только новая таблица `chat_message_reactions` и индекс. DROP/DELETE/пересоздания существующих chat-таблиц в migration нет.
+
+Файлы блока:
+- driver/chat/index.js
+- server/chat/reactions.js
+- server/chat/routes.js
+- server/auth/db.js
+- tests/auth/chat-reactions.test.js
+- tests/driver/chat-reactions.test.mjs
+- scripts/run-auth-tests.js
+- package.json
+
+Краткое исследование до реализации:
+- Взята модель компактных one-click reactions: небольшой фиксированный набор, повторный клик снимает собственную реакцию, есть счётчик/кто реагировал, а realtime reaction update отделён от текста сообщения.
+- Намеренно не добавлялся полный emoji-picker: для Driver важнее короткое однозначное действие без лишней нагрузки интерфейса.
+
+Фактические проверки, которые реально выполнены в среде ChatGPT:
+- `node --test tests/driver/chat-reactions.test.mjs` на локальном зеркале точного текущего client-файла и теста — PASS, 3/3.
+- Изолированный Node+SQLite harness серверного reaction-path (fixed set, toggle/repeat click, aggregate/people, realtime payload, DIRECT membership, block) — PASS, 3/3.
+- Отдельная синтетическая upgrade-проверка SQL migration 11 -> 12 с уже существующим `chat_messages` row — PASS: сообщение сохранилось, version=12, reaction insert работает.
+- GitHub compare `codex/local-workspace-snapshot...chatgpt/chat-reactions` — branch ahead, 8 файлов блока изменены/добавлены до handoff; map/radio/Caddy/main в diff отсутствуют.
+
+Что НЕ запускалось и не считается пройденным:
+- `npm run verify` — НЕ ЗАПУСКАЛСЯ: у среды ChatGPT нет локального checkout этого репозитория; сетевой clone из container недоступен.
+- `npm run test:browser` — НЕ ЗАПУСКАЛСЯ.
+- Полный `npm run test:auth` против настоящего checkout — НЕ ЗАПУСКАЛСЯ. Сам `tests/auth/chat-reactions.test.js` добавлен в `scripts/run-auth-tests.js`, но его должен реально прогнать Codex в рабочем репозитории.
+- GitHub Actions для feature branch не запускался автоматически; combined status на code commit был пустым.
+- Production SQLite, реальные пользователи, сообщения и live Driver не трогались.
+
+Риски / что Codex проверить обязательно:
+1. Запустить `npm run verify` и `npm run test:browser` в реальном checkout.
+2. Особо прогнать `tests/auth/chat-reactions.test.js`: там есть права DIRECT/blocks, повторное нажатие, realtime payload и migration-preservation test.
+3. Проверить migration 12 на копии текущей рабочей SQLite перед production-применением. Migration аддитивная, но реальная production-база в среде ChatGPT не открывалась.
+4. Визуально проверить четыре reaction chips на узком мобильном Driver: стили добавляются самим chat-модулем, без изменения общей карты/рации.
+5. Проверить двух реальных тестовых пользователей в одной комнате: у каждого `reactedByMe` должен подсвечиваться независимо.
+
+Что намеренно НЕ менялось:
+- карта и GPS;
+- рация;
+- правила логина/сессий/ролей и минимальный пароль;
+- Caddy/Cloudflare;
+- main;
+- runtime-данные, production SQLite, реальные сообщения, токены и логи.
+
+Codex: проверить и применить только CHAT_REACTIONS. Следующий блок ChatGPT не начинал.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: MAP_LOCATION_PRIVACY
 TASK_ID: MAP-20260818-002
