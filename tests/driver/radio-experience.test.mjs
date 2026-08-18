@@ -23,8 +23,9 @@ test("radio exposes explicit driver-facing phases and large mobile PTT", () => {
     assert.ok(RADIO_PHASES.includes(phase));
   }
   assert.match(uiSource, /Активный канал/);
-  assert.match(uiSource, /Зажмите кнопку и говорите/);
-  assert.match(uiSource, /Esc отменяет передачу/);
+  assert.match(uiSource, /Зажмите и говорите/);
+  assert.match(uiSource, /уведите палец за пределы кнопки/);
+  assert.match(uiSource, /клавиатуры — Esc/);
   assert.match(uiSource, /min-height:104px/);
   assert.match(uiSource, /min-height:112px/);
   assert.match(uiSource, /touch-action:none/);
@@ -32,11 +33,15 @@ test("radio exposes explicit driver-facing phases and large mobile PTT", () => {
   assert.match(uiSource, /aria-pressed/);
 });
 
-test("PTT hold remains releasable and supports pointer plus keyboard cancellation", () => {
+test("PTT hold remains releasable and supports pointer, one-hand cancel and keyboard cancellation", () => {
   assert.match(radioSource, /ptt\.disabled = !profileReady \|\| !channel \|\| Boolean\(busy\) \|\| uploading/);
   assert.doesNotMatch(radioSource, /ptt\.disabled[^\n]+Boolean\(recording\)/);
   assert.match(radioSource, /pointerdown/);
-  assert.match(radioSource, /pointerup/);
+  assert.match(radioSource, /pointermove/);
+  assert.match(radioSource, /finishPointerHold/);
+  assert.match(radioSource, /pointerCancelOnRelease/);
+  assert.match(radioSource, /CANCEL_GESTURE_MARGIN_PX = 12/);
+  assert.match(radioSource, /Отпустите палец — передача будет отменена/);
   assert.match(radioSource, /pointercancel/);
   assert.match(radioSource, /lostpointercapture/);
   assert.match(radioSource, /event\.key === "Escape"/);
