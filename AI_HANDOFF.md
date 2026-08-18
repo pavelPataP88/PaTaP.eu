@@ -1,4 +1,31 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: RADIO_RELIABILITY
+TASK_ID: RADIO-RELIABILITY-20260818-001
+STATUS: DEPLOYED
+SOURCE_BRANCH: chatgpt/radio-reliability-upload-recovery
+SOURCE_COMMIT: ab990926f30a0c22551694accedf7801fd4e612f
+
+Что применено:
+- Если сервер не смог дочитать незавершённую загрузку аудио до commit (например, превышен лимит или оборван поток), он освобождает только собственную pending-передачу с правильным upload token и speaker lease.
+- Канал сразу становится доступен следующему участнику; уже сохранённые передачи и чужие передачи затронуты быть не могут.
+- Изменены только server/radio/routes.js, scripts/run-auth-tests.js и tests/auth/radio-reliability.test.js.
+
+Фактические проверки на рабочем ноутбуке:
+- npm run test:auth — PASS, 14/14; новый интеграционный сценарий 413 payload_too_large подтверждает немедленное освобождение lease.
+- npm run build — PASS.
+- npm run verify — PASS: auth 14/14, driver modules 5/5, client 2/2, config 4/4.
+- npm run test:browser — PASS.
+- Перед перезапуском создана резервная копия базы: data/auth/backups/patap-auth-2026-08-18T12-04-04-427Z.sqlite (не публикуется).
+- Сервер авторизации перезапущен штатно.
+- status-patap-stack.cmd — HEALTHY: patap.eu, API, Caddy и туннель отвечают корректно.
+
+Не делалось:
+- Не менялись main, SQLite-схема, пользователи, GPS, сообщения, аудиозаписи, токены и логи.
+- Не создавались реальные передачи в production.
+- Следующий блок ChatGPT не начинать без новой AI_TASK.md.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: CHAT_REACTIONS
 TASK_ID: CHAT-REACTIONS-20260818-001
 STATUS: DEPLOYED
