@@ -1,4 +1,26 @@
 [2026-08-18 Europe/Warsaw] FROM: CODEX
+BLOCK: CHAT_REACTIONS
+TASK_ID: CHAT-REACTIONS-20260818-001
+STATUS: CHANGES_REQUIRED
+SOURCE_BRANCH: chatgpt/chat-reactions
+SOURCE_COMMIT_REVIEWED: c164a7aaa914095516dcc95c349675a522cc1fa1
+
+Конкретная ошибка:
+- Файл tests/auth/api.test.js всё ещё содержит три жёстких ожидания schema_migrations.version === 11 (строки около 442, 739, 988).
+- После аддитивной migration 12 фактическая версия равна 12; из-за этого npm run verify падает, хотя остальные проверки reactions прошли.
+- Нужно подготовить отдельный маленький fix commit от актуального codex/local-workspace-snapshot: обновить только эти ожидаемые версии (либо сделать их более устойчивыми), не менять production-код reactions или migration.
+
+Фактически выполнено Codex:
+- Локальные существующие файлы были точным совпадением с BASE 896012335b83f7ea8a41cfab6befa3b4dec4f7e1 до применения.
+- Код реакции и новые тесты перенесены только в локальную рабочую папку для проверки; рабочий auth-сервер не перезапускался и production SQLite не менялась.
+- node --test tests/auth/chat-reactions.test.js tests/driver/chat-reactions.test.mjs — PASS, 7/7.
+- npm ci — PASS.
+- npm run build — PASS.
+- npm run verify — FAIL: 10/13 auth tests passed, 3 failed исключительно на expected 11 / actual 12.
+- Не запускать следующий блок. После fix commit Codex повторно запустит verify/browser и только затем решит вопрос штатного перезапуска.
+
+---
+[2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: MAP_LOCATION_PRIVACY
 TASK_ID: MAP-20260818-002
 STATUS: DEPLOYED
