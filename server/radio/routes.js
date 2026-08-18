@@ -5,6 +5,7 @@ const { createRadioRepository } = require("./repository");
 
 const AUDIO_TYPES = new Set(["audio/webm", "audio/ogg", "audio/mp4"]);
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
+const RADIO_EVENT_HEARTBEAT_MS = 20_000;
 
 function audioMimeType(header) {
   const value = String(header || "").split(";", 1)[0].trim().toLowerCase();
@@ -14,6 +15,30 @@ function audioMimeType(header) {
 function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, audit, nowIso, hashToken, randomToken, dataDir, readBinaryBody }) {
   const radio = createRadioRepository(db, { hashToken, randomToken, nowIso });
   const storageDir = path.join(dataDir, "radio");
+  const eventClients = new Set();
+
+  function sendRadioEvent(res, payload) {
+    try {
+      res.write(`event: radio\ndata: ${JSON.stringify(payload)}\n\n`);
+      return true;
+    } catch {
+      eventClients.delete(res);
+      return false;
+    }
+  }
+
+  function signalRefresh(reason = "state") {
+    const payload = { type: "radio.refresh", reason };
+    for (const res of [...eventClients]) sendRadioEvent(res, payload);
+  }
+
+  const heartbeat = setInterval(() => {
+    for (const res of [...eventClients]) {
+      try { res.write(`: keepalive ${Date.now()}\n\n`); }
+      catch { eventClients.delete(res); }
+    }
+  }, RADIO_EVENT_HEARTBEAT_MS);
+  heartbeat.unref?.();
 
   function requireRadioUser(req, res) {
     const session = requireSession(req, res);
@@ -38,7 +63,9 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
 
   function releaseFailedUpload(userId, transmissionId, uploadToken) {
     try {
-      return radio.cancelTransmission(userId, transmissionId, uploadToken);
+      const released = radio.cancelTransmission(userId, transmissionId, uploadToken);
+      if (released) signalRefresh("speaker_released");
+      return released;
     } catch {
       return false;
     }
@@ -52,6 +79,25 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
 
   return async function handleRadioRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/radio/")) return false;
+
+    if (req.method === "GET" && url.pathname === "/api/driver/radio/events") {
+      const session = requireRadioUser(req, res);
+      if (!session) return true;
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store, no-transform",
+        "Connection": "keep-alive",
+        "X-Content-Type-Options": "nosniff",
+        "X-Accel-Buffering": "no"
+      });
+      res.write("retry: 3000\n\n");
+      eventClients.add(res);
+      sendRadioEvent(res, { type: "radio.ready" });
+      const close = () => eventClients.delete(res);
+      req.once("close", close);
+      req.once("aborted", close);
+      return true;
+    }
 
     if (req.method === "GET" && url.pathname === "/api/driver/radio/overview") {
       const session = requireRadioUser(req, res);
@@ -68,8 +114,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
     if (req.method === "GET" && url.pathname === "/api/driver/radio/discover") {
       const session = requireRadioUser(req, res);
       if (!session) return true;
-      const query = url.searchParams.get("q") || "";
-      return respond(res, 200, { channels: radio.discoverChannels(session.user.id, query, nowIso()) });
+      return respond(res, 200, { channels: radio.discoverChannels(session.user.id, url.searchParams.get("q") || "", nowIso()) });
     }
 
     const channelDetailsMatch = url.pathname.match(/^\/api\/driver\/radio\/channels\/(\d+)$/);
@@ -109,8 +154,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 30;
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return respond(res, 400, { error: "invalid_radio_limit" });
       const result = radio.listTransmissions(session.user.id, Number(messagesMatch[1]), nowIso(), limit);
-      if (result.error) inaccessible(res, result.error);
-      else json(res, 200, result);
+      if (result.error) inaccessible(res, result.error); else json(res, 200, result);
       return true;
     }
 
@@ -167,6 +211,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
         const committed = radio.commitUpload(session.user.id, transmissionId, uploadToken, { mimeType, byteLength: audio.length }, nowIso());
         if (!committed) throw new Error("radio_upload_not_authorized");
         audit(req, "radio_transmission_committed", { userId: session.user.id, success: true, details: { channelId: committed.channelId, transmissionId: committed.id } });
+        signalRefresh("transmission_committed");
         json(res, 201, { transmission: committed });
       } catch (error) {
         fs.rmSync(temporaryPath, { force: true });
@@ -183,6 +228,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const cancelled = radio.cancelTransmission(session.user.id, Number(audioMatch[1]), uploadToken);
       if (!cancelled) return respond(res, 409, { error: "radio_upload_not_authorized" });
       audit(req, "radio_transmission_cancelled", { userId: session.user.id, success: true, details: { transmissionId: Number(audioMatch[1]) } });
+      signalRefresh("speaker_released");
       return respond(res, 200, { ok: true });
     }
 
@@ -194,13 +240,11 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const transmissionId = Number(deleteTransmissionMatch[1]);
       const target = radio.committedDeletionTarget(session.user.id, transmissionId);
       if (!target) return respond(res, 404, { error: "radio_transmission_not_found" });
-      try {
-        fs.rmSync(path.join(storageDir, target.storage_key), { force: true });
-      } catch {
-        return respond(res, 500, { error: "radio_delete_failed" });
-      }
+      try { fs.rmSync(path.join(storageDir, target.storage_key), { force: true }); }
+      catch { return respond(res, 500, { error: "radio_delete_failed" }); }
       if (!radio.deleteCommittedTransmission(session.user.id, transmissionId)) return respond(res, 409, { error: "radio_delete_conflict" });
       audit(req, "radio_transmission_deleted", { userId: session.user.id, success: true, details: { channelId: Number(target.channel_id), transmissionId } });
+      signalRefresh("transmission_deleted");
       return respond(res, 200, { deleted: { id: transmissionId, channelId: Number(target.channel_id) } });
     }
 
@@ -212,7 +256,10 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       if (!checkRate(`radio-direct:user:${session.user.id}`, 20, 1)) return respond(res, 429, { error: "radio_rate_limited" });
       const result = radio.createDirectChannel(session.user.id, body?.nickname, nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
-      if (result.created) audit(req, "radio_direct_created", { userId: session.user.id, success: true, details: { channelId: result.channel.id } });
+      if (result.created) {
+        audit(req, "radio_direct_created", { userId: session.user.id, success: true, details: { channelId: result.channel.id } });
+        signalRefresh("direct_created");
+      }
       return respond(res, result.created ? 201 : 200, result);
     }
 
@@ -223,6 +270,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.createGroupChannel(session.user.id, body, nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_created", { userId: session.user.id, success: true, details: { channelId: result.channel.id, visibility: result.channel.visibility, talkPolicy: result.channel.talkPolicy } });
+      signalRefresh("channel_created");
       return respond(res, 201, result);
     }
 
@@ -232,6 +280,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.updateChannel(session.user.id, Number(channelDetailsMatch[1]), body, nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_updated", { userId: session.user.id, success: true, details: { channelId: Number(channelDetailsMatch[1]) } });
+      signalRefresh("channel_updated");
       return respond(res, 200, result);
     }
 
@@ -241,14 +290,12 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const channelId = Number(channelDetailsMatch[1]);
       const target = radio.channelDeletionTarget(session.user.id, channelId);
       if (target.error) return respond(res, target.status, { error: target.error });
-      try {
-        for (const storageKey of target.storageKeys) fs.rmSync(path.join(storageDir, storageKey), { force: true });
-      } catch {
-        return respond(res, 500, { error: "radio_delete_failed" });
-      }
+      try { for (const storageKey of target.storageKeys) fs.rmSync(path.join(storageDir, storageKey), { force: true }); }
+      catch { return respond(res, 500, { error: "radio_delete_failed" }); }
       const result = radio.deleteGroupChannel(session.user.id, channelId);
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_deleted", { userId: session.user.id, success: true, details: { channelId } });
+      signalRefresh("channel_deleted");
       return respond(res, 200, { deleted: true, channelId });
     }
 
@@ -260,6 +307,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.joinPublicChannel(session.user.id, Number(joinMatch[1]), nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_joined", { userId: session.user.id, success: true, details: { channelId: Number(joinMatch[1]) } });
+      signalRefresh("member_joined");
       return respond(res, 200, result);
     }
 
@@ -270,6 +318,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.leaveChannel(session.user.id, Number(leaveMatch[1]));
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_left", { userId: session.user.id, success: true, details: { channelId: Number(leaveMatch[1]) } });
+      signalRefresh("member_left");
       return respond(res, 200, result);
     }
 
@@ -281,6 +330,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.inviteToChannel(session.user.id, Number(inviteMatch[1]), body?.nickname, nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_invited", { userId: session.user.id, success: true, details: { channelId: Number(inviteMatch[1]) } });
+      signalRefresh("invite_created");
       return respond(res, 200, result);
     }
 
@@ -291,6 +341,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.respondToInvite(session.user.id, Number(inviteResponseMatch[1]), body?.action, nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, result.accepted ? "radio_channel_invite_accepted" : "radio_channel_invite_declined", { userId: session.user.id, success: true, details: { channelId: Number(inviteResponseMatch[1]) } });
+      signalRefresh("invite_resolved");
       return respond(res, 200, result);
     }
 
@@ -318,6 +369,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.setMemberRole(session.user.id, Number(memberActionMatch[1]), decodeURIComponent(memberActionMatch[2]), body?.role);
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_member_role_changed", { userId: session.user.id, success: true, details: { channelId: Number(memberActionMatch[1]), role: result.role } });
+      signalRefresh("member_role_changed");
       return respond(res, 200, result);
     }
 
@@ -327,6 +379,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.removeMember(session.user.id, Number(memberActionMatch[1]), decodeURIComponent(memberActionMatch[2]), { ban: Boolean(body?.ban) }, nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, result.banned ? "radio_member_banned" : "radio_member_removed", { userId: session.user.id, success: true, details: { channelId: Number(memberActionMatch[1]) } });
+      signalRefresh(result.banned ? "member_banned" : "member_removed");
       return respond(res, 200, result);
     }
 
@@ -336,6 +389,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       if (!session) return true;
       const result = radio.unbanMember(session.user.id, Number(banMatch[1]), decodeURIComponent(banMatch[2]));
       if (result.error) return respond(res, result.status, { error: result.error });
+      signalRefresh("member_unbanned");
       return respond(res, 200, result);
     }
 
@@ -347,6 +401,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.sendAlert(session.user.id, Number(alertMatch[1]), nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_alert", { userId: session.user.id, success: true, details: { channelId: Number(alertMatch[1]), alertId: result.alert.id } });
+      signalRefresh("alert_created");
       return respond(res, 201, result);
     }
 
@@ -356,6 +411,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       if (!session) return true;
       const result = radio.pinTransmission(session.user.id, Number(pinActionMatch[1]), Number(pinActionMatch[2]), nowIso());
       if (result.error) return respond(res, result.status, { error: result.error });
+      signalRefresh("pin_changed");
       return respond(res, 200, result);
     }
     if (req.method === "DELETE" && pinActionMatch) {
@@ -363,6 +419,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       if (!session) return true;
       const result = radio.unpinTransmission(session.user.id, Number(pinActionMatch[1]), Number(pinActionMatch[2]));
       if (result.error) return respond(res, result.status, { error: result.error });
+      signalRefresh("pin_changed");
       return respond(res, 200, result);
     }
 
@@ -374,6 +431,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const result = radio.beginTransmission(session.user.id, Number(pttMatch[1]), nowIso());
       if (result.error) return respond(res, result.status, { error: result.error, speaker: result.speaker });
       audit(req, "radio_ptt_granted", { userId: session.user.id, success: true, details: { channelId: Number(pttMatch[1]), transmissionId: result.transmissionId } });
+      signalRefresh("speaker_acquired");
       return respond(res, 201, result);
     }
 
@@ -381,4 +439,4 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
   };
 }
 
-module.exports = { createRadioRoutes, MAX_AUDIO_BYTES };
+module.exports = { createRadioRoutes, MAX_AUDIO_BYTES, RADIO_EVENT_HEARTBEAT_MS };
