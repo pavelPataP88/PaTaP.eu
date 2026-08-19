@@ -2,9 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const { DATA_DIR } = require("../auth/db");
 const { createPeopleRepository } = require("./repository");
+const { createCommunityLinkGuard } = require("./guard");
 
 function createPeopleRoutes(options) {
   const people = createPeopleRepository(options.db, { nowIso: options.nowIso, addMinutes: options.addMinutes });
+  const guardCommunityLinks = createCommunityLinkGuard(options);
   const dataDir = options.dataDir || DATA_DIR;
 
   function respond(res, status, payload) {
@@ -46,6 +48,7 @@ function createPeopleRoutes(options) {
   }
 
   return async function handlePeopleRoute(req, res, url, body) {
+    if (await guardCommunityLinks(req, res, url, body)) return true;
     if (!url.pathname.startsWith("/api/driver/people")) return false;
 
     if (req.method === "GET" && url.pathname === "/api/driver/people/overview") {
