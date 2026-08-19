@@ -35,6 +35,7 @@ export function createChatConsoleUi(args) {
     ui.controls.attachmentButton.disabled = !composerEnabled;
     ui.controls.voiceButton.disabled = !composerEnabled;
     ui.controls.contextClose.disabled = !room;
+    args.card.dispatchEvent(new CustomEvent("patap:chat-room-changed", { detail: { room: room || null } }));
   };
 
   return ui;
