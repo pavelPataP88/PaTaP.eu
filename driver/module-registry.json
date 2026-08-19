@@ -43,7 +43,7 @@
     },
     {
       "id": "driver-card",
-      "entry": "./driver-card/index.js?v=20260725-2",
+      "entry": "./driver-card/index.js?v=20260819-people-v1",
       "enabled": true,
       "dependsOn": []
     },
