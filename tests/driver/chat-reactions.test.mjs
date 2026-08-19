@@ -5,7 +5,7 @@ import test from "node:test";
 import { CHAT_REACTIONS, reactionView } from "../../driver/chat/index.js";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
-const source = fs.readFileSync(path.join(root, "driver", "chat", "index.js"), "utf8");
+const source = fs.readFileSync(path.join(root, "driver", "chat", "index-v2.js"), "utf8");
 
 test("chat exposes the expanded curated reaction set", () => {
   assert.equal(CHAT_REACTIONS.length, 12);
