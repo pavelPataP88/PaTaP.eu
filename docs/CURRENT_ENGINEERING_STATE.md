@@ -1,7 +1,3 @@
-## Chat Console V2 — развёрнут 19 августа 2026
-
-Рабочий сайт получил проверенный Chat Console V2. Все локальные автотесты, build, verify и browser suite прошли. Точный состав, commits и обязательный ручной smoke-сценарий записаны в `AI_HANDOFF.md`.
-
 # Current Engineering State — PaTaP.eu
 
 **Purpose:** this is the current, safe starting point for AI work. It describes what is actually deployed and tested, not an idea or a wish list.
@@ -39,7 +35,9 @@ Relevant code: `driver/map/`, `driver/gps/index.js`, `server/road-reports/`, `se
 
 Relevant code: `driver/chat/index.js`, `driver/radio/index.js`, `server/chat/`, `server/radio/`.
 
-## Actual verification completed on 2026-08-18
+## Historical baseline verification — 2026-08-18
+
+This is the baseline before the later Chat Console V2 deployment. The current, authoritative results are in `AI_HANDOFF.md` and `docs/CURRENT_STATUS.md`.
 
 - `npm ci` — PASS, 0 vulnerabilities.
 - `npm run build` — PASS.
@@ -47,7 +45,7 @@ Relevant code: `driver/chat/index.js`, `driver/radio/index.js`, `server/chat/`, 
 - Map/Road Report focused tests — PASS, 17/17.
 - `status-patap-stack.cmd` — HEALTHY: local site, API, Caddy, Cloudflare tunnel, `https://patap.eu` and public API returned HTTP 200.
 
-The separate `npm run test:browser` runner could not open the public website only because the sandbox browser denied external network access (`ERR_NETWORK_ACCESS_DENIED`). This was not an application assertion failure. Do not claim it passed until it is actually run in an environment with public network access.
+At that moment the separate `npm run test:browser` runner could not open the public website because the sandbox browser denied external network access. This limitation was later resolved for the Chat Console V2 verification: its browser suite passed on the working laptop.
 
 ## Safety rules
 
@@ -69,6 +67,14 @@ Keep minimum registration password length **6**. Do not weaken CSRF, rate limits
 - Near-live голос передаётся по PCM через HTTPS/SSE только транзитом, параллельно с подтверждённой сохранённой историей. Короткий tap до 550 мс в эфир не попадает.
 - Server-side policy, role и membership changes immediately revoke active PTT lease. Без сессии radio overview возвращает 401.
 - Автотесты, build, verify и browser test фактически прошли на рабочем ноутбуке. Реальный двухустройственный smoke микрофона/динамика остаётся ручной проверкой.
+
+## Chat Console v2 — deployed
+
+- Общие, личные и групповые чаты; роли, приглашения, поиск, вложения, голосовые сообщения, опросы, ответы, редактирование, удаление и закрепления.
+- Блокировки Driver остаются серверным ограничением личных чатов.
+- Минимальная регистрационная длина пароля остаётся **6** символов.
+- `npm ci`, auth 20/20, radio live 1/1, Driver modules 40/40, client 2/2, config 4/4, build, verify и browser suite фактически прошли 19 августа 2026 года.
+- Ручная проверка с двумя временными аккаунтами и устройствами для вложений, голоса, ролей и блокировки остаётся обязательным следующим smoke-сценарием.
 
 ## Current next block
 
