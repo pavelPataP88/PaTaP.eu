@@ -10,6 +10,7 @@
     "auth:backup": "node server/auth/backup-db.js",
     "auth:restore": "node server/auth/restore-db.js",
     "parking:import": "node scripts/import-parking.js",
+    "parking:import-osm-country": "node scripts/import-osm-parking-country.js",
     "test:auth": "node scripts/run-auth-tests.js",
     "test:radio-live": "node scripts/run-radio-live-test.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
