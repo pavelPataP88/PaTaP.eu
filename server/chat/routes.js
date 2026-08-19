@@ -2,12 +2,31 @@ const policy = require("./routes-policy");
 const { createChatRepository } = require("./repository");
 const { createChatReactionRepository } = require("./reactions");
 
+function isReadOnlyGroup(chat, userId, roomId) {
+  const room = chat.getRoom(roomId);
+  return room?.kind === "GROUP" && chat.roomForUser(userId, roomId)?.role === "READONLY";
+}
+
 function createChatRoutes(options) {
   const inner = policy.createChatRoutes(options);
   const chat = createChatRepository(options.db);
   const reactions = createChatReactionRepository(options.db);
 
   return async function handleChatRoute(req, res, url, body) {
+    const editMatch = req.method === "PATCH" && body !== undefined
+      ? url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/)
+      : null;
+    if (editMatch) {
+      const session = options.requireSession(req, res);
+      if (!session) return true;
+      const message = options.db.prepare("SELECT room_id FROM chat_messages WHERE id=?").get(Number(editMatch[1]));
+      if (message && isReadOnlyGroup(chat, session.user.id, Number(message.room_id))) {
+        if (!options.requireCsrf(req, res, session)) return true;
+        options.json(res, 403, { error: "chat_readonly" });
+        return true;
+      }
+    }
+
     const match = req.method === "POST" && body !== undefined
       ? url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)\/messages$/)
       : null;
