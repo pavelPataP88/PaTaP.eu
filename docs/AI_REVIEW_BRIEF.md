@@ -5,10 +5,10 @@
 ## Что посмотреть сначала
 
 1. [README.md](../README.md) — назначение и запуск.
-2. [CURRENT_STATUS.md](CURRENT_STATUS.md) — что работает и какие есть ограничения.
-3. [ARCHITECTURE.md](ARCHITECTURE.md) и [DRIVER_PATAP_V1.md](DRIVER_PATAP_V1.md) — архитектура и Driver.
-4. `index.html`, `app.js`, `styles.css` — основной интерфейс.
-5. `driver/` — интерфейс Driver; `server/` — API и данные; `tests/` — проверяемое поведение.
+2. [CURRENT_STATUS.md](CURRENT_STATUS.md) и [CURRENT_ENGINEERING_STATE.md](CURRENT_ENGINEERING_STATE.md) — что действительно работает и какие есть ограничения.
+3. [../AI_HANDOFF.md](../AI_HANDOFF.md) — последние проверенные изменения и ручные проверки, которые ещё нужны.
+4. [ARCHITECTURE.md](ARCHITECTURE.md) и [DRIVER_PATAP_V1.md](DRIVER_PATAP_V1.md) — архитектура и Driver.
+5. `index.html`, `app.js`, `styles.css` — основной интерфейс; `driver/` — интерфейс Driver; `server/` — API; `tests/` — проверяемое поведение.
 
 ## Как увидеть продукт
 
@@ -36,15 +36,14 @@
 ## Проверка изменений
 
 ```powershell
-npm install
+npm ci
 npm run verify
 npm run test:browser
 ```
 
 ## Текущие приоритеты
 
-1. Сделать публичную витрину Patap и Driver полезной и убедительной.
-2. Улучшить мобильный интерфейс и понятность первых шагов.
-3. Добавить полный browser/E2E-тест Driver.
+1. Проверить на двух тестовых аккаунтах новые групповые чаты, вложения, голосовые сообщения и блокировки.
+2. Проверить рацию на двух реальных устройствах.
+3. Улучшать Driver небольшими изолированными блоками с тестами.
 4. Сделать Caddy и cloudflared устойчивыми к перезапуску Windows.
-

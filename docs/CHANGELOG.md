@@ -1,5 +1,7 @@
 # Changelog
 
+Этот файл хранит раннюю историю проекта. Актуальные, проверенные изменения после июля 2026 года записываются в `AI_HANDOFF.md`; текущее состояние — в `CURRENT_STATUS.md` и `CURRENT_ENGINEERING_STATE.md`.
+
 ## 2026-07-21 — Direct radio client
 
 - Added the Driver Radio ES module and navigation view for private accepted-contact channels.
