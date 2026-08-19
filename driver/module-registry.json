@@ -19,7 +19,7 @@
       "id": "parking",
       "label": "Паркинги",
       "view": "parking",
-      "entry": "./parking/index.js?v=20260819-parking1",
+      "entry": "./parking/index.js?v=20260819-parking2",
       "enabled": true,
       "requiresProfile": true,
       "dependsOn": []
