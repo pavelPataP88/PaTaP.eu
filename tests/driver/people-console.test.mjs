@@ -9,11 +9,11 @@ const appSource = await readFile(new URL("../../driver/app.js", import.meta.url)
 const registrySource = await readFile(new URL("../../driver/module-registry.json", import.meta.url), "utf8");
 const chatEntrySource = await readFile(new URL("../../driver/chat/index.js", import.meta.url), "utf8");
 const peopleRoutesSource = await readFile(new URL("../../server/people/routes.js", import.meta.url), "utf8");
+const peopleGuardSource = await readFile(new URL("../../server/people/guard.js", import.meta.url), "utf8");
 const peopleRepositorySource = await readFile(new URL("../../server/people/repository.js", import.meta.url), "utf8");
 const peoplePrivacySource = await readFile(new URL("../../server/people/privacy.js", import.meta.url), "utf8");
 const peopleSchemaSource = await readFile(new URL("../../server/people/schema.js", import.meta.url), "utf8");
 const locationSource = await readFile(new URL("../../server/driver/location.js", import.meta.url), "utf8");
-
 
 test("People Console exposes driver-focused filters and responsive UI", () => {
   assert.deepEqual(PEOPLE_FILTERS.map(([key]) => key), ["ALL","CONTACTS","FAVORITES","TRUSTED","NEARBY","REQUESTS","COMMUNITIES","BLOCKED"]);
@@ -76,7 +76,9 @@ test("community lifecycle synchronizes People Chat and Radio and guards direct m
     /radio_channel_bans/
   ]) assert.match(peopleRepositorySource, pattern);
   assert.match(peopleRoutesSource, /guardCommunityLinks/);
-  assert.match(peopleRoutesSource, /community_managed/);
+  assert.match(peopleGuardSource, /community_managed/);
+  assert.match(peopleGuardSource, /chat\/groups/);
+  assert.match(peopleGuardSource, /radio\/channels/);
 });
 
 test("People does not claim or implement public followers, likes or exact coordinates in its nearby response", () => {
