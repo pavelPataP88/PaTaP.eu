@@ -22,6 +22,9 @@ function createChatRoutes(options) {
           return options.json(res, 200, { deleted: { id: payload.id, roomId: payload.roomId } });
         }
       }
+      if (res.__chatHideDeleted === true && status === 200 && Array.isArray(payload?.messages)) {
+        return options.json(res, status, { ...payload, messages: payload.messages.filter((message) => !message.deletedAt) });
+      }
       return options.json(res, status, payload);
     }
   };
@@ -82,6 +85,11 @@ function createChatRoutes(options) {
 
   return async function handleChatRoute(req, res, url, body) {
     if (url.pathname.startsWith("/api/driver/chat/")) housekeeping();
+
+    const getMessagesMatch = req.method === "GET"
+      ? url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)\/messages$/)
+      : null;
+    if (getMessagesMatch && url.searchParams.get("includeDeleted") !== "1") res.__chatHideDeleted = true;
 
     const editMatch = req.method === "PATCH" && body !== undefined
       ? url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/)
@@ -154,6 +162,7 @@ function createChatRoutes(options) {
       return handled;
     } finally {
       delete res.__chatLegacyDelete;
+      delete res.__chatHideDeleted;
     }
   };
 }
