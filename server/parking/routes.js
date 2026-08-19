@@ -2,10 +2,12 @@ const fs=require("fs");
 const path=require("path");
 const crypto=require("crypto");
 const { DATA_DIR }=require("../auth/db");
-const { createParkingRepository }=require("./repository");
+const { createParkingRepository,haversineKm }=require("./repository");
 
 const PHOTO_TYPES=new Set(["image/jpeg","image/png","image/webp"]);
 const MAX_PHOTO_BYTES=5*1024*1024;
+const LIVE_REPORT_MAX_DISTANCE_KM=3;
+const LIVE_REPORT_LOCATION_MAX_AGE_MS=5*60_000;
 function mime(header){const value=String(header||"").split(";",1)[0].trim().toLowerCase();return PHOTO_TYPES.has(value)?value:null;}
 function safeName(value){return String(value||"parking-photo").normalize("NFKC").replace(/[\\/\u0000-\u001f\u007f]+/g,"-").trim().slice(0,160)||"parking-photo";}
 async function readBinary(req,maxBytes){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>maxBytes){const error=new Error("payload_too_large");error.status=413;throw error;}chunks.push(chunk);}return Buffer.concat(chunks);}
@@ -17,6 +19,13 @@ function createParkingRoutes(options){
   function requireUser(req,res){const session=options.requireSession(req,res);if(!session)return null;if(!parking.hasDriver(session.user.id)){respond(res,409,{error:"driver_profile_required"});return null;}parking.ensurePreferences(session.user.id,options.nowIso());return session;}
   function requireMutation(req,res,key,limit=40,minutes=1){const session=requireUser(req,res);if(!session||!options.requireCsrf(req,res,session))return null;if(key&&!options.checkRate(`parking:${key}:user:${session.user.id}`,limit,minutes)){respond(res,429,{error:"parking_rate_limited"});return null;}return session;}
   function result(res,value,success=200){if(value?.error)return respond(res,value.status||400,value);return respond(res,success,value);}
+  function liveReportAccess(userId,placeId,now=options.nowIso()){
+    const place=parking.placeRow(placeId);if(!place)return {error:"parking_not_found",status:404};
+    const profile=options.db.prepare("SELECT gps_enabled FROM driver_profiles WHERE user_id=?").get(userId);if(!profile?.gps_enabled)return {error:"parking_location_required",status:409};
+    const location=options.db.prepare("SELECT latitude,longitude,updated_at FROM driver_locations WHERE user_id=?").get(userId);if(!location||Date.parse(now)-Date.parse(location.updated_at)>LIVE_REPORT_LOCATION_MAX_AGE_MS)return {error:"parking_location_required",status:409};
+    const distanceKm=haversineKm(Number(location.latitude),Number(location.longitude),Number(place.latitude),Number(place.longitude));if(distanceKm>LIVE_REPORT_MAX_DISTANCE_KM)return {error:"parking_report_too_far",status:400,distanceKm:Number(distanceKm.toFixed(3)),maxDistanceKm:LIVE_REPORT_MAX_DISTANCE_KM};
+    return {ok:true,distanceKm};
+  }
 
   return async function handleParkingRoute(req,res,url,body){
     if(!url.pathname.startsWith("/api/driver/parking"))return false;
@@ -40,7 +49,7 @@ function createParkingRoutes(options){
     if(req.method==="POST"&&url.pathname==="/api/driver/parking/places"){const session=requireMutation(req,res,"create",10,60);if(!session)return true;const value=parking.createCommunityPlace(session.user.id,body,options.nowIso());if(!value.error)options.audit(req,"parking_place_created",{userId:session.user.id,success:true,details:{placeId:value.place.id}});return result(res,value,201);}
 
     const occupancy=url.pathname.match(/^\/api\/driver\/parking\/places\/(\d+)\/occupancy$/);
-    if(req.method==="POST"&&occupancy){const session=requireMutation(req,res,"occupancy",30,10);if(!session)return true;const value=parking.reportOccupancy(session.user.id,Number(occupancy[1]),body,options.nowIso());if(!value.error)options.audit(req,"parking_occupancy_reported",{userId:session.user.id,success:true,details:{placeId:Number(occupancy[1]),status:value.occupancy.status}});return result(res,value);}
+    if(req.method==="POST"&&occupancy){const session=requireMutation(req,res,"occupancy",30,10);if(!session)return true;const placeId=Number(occupancy[1]);const access=liveReportAccess(session.user.id,placeId);if(access.error)return result(res,access);const value=parking.reportOccupancy(session.user.id,placeId,body,options.nowIso());if(!value.error)options.audit(req,"parking_occupancy_reported",{userId:session.user.id,success:true,details:{placeId,status:value.occupancy.status,distanceKm:Number(access.distanceKm.toFixed(3))}});return result(res,value);}
     const favorite=url.pathname.match(/^\/api\/driver\/parking\/places\/(\d+)\/favorite$/);
     if(req.method==="PUT"&&favorite&&typeof body.enabled==="boolean"){const session=requireMutation(req,res,"favorite",60,1);if(!session)return true;return result(res,parking.setFavorite(session.user.id,Number(favorite[1]),body.enabled,options.nowIso()));}
     const review=url.pathname.match(/^\/api\/driver\/parking\/places\/(\d+)\/review$/);
@@ -54,4 +63,4 @@ function createParkingRoutes(options){
   };
 }
 
-module.exports={createParkingRoutes,PHOTO_TYPES,MAX_PHOTO_BYTES};
+module.exports={createParkingRoutes,PHOTO_TYPES,MAX_PHOTO_BYTES,LIVE_REPORT_MAX_DISTANCE_KM};
