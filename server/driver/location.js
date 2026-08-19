@@ -1,3 +1,5 @@
+const { createPeoplePrivacy } = require("../people/privacy");
+
 const DRIVER_RADII_KM = new Set([5, 25, 50, 100]);
 
 function validLocation(body) {
@@ -19,7 +21,8 @@ function haversineKm(fromLat, fromLon, toLat, toLon) {
   return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function createLocationRepository(db, { addMinutes }) {
+function createLocationRepository(db, { addMinutes, nowIso = () => new Date().toISOString() }) {
+  const privacy = createPeoplePrivacy(db, { nowIso });
   return {
     exists(userId) {
       return Boolean(db.prepare("SELECT 1 FROM driver_locations WHERE user_id = ?").get(userId));
@@ -52,7 +55,7 @@ function createLocationRepository(db, { addMinutes }) {
     },
     nearbyDrivers(userId, origin, radius) {
       const rows = db.prepare(`
-        SELECT l.latitude, l.longitude, l.accuracy_m, l.updated_at,
+        SELECT l.user_id, l.latitude, l.longitude, l.accuracy_m, l.updated_at,
                p.nickname, p.driver_type, p.vehicle, p.country_code
         FROM driver_locations l
         JOIN driver_profiles p ON p.user_id = l.user_id
@@ -64,17 +67,18 @@ function createLocationRepository(db, { addMinutes }) {
                OR (b.blocker_id = l.user_id AND b.blocked_id = ?)
           )
       `).all(userId, addMinutes(-1), userId, userId);
-      return rows.map((row) => ({
-        nickname: row.nickname,
-        driverType: row.driver_type,
-        vehicle: row.vehicle,
-        countryCode: row.country_code,
-        latitude: row.latitude,
-        longitude: row.longitude,
-        accuracy: row.accuracy_m,
-        updatedAt: row.updated_at,
-        distanceKm: haversineKm(origin.latitude, origin.longitude, row.latitude, row.longitude)
-      })).filter((driver) => driver.distanceKm <= radius)
+      return rows.filter((row) => privacy.canSeeNearby(userId, Number(row.user_id)))
+        .map((row) => ({
+          nickname: row.nickname,
+          driverType: row.driver_type,
+          vehicle: privacy.canSeeVehicle(userId, Number(row.user_id)) ? row.vehicle : null,
+          countryCode: row.country_code,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          accuracy: row.accuracy_m,
+          updatedAt: row.updated_at,
+          distanceKm: haversineKm(origin.latitude, origin.longitude, row.latitude, row.longitude)
+        })).filter((driver) => driver.distanceKm <= radius)
         .sort((left, right) => left.distanceKm - right.distanceKm)
         .map((driver) => ({ ...driver, distanceKm: Number(driver.distanceKm.toFixed(3)) }));
     }
