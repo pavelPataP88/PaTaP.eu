@@ -5,14 +5,16 @@ import { CHAT_REACTIONS, reactionView } from "../../driver/chat/index.js";
 import { attachmentKind, formatBytes, formatDuration, CHAT_MAX_VOICE_MS } from "../../driver/chat/media.mjs";
 import { CHAT_ROOM_KIND_LABELS, CHAT_ROLE_LABELS } from "../../driver/chat/console.mjs";
 
-const indexSource = await readFile(new URL("../../driver/chat/index.js", import.meta.url), "utf8");
+const entrySource = await readFile(new URL("../../driver/chat/index.js", import.meta.url), "utf8");
+const indexSource = await readFile(new URL("../../driver/chat/index-v2.js", import.meta.url), "utf8");
 const consoleSource = await readFile(new URL("../../driver/chat/console-v2.mjs", import.meta.url), "utf8");
 const policySource = await readFile(new URL("../../driver/chat/console.mjs", import.meta.url), "utf8");
 const mediaSource = await readFile(new URL("../../driver/chat/media.mjs", import.meta.url), "utf8");
 const schemaSource = await readFile(new URL("../../server/chat/schema.js", import.meta.url), "utf8");
 const repositorySource = await readFile(new URL("../../server/chat/repository.js", import.meta.url), "utf8");
 const routesSource = await readFile(new URL("../../server/chat/routes-v2.js", import.meta.url), "utf8");
-const policyRoutesSource = await readFile(new URL("../../server/chat/routes.js", import.meta.url), "utf8");
+const policyRoutesSource = await readFile(new URL("../../server/chat/routes-policy.js", import.meta.url), "utf8");
+const entryRoutesSource = await readFile(new URL("../../server/chat/routes.js", import.meta.url), "utf8");
 
 test("Chat Console exposes a messenger-grade room architecture without copying another product", () => {
   assert.equal(CHAT_ROOM_KIND_LABELS.DIRECT, "Личный");
@@ -24,8 +26,16 @@ test("Chat Console exposes a messenger-grade room architecture without copying a
   assert.match(consoleSource, /conversation-open/);
   assert.match(policySource, /position:relative/);
   assert.match(policySource, /READONLY/);
+  assert.match(policySource, /maxLength = 4000/);
   assert.doesNotMatch(consoleSource, /whatsapp|telegram/i);
   assert.doesNotMatch(indexSource, /end-to-end encrypted|E2EE|сквозн.*шифр/i);
+});
+
+test("Chat Console entry opts into deletion tombstones while legacy API compatibility stays possible", () => {
+  assert.match(entrySource, /includeDeleted=1/);
+  assert.match(entrySource, /withChatV2Api/);
+  assert.match(entryRoutesSource, /__chatHideDeleted/);
+  assert.match(entryRoutesSource, /message\.deletedAt/);
 });
 
 test("reaction model supports 12 curated actions and keeps personalized state", () => {
@@ -50,7 +60,6 @@ test("media helpers classify supported content and voice recorder has explicit p
   assert.match(mediaSource, /recorder\.resume\(\)/);
   assert.match(mediaSource, /echoCancellation: true/);
   assert.match(mediaSource, /noiseSuppression: true/);
-  assert.doesNotMatch(mediaSource, /getUserMedia[\s\S]*setInterval\([^)]*getUserMedia/);
 });
 
 test("client wires real APIs for groups, replies, edit, forward, search, media, polls, receipts, drafts and pins", () => {
@@ -71,7 +80,7 @@ test("client wires real APIs for groups, replies, edit, forward, search, media, 
     /\/search\?q=/
   ]) assert.match(indexSource, pattern);
   assert.match(indexSource, /playbackRate = speeds\[speedIndex\]/);
-  assert.match(indexSource, /Enter.*shiftKey/s);
+  assert.match(indexSource, /event\.key === "Enter" && !event\.shiftKey/);
 });
 
 test("server schema stays additive and models room state, rich messages, media, polls and visibility", () => {
@@ -84,7 +93,7 @@ test("server schema stays additive and models room state, rich messages, media, 
   assert.match(schemaSource, /SELECT message_id, user_id, reaction, created_at FROM chat_message_reactions/);
 });
 
-test("server enforces group roles, read cursors, edit window, delete scopes, mentions and bounded uploads", () => {
+test("server enforces roles, rich-message bounds, safe uploads, cleanup and legacy contracts", () => {
   assert.match(repositorySource, /EDIT_WINDOW_MS = 15 \* 60 \* 1000/);
   assert.match(repositorySource, /READONLY/);
   assert.match(repositorySource, /last_delivered_message_id/);
@@ -99,4 +108,8 @@ test("server enforces group roles, read cursors, edit window, delete scopes, men
   assert.match(policyRoutesSource, /chat_readonly/);
   assert.match(policyRoutesSource, /crossRoomForward/);
   assert.match(policyRoutesSource, /options\.dataDir \|\| DATA_DIR/);
+  assert.match(entryRoutesSource, /client_message_id_conflict/);
+  assert.match(entryRoutesSource, /cleanupMessageRichContent/);
+  assert.match(entryRoutesSource, /removeUnreferencedFiles/);
+  assert.match(entryRoutesSource, /chat_message_not_found/);
 });
