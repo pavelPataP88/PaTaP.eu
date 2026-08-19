@@ -19,7 +19,7 @@
       "id": "chat",
       "label": "Чат",
       "view": "chat",
-      "entry": "./chat/index.js?v=20260725-3",
+      "entry": "./chat/index.js?v=20260819-chat-v2",
       "enabled": true,
       "requiresProfile": true,
       "dependsOn": []
@@ -47,7 +47,6 @@
       "enabled": true,
       "dependsOn": []
     },
-    { "id": "contacts", "label": "Контакты", "view": "contacts", "entry": "./contacts/index.js?v=20260725-2", "enabled": true, "requiresProfile": true, "dependsOn": []
-    }
+    { "id": "contacts", "label": "Контакты", "view": "contacts", "entry": "./contacts/index.js?v=20260725-2", "enabled": true, "requiresProfile": true, "dependsOn": [] }
   ]
 }
