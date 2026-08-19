@@ -1,4 +1,41 @@
 function createCommunityLinkGuard({ db, json, requireSession, requireCsrf }) {
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS people_community_link_private_ai
+    AFTER INSERT ON driver_communities
+    BEGIN
+      UPDATE chat_room_profiles SET visibility='PRIVATE' WHERE room_id=NEW.chat_room_id;
+      UPDATE radio_channel_profiles SET visibility='PRIVATE' WHERE channel_id=NEW.radio_channel_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS people_community_chat_private_au
+    AFTER UPDATE OF visibility ON chat_room_profiles
+    WHEN NEW.visibility!='PRIVATE' AND EXISTS(SELECT 1 FROM driver_communities c WHERE c.chat_room_id=NEW.room_id)
+    BEGIN
+      UPDATE chat_room_profiles SET visibility='PRIVATE' WHERE room_id=NEW.room_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS people_community_radio_private_au
+    AFTER UPDATE OF visibility ON radio_channel_profiles
+    WHEN NEW.visibility!='PRIVATE' AND EXISTS(SELECT 1 FROM driver_communities c WHERE c.radio_channel_id=NEW.channel_id)
+    BEGIN
+      UPDATE radio_channel_profiles SET visibility='PRIVATE' WHERE channel_id=NEW.channel_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS people_community_chat_invite_ai
+    AFTER INSERT ON chat_room_invites
+    WHEN EXISTS(SELECT 1 FROM driver_communities c WHERE c.chat_room_id=NEW.room_id)
+    BEGIN
+      DELETE FROM chat_room_invites WHERE room_id=NEW.room_id AND target_user_id=NEW.target_user_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS people_community_radio_invite_ai
+    AFTER INSERT ON radio_channel_invites
+    WHEN EXISTS(SELECT 1 FROM driver_communities c WHERE c.radio_channel_id=NEW.channel_id)
+    BEGIN
+      DELETE FROM radio_channel_invites WHERE channel_id=NEW.channel_id AND target_user_id=NEW.target_user_id;
+    END;
+  `);
+
   function linkedChatRoom(roomId) {
     return db.prepare("SELECT id,title FROM driver_communities WHERE chat_room_id=?").get(Number(roomId)) || null;
   }
