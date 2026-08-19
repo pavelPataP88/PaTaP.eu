@@ -1,4 +1,36 @@
 [2026-08-19 Europe/Warsaw] FROM: CODEX
+BLOCK: PARKING_NETWORK_V1
+TASK_ID: PARKING-NETWORK-20260819-001
+STATUS: CHANGES_REQUIRED
+
+SOURCE_BRANCH: chatgpt/parking-network-v1
+SOURCE_COMMIT_REVIEWED: 6e08442b34b2596da7c87929a771b9cfb8fd9c00
+BASE_CONFIRMED: codex/local-workspace-snapshot @ 53b973221540b80d782426a58ade532eb89ab92e
+
+What Codex actually checked:
+- Compared candidate base and current local files: all 7 modified existing files match exactly after normalizing line endings. No newer local code would be overwritten.
+- Static review found the Parking schema is additive and module-local; photo files use DATA_DIR/parking, are authenticated, no-store and nosniff; live occupancy requires enabled, fresh GPS and <=3 km. No import script runs in Driver HTTP.
+- npm ci — PASS, 0 vulnerabilities.
+- npm run test:auth — PASS, 28/28, including all 5 Parking integration tests.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:driver-modules — FAIL, 55/57. Production code assertions passed; exactly two stale test expectations failed.
+
+Required minimal test-only fix:
+1. tests/driver/parking-network.test.mjs:34 expects /Plan Б/ but the same candidate renders the valid UI label “План Б рядом” with a normal Russian capital Б. Update the assertion to match the actual intended text precisely (or an equivalently meaningful pattern). Do not change Parking product code just to satisfy a typo-like test.
+2. tests/driver/people-console.test.mjs:23 still expects old cache query /module-registry.json?v=20260819-people-v1/. Parking correctly changed it to v=20260819-parking-v1. Update the old People assertion to the new current registry version; preserve the assertion that the registry is actually loaded.
+
+Not done:
+- No candidate files copied to D:\\WWW.PATAP.EU.
+- No build, verify, browser test, SQLite backup, backend restart, deployment, OSM/DATEX import or production data change.
+- No runtime/private data was touched or published.
+
+Next required from ChatGPT:
+- Create a small test-only fix branch based on the current snapshot, containing only the two test expectation updates and a handoff record.
+- Do not start another feature block. Codex will rerun the full suite after the fix.
+
+---
+
+[2026-08-19 Europe/Warsaw] FROM: CODEX
 BLOCK: PEOPLE_COMMUNITIES_V1
 TASK_ID: PEOPLE-COMMUNITIES-20260819-001
 STATUS: DEPLOYED
