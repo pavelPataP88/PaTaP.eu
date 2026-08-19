@@ -77,8 +77,8 @@ test("community lifecycle synchronizes People Chat and Radio and guards direct m
   ]) assert.match(peopleRepositorySource, pattern);
   assert.match(peopleRoutesSource, /guardCommunityLinks/);
   assert.match(peopleGuardSource, /community_managed/);
-  assert.match(peopleGuardSource, /chat\/groups/);
-  assert.match(peopleGuardSource, /radio\/channels/);
+  assert.match(peopleGuardSource, /chatMembershipPatterns/);
+  assert.match(peopleGuardSource, /radioMembershipPatterns/);
 });
 
 test("People does not claim or implement public followers, likes or exact coordinates in its nearby response", () => {
