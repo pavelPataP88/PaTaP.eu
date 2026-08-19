@@ -2,6 +2,7 @@ const { DRIVER_RADII_KM, validLocation, createLocationRepository } = require("./
 const { normalizeDriverProfile, publicDriverProfile, createProfileRepository } = require("./profile");
 const { createDriverDirectory } = require("./directory");
 const { createPeopleRoutes } = require("../people/routes");
+const { createParkingRoutes } = require("../parking/routes");
 const {
   createRoadReportStore,
   CONFIRMATIONS,
@@ -25,10 +26,13 @@ function createDriverRoutes({
   const locations = createLocationRepository(db, { addMinutes });
   const directory = createDriverDirectory(db, { addMinutes, nowIso });
   const roadReports = createRoadReportStore();
-  const handlePeopleRoute = createPeopleRoutes({ db, json, requireSession, requireCsrf, checkRate, audit, nowIso, addMinutes });
+  const routeOptions = { db, json, requireSession, requireCsrf, checkRate, audit, nowIso, addMinutes };
+  const handleParkingRoute = createParkingRoutes(routeOptions);
+  const handlePeopleRoute = createPeopleRoutes(routeOptions);
 
   return async function handleDriverRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/")) return false;
+    if (await handleParkingRoute(req, res, url, body)) return true;
     if (await handlePeopleRoute(req, res, url, body)) return true;
 
     if (req.method === "GET" && url.pathname === "/api/driver/profile") {
