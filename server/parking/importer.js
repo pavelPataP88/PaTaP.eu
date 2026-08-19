@@ -1,4 +1,4 @@
-const { createParkingRepository } = require("./repository");
+const { createParkingImportRepository } = require("./source-fusion");
 const { parseOsmParkingJson } = require("./adapters/osm");
 const { parseDatexParkingXml } = require("./adapters/datex");
 
@@ -17,7 +17,7 @@ function parsePayload(format,payload,source={}){
 }
 
 function importParkingPayload(db,{format,payload,source={},nowIso=()=>new Date().toISOString(),batchSize=500}={}){
-  const parking=createParkingRepository(db,{nowIso});
+  const parking=createParkingImportRepository(db,{nowIso});
   const parsed=parsePayload(format,payload,source);
   const sourceType=String(source.type||parsed.records[0]?.source?.type||"OTHER").toUpperCase();
   const runId=parking.startImport(sourceType,source.name||format||"parking import",nowIso());
