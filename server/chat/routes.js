@@ -11,7 +11,21 @@ function isReadOnlyGroup(chat, userId, roomId) {
 }
 
 function createChatRoutes(options) {
-  const inner = policy.createChatRoutes(options);
+  const innerOptions = {
+    ...options,
+    json(res, status, payload) {
+      if (res.__chatLegacyDelete === true) {
+        if (status === 403 && payload?.error === "chat_delete_forbidden") {
+          return options.json(res, 404, { error: "chat_message_not_found" });
+        }
+        if (status === 200 && payload?.deleted === true && Number.isSafeInteger(payload.id) && Number.isSafeInteger(payload.roomId)) {
+          return options.json(res, 200, { deleted: { id: payload.id, roomId: payload.roomId } });
+        }
+      }
+      return options.json(res, status, payload);
+    }
+  };
+  const inner = policy.createChatRoutes(innerOptions);
   const chat = createChatRepository(options.db);
   const reactions = createChatReactionRepository(options.db);
   const storageDir = path.join(options.dataDir || DATA_DIR, "chat");
@@ -128,16 +142,19 @@ function createChatRoutes(options) {
       : null;
     const messageStorage = deleteMessageMatch ? storageKeysForMessage(Number(deleteMessageMatch[1])) : [];
     const roomStorage = deleteRoomMatch ? storageKeysForRoom(Number(deleteRoomMatch[1])) : [];
+    if (deleteMessageMatch) res.__chatLegacyDelete = true;
 
-    const handled = await inner(req, res, url, body);
-    if (handled && responseStatus(res) >= 200 && responseStatus(res) < 300) {
-      if (deleteMessageMatch) {
-        cleanupMessageRichContent(Number(deleteMessageMatch[1]));
-        removeUnreferencedFiles(messageStorage);
+    try {
+      const handled = await inner(req, res, url, body);
+      if (handled && responseStatus(res) >= 200 && responseStatus(res) < 300) {
+        if (deleteMessageMatch) cleanupMessageRichContent(Number(deleteMessageMatch[1]));
+        if (deleteRoomMatch) removeUnreferencedFiles(roomStorage);
+        if (deleteMessageMatch) removeUnreferencedFiles(messageStorage);
       }
-      if (deleteRoomMatch) removeUnreferencedFiles(roomStorage);
+      return handled;
+    } finally {
+      delete res.__chatLegacyDelete;
     }
-    return handled;
   };
 }
 
