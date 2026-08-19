@@ -43,8 +43,7 @@ class Client {
     this.storeCookies(response.headers); return response;
   }
   async raw(pathname, headers = {}) {
-    const response = await fetch(`${baseUrl}${pathname}`, { headers: this.headers(headers) });
-    return response;
+    return fetch(`${baseUrl}${pathname}`, { headers: this.headers(headers) });
   }
 }
 
@@ -71,7 +70,6 @@ async function makeContacts(left,right) {
 }
 
 function clientMessageId(prefix) { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`.replace(/[^A-Za-z0-9_-]/g,"_"); }
-
 async function sendText(driver, roomId, text, extra = {}) {
   const result = await driver.client.request(`/api/driver/chat/rooms/${roomId}/messages`, { method: "POST", body: { clientMessageId: clientMessageId("msg"), text, ...extra } });
   assert.equal(result.response.status,201);
@@ -205,6 +203,8 @@ test("Chat Console V2 supports group roles, rich messages, cross-room forwarding
   result = await owner.client.request(`/api/driver/chat/messages/${reply.id}`, { method: "DELETE", body: { scope: "everyone" } });
   assert.equal(result.response.status,200);
   result = await owner.client.request(`/api/driver/chat/rooms/${group.id}/messages?limit=100`);
+  assert.equal(result.data.messages.some((message) => message.id === reply.id),false);
+  result = await owner.client.request(`/api/driver/chat/rooms/${group.id}/messages?limit=100&includeDeleted=1`);
   const tombstone = result.data.messages.find((message) => message.id === reply.id);
   assert.ok(tombstone);
   assert.ok(tombstone.deletedAt);
