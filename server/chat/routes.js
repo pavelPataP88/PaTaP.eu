@@ -1,6 +1,9 @@
+const fs = require("fs");
+const path = require("path");
 const policy = require("./routes-policy");
 const { createChatRepository } = require("./repository");
 const { createChatReactionRepository } = require("./reactions");
+const { DATA_DIR } = require("../auth/db");
 
 function isReadOnlyGroup(chat, userId, roomId) {
   const room = chat.getRoom(roomId);
@@ -11,8 +14,61 @@ function createChatRoutes(options) {
   const inner = policy.createChatRoutes(options);
   const chat = createChatRepository(options.db);
   const reactions = createChatReactionRepository(options.db);
+  const storageDir = path.join(options.dataDir || DATA_DIR, "chat");
+  let lastHousekeepingAt = 0;
+
+  function responseStatus(res) { return Number(res.statusCode || res.status || 0); }
+  function storageKeysForMessage(messageId) {
+    return options.db.prepare("SELECT DISTINCT storage_key FROM chat_message_attachments WHERE message_id=?").all(messageId).map((row) => row.storage_key);
+  }
+  function storageKeysForRoom(roomId) {
+    return options.db.prepare(`SELECT DISTINCT a.storage_key FROM chat_message_attachments a JOIN chat_messages m ON m.id=a.message_id WHERE m.room_id=?`)
+      .all(roomId).map((row) => row.storage_key);
+  }
+  function removeUnreferencedFiles(storageKeys) {
+    for (const storageKey of new Set(storageKeys.filter(Boolean))) {
+      const references = Number(options.db.prepare("SELECT COUNT(*) AS n FROM chat_message_attachments WHERE storage_key=?").get(storageKey).n || 0);
+      if (references) continue;
+      options.db.prepare("DELETE FROM chat_uploads WHERE storage_key=? AND state='ATTACHED'").run(storageKey);
+      try { fs.rmSync(path.join(storageDir, storageKey), { force: true }); } catch {}
+    }
+  }
+  function cleanupMessageRichContent(messageId) {
+    const storageKeys = storageKeysForMessage(messageId);
+    options.db.exec("BEGIN IMMEDIATE");
+    try {
+      options.db.prepare("DELETE FROM chat_message_attachments WHERE message_id=?").run(messageId);
+      options.db.prepare("DELETE FROM chat_polls WHERE message_id=?").run(messageId);
+      options.db.prepare("DELETE FROM chat_message_reactions_v2 WHERE message_id=?").run(messageId);
+      options.db.prepare("DELETE FROM chat_message_mentions WHERE message_id=?").run(messageId);
+      options.db.exec("COMMIT");
+    } catch (error) {
+      options.db.exec("ROLLBACK");
+      throw error;
+    }
+    removeUnreferencedFiles(storageKeys);
+  }
+  function housekeeping() {
+    const nowMs = Date.now();
+    if (nowMs - lastHousekeepingAt < 60_000) return;
+    lastHousekeepingAt = nowMs;
+    const now = options.nowIso();
+    const expired = options.db.prepare(`SELECT mm.message_id FROM chat_message_meta mm
+      WHERE (mm.deleted_at IS NOT NULL OR (mm.expires_at IS NOT NULL AND mm.expires_at<=?))
+        AND (EXISTS(SELECT 1 FROM chat_message_attachments a WHERE a.message_id=mm.message_id)
+          OR EXISTS(SELECT 1 FROM chat_polls p WHERE p.message_id=mm.message_id)
+          OR EXISTS(SELECT 1 FROM chat_message_reactions_v2 r WHERE r.message_id=mm.message_id)
+          OR EXISTS(SELECT 1 FROM chat_message_mentions mention WHERE mention.message_id=mm.message_id))
+      LIMIT 200`).all(now);
+    for (const row of expired) cleanupMessageRichContent(Number(row.message_id));
+    for (const upload of chat.expiredUploads(now)) {
+      try { fs.rmSync(path.join(storageDir, upload.storage_key), { force: true }); } catch {}
+    }
+  }
 
   return async function handleChatRoute(req, res, url, body) {
+    if (url.pathname.startsWith("/api/driver/chat/")) housekeeping();
+
     const editMatch = req.method === "PATCH" && body !== undefined
       ? url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/)
       : null;
@@ -64,7 +120,24 @@ function createChatRoutes(options) {
       }
     }
 
-    return inner(req, res, url, body);
+    const deleteMessageMatch = req.method === "DELETE" && body !== undefined && body?.scope !== "me"
+      ? url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/)
+      : null;
+    const deleteRoomMatch = req.method === "DELETE" && body !== undefined
+      ? url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)$/)
+      : null;
+    const messageStorage = deleteMessageMatch ? storageKeysForMessage(Number(deleteMessageMatch[1])) : [];
+    const roomStorage = deleteRoomMatch ? storageKeysForRoom(Number(deleteRoomMatch[1])) : [];
+
+    const handled = await inner(req, res, url, body);
+    if (handled && responseStatus(res) >= 200 && responseStatus(res) < 300) {
+      if (deleteMessageMatch) {
+        cleanupMessageRichContent(Number(deleteMessageMatch[1]));
+        removeUnreferencedFiles(messageStorage);
+      }
+      if (deleteRoomMatch) removeUnreferencedFiles(roomStorage);
+    }
+    return handled;
   };
 }
 
