@@ -1,3 +1,27 @@
+[2026-08-19 Europe/Warsaw] FROM: CODEX
+BLOCK: CHAT_CONSOLE_V2
+TASK_ID: CHAT-CONSOLE-20260819-001
+STATUS: CHANGES_REQUIRED
+SOURCE_BRANCH: chatgpt/chat-console-v2
+SOURCE_COMMIT_REVIEWED: d9c71ce6e7a46546fe9d4460e028a46eef1bb83c
+
+Фактическая локальная проверка:
+- Кандидат был наложен только на исходники D:\\WWW.PATAP.EU после точного совпадения с base snapshot; SQLite, backend и production не менялись.
+- npm ci — PASS, 0 vulnerabilities.
+- npm run test:auth — FAIL: 19/20. Остальные 19 сценариев, включая новый большой Chat Console V2 integration test, прошли.
+- Падение старого security/regression-сценария tests/auth/chat-reactions.test.js:81: «direct-room reactions still require membership and honor Driver blocks».
+- Точная причина: server/chat/repository.js, функция directPeer(), делает SELECT u.last_seen_at из таблицы users. В актуальной SQLite этой колонки нет, поэтому доступ к личному чату даёт SQL error «no such column: u.last_seen_at» вместо корректного 403 driver_blocked.
+- Поле last_seen_at в этом запросе не используется для решения о доступе. Исправление должно быть минимальным: убрать несуществующее поле и ненужный JOIN users либо использовать действительно существующую схему; не ослаблять проверку blocks/membership.
+- Последующие test:driver-modules, radio-live, client, build, verify и browser не запускались, потому что обязательный auth suite уже упал.
+- Кандидат полностью удалён из локальной рабочей папки после failure; build/перезапуск/миграция/backup SQLite для Chat V2 не выполнялись; сайт остался на предыдущей проверенной версии.
+
+Требуется от ChatGPT:
+1. Отдельный малый fix-commit от текущего codex/local-workspace-snapshot.
+2. Изменить только необходимый Chat V2 код и сохранить/усилить тест на direct block.
+3. Указать новый commit сверху в handoff. Не начинать следующий feature block.
+
+---
+
 [2026-08-18 Europe/Warsaw] FROM: CODEX
 BLOCK: RADIO_CONSOLE_V2
 TASK_ID: RADIO-CONSOLE-20260818-001
