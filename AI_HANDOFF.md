@@ -1,6 +1,39 @@
 [2026-08-19 Europe/Warsaw] FROM: CODEX
 BLOCK: CHAT_CONSOLE_V2
 TASK_ID: CHAT-CONSOLE-20260819-001
+STATUS: DEPLOYED
+
+SOURCE_BRANCHES: chatgpt/chat-console-v2; chatgpt/chat-console-v2-fix-01
+SOURCE_COMMITS: d9c71ce6e7a46546fe9d4460e028a46eef1bb83c; a8cddb6687145571d7c429ab6a5bdfdeae0c8753
+
+Применено после фактической проверки:
+- Chat Console V2: личные и групповые чаты, роли, поиск, вложения, голосовые сообщения, опросы, ответы, редактирование/удаление, закрепления, непрочитанные и настройки.
+- Минимальный fix убрал обращение к несуществующему users.last_seen_at; security-проверка Driver blocks сохранена.
+- Codex обновил только тестовые ожидания браузера и статическую verify-проверку под новую структуру маршрутов; продуктовые проверки не ослаблялись.
+- SQLite backup создан локально до рестарта и не публиковался. Runtime-данные, пользователи, GPS, сообщения, токены, пароли и логи не попали в GitHub.
+
+Фактически выполненные проверки:
+- npm ci — PASS, 0 vulnerabilities.
+- npm run test:auth — PASS, 20/20.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:driver-modules — PASS, 40/40.
+- npm run test:client — PASS, 2/2.
+- npm run test:config — PASS, 4/4.
+- npm run build — PASS.
+- npm run verify — PASS.
+- npm run test:browser — PASS.
+- Внешняя браузерная проверка: https://patap.eu открывается; https://driver.patap.eu открывается в гостевом режиме без browser console errors.
+
+Ручная проверка, которая ещё нужна на двух временных тестовых аккаунтах:
+- создание/вступление в группы, приглашения/роли/бан;
+- обмен изображением, файлом и голосовым сообщением;
+- опрос, поиск, reply/edit/delete/pin, read/unread;
+- проверка, что блокировка водителя продолжает закрывать личный чат.
+
+---
+[2026-08-19 Europe/Warsaw] FROM: CODEX
+BLOCK: CHAT_CONSOLE_V2
+TASK_ID: CHAT-CONSOLE-20260819-001
 STATUS: CHANGES_REQUIRED
 SOURCE_BRANCH: chatgpt/chat-console-v2
 SOURCE_COMMIT_REVIEWED: d9c71ce6e7a46546fe9d4460e028a46eef1bb83c

@@ -1,218 +1,196 @@
+const fs = require("fs");
+const path = require("path");
+const policy = require("./routes-policy");
 const { createChatRepository } = require("./repository");
-const { createChatReactionRepository, normalizeReaction } = require("./reactions");
+const { createChatReactionRepository } = require("./reactions");
+const { DATA_DIR } = require("../auth/db");
 
-const CLIENT_MESSAGE_ID = /^[A-Za-z0-9_-]{8,100}$/;
-
-function normalizeMessage(value) {
-  if (typeof value !== "string") return null;
-  const text = value.normalize("NFKC").trim();
-  if (!text || text.length > 2000 || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(text)) return null;
-  return text;
+function isReadOnlyGroup(chat, userId, roomId) {
+  const room = chat.getRoom(roomId);
+  return room?.kind === "GROUP" && chat.roomForUser(userId, roomId)?.role === "READONLY";
 }
 
-function createChatRoutes({ db, json, requireSession, requireCsrf, checkRate, audit, nowIso, publish }) {
-  const chat = createChatRepository(db);
-  const reactions = createChatReactionRepository(db);
+function sanitizeRealtimeEvent(event) {
+  if (!event || !Number.isSafeInteger(Number(event.roomId))) return event;
+  const roomId = Number(event.roomId);
+  if (["chat.message.updated", "chat.poll.updated"].includes(event.type)) {
+    return { type: "chat.receipt.updated", roomId, readMessageId: 0, reason: event.type };
+  }
+  if (event.type === "chat.receipt.updated") {
+    return { type: "chat.receipt.updated", roomId, readMessageId: Number(event.readMessageId || 0) };
+  }
+  if (event.type === "chat.room.updated") return { type: "chat.room.updated", roomId };
+  if (event.type === "chat.message.committed" && event.message) {
+    const message = {
+      ...event.message,
+      receipts: null,
+      reactions: (event.message.reactions || []).map(({ reactedByMe, ...reaction }) => reaction),
+      poll: event.message.poll ? {
+        ...event.message.poll,
+        options: (event.message.poll.options || []).map(({ votedByMe, ...option }) => option)
+      } : null
+    };
+    return { type: event.type, roomId, cursor: Number(event.cursor || message.id), message };
+  }
+  return event;
+}
 
-  function requireChatAccess(req, res, roomId = null) {
-    const session = requireSession(req, res);
-    if (!session) return null;
-    if (!chat.hasProfile(session.user.id)) {
-      json(res, 409, { error: "driver_profile_required" });
-      return null;
-    }
-    if (roomId !== null) {
-      const room = chat.getRoom(roomId);
-      const accessError = chat.roomAccessError(session.user.id, room);
-      if (accessError) {
-        json(res, accessError === "driver_blocked" ? 403 : 404, { error: accessError });
-        return null;
+function createChatRoutes(options) {
+  const innerOptions = {
+    ...options,
+    publish(event) { options.publish(sanitizeRealtimeEvent(event)); },
+    json(res, status, payload) {
+      if (res.__chatLegacyDelete === true) {
+        if (status === 403 && payload?.error === "chat_delete_forbidden") {
+          return options.json(res, 404, { error: "chat_message_not_found" });
+        }
+        if (status === 200 && payload?.deleted === true && Number.isSafeInteger(payload.id) && Number.isSafeInteger(payload.roomId)) {
+          return options.json(res, 200, { deleted: { id: payload.id, roomId: payload.roomId } });
+        }
       }
-      session.chatRoom = room;
+      if (res.__chatHideDeleted === true && status === 200 && Array.isArray(payload?.messages)) {
+        return options.json(res, status, { ...payload, messages: payload.messages.filter((message) => !message.deletedAt) });
+      }
+      return options.json(res, status, payload);
     }
-    return session;
+  };
+  const inner = policy.createChatRoutes(innerOptions);
+  const chat = createChatRepository(options.db);
+  const reactions = createChatReactionRepository(options.db);
+  const storageDir = path.join(options.dataDir || DATA_DIR, "chat");
+  let lastHousekeepingAt = 0;
+
+  function responseStatus(res) { return Number(res.statusCode || res.status || 0); }
+  function storageKeysForMessage(messageId) {
+    return options.db.prepare("SELECT DISTINCT storage_key FROM chat_message_attachments WHERE message_id=?").all(messageId).map((row) => row.storage_key);
+  }
+  function storageKeysForRoom(roomId) {
+    return options.db.prepare(`SELECT DISTINCT a.storage_key FROM chat_message_attachments a JOIN chat_messages m ON m.id=a.message_id WHERE m.room_id=?`)
+      .all(roomId).map((row) => row.storage_key);
+  }
+  function removeUnreferencedFiles(storageKeys) {
+    for (const storageKey of new Set(storageKeys.filter(Boolean))) {
+      const references = Number(options.db.prepare("SELECT COUNT(*) AS n FROM chat_message_attachments WHERE storage_key=?").get(storageKey).n || 0);
+      if (references) continue;
+      options.db.prepare("DELETE FROM chat_uploads WHERE storage_key=? AND state='ATTACHED'").run(storageKey);
+      try { fs.rmSync(path.join(storageDir, storageKey), { force: true }); } catch {}
+    }
+  }
+  function cleanupMessageRichContent(messageId) {
+    const storageKeys = storageKeysForMessage(messageId);
+    options.db.exec("BEGIN IMMEDIATE");
+    try {
+      options.db.prepare("DELETE FROM chat_message_attachments WHERE message_id=?").run(messageId);
+      options.db.prepare("DELETE FROM chat_polls WHERE message_id=?").run(messageId);
+      options.db.prepare("DELETE FROM chat_message_reactions_v2 WHERE message_id=?").run(messageId);
+      options.db.prepare("DELETE FROM chat_message_mentions WHERE message_id=?").run(messageId);
+      options.db.exec("COMMIT");
+    } catch (error) {
+      options.db.exec("ROLLBACK");
+      throw error;
+    }
+    removeUnreferencedFiles(storageKeys);
+  }
+  function housekeeping() {
+    const nowMs = Date.now();
+    if (nowMs - lastHousekeepingAt < 60_000) return;
+    lastHousekeepingAt = nowMs;
+    const now = options.nowIso();
+    const expired = options.db.prepare(`SELECT mm.message_id FROM chat_message_meta mm
+      WHERE (mm.deleted_at IS NOT NULL OR (mm.expires_at IS NOT NULL AND mm.expires_at<=?))
+        AND (EXISTS(SELECT 1 FROM chat_message_attachments a WHERE a.message_id=mm.message_id)
+          OR EXISTS(SELECT 1 FROM chat_polls p WHERE p.message_id=mm.message_id)
+          OR EXISTS(SELECT 1 FROM chat_message_reactions_v2 r WHERE r.message_id=mm.message_id)
+          OR EXISTS(SELECT 1 FROM chat_message_mentions mention WHERE mention.message_id=mm.message_id))
+      LIMIT 200`).all(now);
+    for (const row of expired) cleanupMessageRichContent(Number(row.message_id));
+    for (const upload of chat.expiredUploads(now)) {
+      try { fs.rmSync(path.join(storageDir, upload.storage_key), { force: true }); } catch {}
+    }
   }
 
   return async function handleChatRoute(req, res, url, body) {
-    if (!url.pathname.startsWith("/api/driver/chat/")) return false;
+    if (url.pathname.startsWith("/api/driver/chat/")) housekeeping();
 
-    if (req.method === "GET" && url.pathname === "/api/driver/chat/rooms") {
-      const session = requireChatAccess(req, res);
-      if (session) json(res, 200, { rooms: chat.listRooms(session.user.id) });
-      return true;
-    }
+    const getMessagesMatch = req.method === "GET"
+      ? url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)\/messages$/)
+      : null;
+    if (getMessagesMatch && url.searchParams.get("includeDeleted") !== "1") res.__chatHideDeleted = true;
 
-    if (req.method === "GET" && url.pathname === "/api/driver/chat/countries") {
-      const session = requireChatAccess(req, res);
-      if (session) json(res, 200, chat.countryChatForUser(session.user.id));
-      return true;
-    }
-
-    const countryJoin = url.pathname.match(/^\/api\/driver\/chat\/countries\/([A-Za-z]{2})\/join$/);
-    if (req.method === "POST" && countryJoin) {
-      if (body === undefined) return false;
-      const session = requireChatAccess(req, res);
-      if (!session || !requireCsrf(req, res, session)) return true;
-      if (!checkRate(`chat-country-join:user:${session.user.id}`, 10, 1)) {
-        json(res, 429, { error: "chat_rate_limited" });
-        return true;
-      }
-      try {
-        const result = chat.joinCountryChat(session.user.id, countryJoin[1], nowIso());
-        if (result.joined) audit(req, "chat_country_joined", {
-          userId: session.user.id,
-          success: true,
-          details: { roomId: result.room.id, countryCode: result.room.countryCode }
-        });
-        json(res, result.created ? 201 : 200, result);
-      } catch (error) {
-        const known = ["invalid_country_code", "country_chat_not_eligible"].includes(error.message);
-        json(res, error.status || 400, { error: known ? error.message : "invalid_country_chat" });
-      }
-      return true;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/driver/chat/direct") {
-      if (body === undefined) return false;
-      const session = requireChatAccess(req, res);
-      if (!session || !requireCsrf(req, res, session)) return true;
-      if (!checkRate(`chat-direct:user:${session.user.id}`, 20, 1)) {
-        json(res, 429, { error: "chat_rate_limited" });
-        return true;
-      }
-      try {
-        const result = chat.createDirectRoom(session.user.id, body?.nickname, nowIso());
-        if (result.created) audit(req, "chat_direct_created", { userId: session.user.id, success: true, details: { roomId: result.room.id } });
-        json(res, result.created ? 201 : 200, result);
-      } catch (error) {
-        const knownError = ["driver_not_found", "driver_blocked", "direct_chat_self_forbidden"].includes(error.message);
-        json(res, error.status || 400, { error: knownError ? error.message : "invalid_direct_chat" });
-      }
-      return true;
-    }
-
-    const reactionMatch = url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)\/reactions$/);
-    if (req.method === "POST" && reactionMatch) {
-      if (body === undefined) return false;
-      const messageId = Number(reactionMatch[1]);
-      const roomId = reactions.messageRoomId(messageId);
-      if (roomId === null) {
-        const session = requireChatAccess(req, res);
-        if (session) json(res, 404, { error: "chat_message_not_found" });
-        return true;
-      }
-      const session = requireChatAccess(req, res, roomId);
-      if (!session || !requireCsrf(req, res, session)) return true;
-      const reaction = normalizeReaction(body?.reaction);
-      if (!reaction) {
-        json(res, 400, { error: "invalid_chat_reaction" });
-        return true;
-      }
-      if (!checkRate(`chat-reaction:user:${session.user.id}`, 60, 1)) {
-        json(res, 429, { error: "chat_rate_limited" });
-        return true;
-      }
-      try {
-        const result = reactions.toggleReaction({
-          messageId,
-          userId: session.user.id,
-          reaction,
-          createdAt: nowIso()
-        });
-        audit(req, result.added ? "chat_reaction_added" : "chat_reaction_removed", {
-          userId: session.user.id,
-          success: true,
-          details: { roomId: result.roomId, messageId: result.messageId, reaction }
-        });
-        publish({
-          type: "chat.reaction.updated",
-          roomId: result.roomId,
-          messageId: result.messageId,
-          reactions: result.reactions.map(({ reactedByMe, ...item }) => item)
-        });
-        json(res, 200, result);
-      } catch (error) {
-        json(res, error.status || 500, { error: error.status ? error.message : "chat_reaction_failed" });
-      }
-      return true;
-    }
-
-    const deleteMatch = url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/);
-    if (req.method === "DELETE" && deleteMatch) {
-      const session = requireChatAccess(req, res);
-      if (!session || !requireCsrf(req, res, session)) return true;
-      if (!checkRate(`chat-delete:user:${session.user.id}`, 30, 1)) {
-        json(res, 429, { error: "chat_rate_limited" });
-        return true;
-      }
-      const deleted = chat.deleteOwnMessage(session.user.id, Number(deleteMatch[1]));
-      if (!deleted) {
-        json(res, 404, { error: "chat_message_not_found" });
-        return true;
-      }
-      audit(req, "chat_message_deleted", {
-        userId: session.user.id,
-        success: true,
-        details: { roomId: deleted.roomId, messageId: deleted.id }
-      });
-      publish({ type: "chat.message.deleted", roomId: deleted.roomId, messageId: deleted.id });
-      json(res, 200, { deleted });
-      return true;
-    }
-
-    const match = url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)\/messages$/);
-    if (!match) return false;
-    const roomId = Number(match[1]);
-
-    if (req.method === "GET") {
-      const session = requireChatAccess(req, res, roomId);
+    const editMatch = req.method === "PATCH" && body !== undefined
+      ? url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/)
+      : null;
+    if (editMatch) {
+      const session = options.requireSession(req, res);
       if (!session) return true;
-      const afterValue = url.searchParams.get("after");
-      const beforeValue = url.searchParams.get("before");
-      const limitValue = url.searchParams.get("limit");
-      const after = afterValue === null ? null : Number(afterValue);
-      const before = beforeValue === null ? null : Number(beforeValue);
-      const limit = limitValue === null ? 50 : Number(limitValue);
-      if ((after !== null && (!Number.isSafeInteger(after) || after < 0)) || (before !== null && (!Number.isSafeInteger(before) || before < 0)) || (after !== null && before !== null) || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
-        json(res, 400, { error: "invalid_chat_cursor" });
+      const message = options.db.prepare("SELECT room_id FROM chat_messages WHERE id=?").get(Number(editMatch[1]));
+      if (message && isReadOnlyGroup(chat, session.user.id, Number(message.room_id))) {
+        if (!options.requireCsrf(req, res, session)) return true;
+        options.json(res, 403, { error: "chat_readonly" });
         return true;
       }
-      const result = chat.listMessages(roomId, { after, before, limit });
-      result.messages = reactions.attachToMessages(result.messages, session.user.id);
-      json(res, 200, result);
-      return true;
     }
 
-    if (body === undefined) return false;
-    if (req.method === "POST") {
-      const session = requireChatAccess(req, res, roomId);
-      if (!session || !requireCsrf(req, res, session)) return true;
-      const clientMessageId = String(body.clientMessageId || "");
-      const text = normalizeMessage(body.text);
-      if (!CLIENT_MESSAGE_ID.test(clientMessageId) || text === null) {
-        json(res, 400, { error: "invalid_chat_message" });
+    const match = req.method === "POST" && body !== undefined
+      ? url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)\/messages$/)
+      : null;
+
+    if (match && body?.clientMessageId) {
+      const session = options.requireSession(req, res);
+      if (!session) return true;
+      const existing = options.db.prepare(`SELECT m.id,m.room_id,m.body,mm.reply_to_message_id,mm.forwarded_from_message_id
+        FROM chat_messages m LEFT JOIN chat_message_meta mm ON mm.message_id=m.id
+        WHERE m.sender_id=? AND m.client_message_id=?`).get(session.user.id, String(body.clientMessageId));
+      if (existing) {
+        if (!options.requireCsrf(req, res, session)) return true;
+        const targetRoomId = Number(match[1]);
+        const requestedReply = body.replyToMessageId === undefined || body.replyToMessageId === null ? null : Number(body.replyToMessageId);
+        const requestedForward = body.forwardFromMessageId === undefined || body.forwardFromMessageId === null ? null : Number(body.forwardFromMessageId);
+        let requestedText = policy.normalizeMessage(body.text, { allowEmpty: true });
+        if (requestedForward !== null) {
+          const source = options.db.prepare("SELECT body FROM chat_messages WHERE id=?").get(requestedForward);
+          if (source) requestedText = source.body;
+        }
+        const same = Number(existing.room_id) === targetRoomId
+          && requestedText !== null
+          && String(existing.body) === String(requestedText)
+          && (existing.reply_to_message_id === null ? null : Number(existing.reply_to_message_id)) === requestedReply
+          && (existing.forwarded_from_message_id === null ? null : Number(existing.forwarded_from_message_id)) === requestedForward;
+        if (!same) {
+          options.json(res, 409, { error: "client_message_id_conflict" });
+          return true;
+        }
+        const listed = chat.listMessages(session.user.id, targetRoomId, { after: Math.max(0, Number(existing.id) - 1), limit: 2 }, options.nowIso());
+        const message = listed.messages.find((item) => Number(item.id) === Number(existing.id));
+        if (message) message.reactions = reactions.listForMessage(message.id, session.user.id);
+        options.json(res, 200, { message, duplicate: true });
         return true;
       }
-      if (!checkRate(`chat-message:user:${session.user.id}`, 30, 1)) {
-        json(res, 429, { error: "chat_rate_limited" });
-        return true;
-      }
-      const stored = chat.insertMessage({ roomId, senderId: session.user.id, clientMessageId, text, createdAt: nowIso() });
-      stored.message.reactions = reactions.listForMessage(stored.message.id, session.user.id);
-      if (!stored.duplicate) {
-        audit(req, "chat_message_sent", { userId: session.user.id, success: true, details: { roomId } });
-        publish({
-          type: "chat.message.committed",
-          roomId: stored.message.roomId,
-          cursor: stored.message.id,
-          message: stored.message
-        });
-      }
-      json(res, stored.duplicate ? 200 : 201, stored);
-      return true;
     }
-    return false;
+
+    const deleteMessageMatch = req.method === "DELETE" && body !== undefined && body?.scope !== "me"
+      ? url.pathname.match(/^\/api\/driver\/chat\/messages\/(\d+)$/)
+      : null;
+    const deleteRoomMatch = req.method === "DELETE" && body !== undefined
+      ? url.pathname.match(/^\/api\/driver\/chat\/rooms\/(\d+)$/)
+      : null;
+    const messageStorage = deleteMessageMatch ? storageKeysForMessage(Number(deleteMessageMatch[1])) : [];
+    const roomStorage = deleteRoomMatch ? storageKeysForRoom(Number(deleteRoomMatch[1])) : [];
+    if (deleteMessageMatch) res.__chatLegacyDelete = true;
+
+    try {
+      const handled = await inner(req, res, url, body);
+      if (handled && responseStatus(res) >= 200 && responseStatus(res) < 300) {
+        if (deleteMessageMatch) cleanupMessageRichContent(Number(deleteMessageMatch[1]));
+        if (deleteRoomMatch) removeUnreferencedFiles(roomStorage);
+        if (deleteMessageMatch) removeUnreferencedFiles(messageStorage);
+      }
+      return handled;
+    } finally {
+      delete res.__chatLegacyDelete;
+      delete res.__chatHideDeleted;
+    }
   };
 }
 
-module.exports = { createChatRoutes, normalizeMessage };
+module.exports = { ...policy, createChatRoutes, sanitizeRealtimeEvent };

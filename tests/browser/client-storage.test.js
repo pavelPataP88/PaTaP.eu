@@ -140,6 +140,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   let profileGpsEnabled = false;
   let nearbyRelationship = "STRANGER";
   let contactsUnauthorized = false;
+  let directChatOpened = false;
   let chatMessages = [
     { id: 901, roomId: 9, sender: { nickname: "DriverTest", driverType: "TAXI" }, text: "Моё сообщение", createdAt: new Date().toISOString() },
     { id: 902, roomId: 9, sender: { nickname: "NearbyDriver", driverType: "DELIVERY" }, text: "Чужое сообщение", createdAt: new Date().toISOString() }
@@ -237,9 +238,21 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
       }] }));
       return;
     }
+    const chatOverview = {
+      rooms: [
+        { id: 1, key: "general", kind: "GENERAL", title: "Общий чат", lastCursor: null },
+        ...(directChatOpened ? [{ id: 9, key: "direct:303:404", kind: "DIRECT", title: "NearbyDriver", peer: { nickname: "NearbyDriver", driverType: "DELIVERY" }, lastCursor: chatMessages.at(-1)?.id || null }] : [])
+      ],
+      invites: []
+    };
+    if (url.pathname === "/api/driver/chat/overview") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(chatOverview));
+      return;
+    }
     if (url.pathname === "/api/driver/chat/rooms") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ rooms: [{ id: 1, key: "general", kind: "GENERAL", title: "Общий чат", lastCursor: null }] }));
+      res.end(JSON.stringify({ rooms: chatOverview.rooms }));
       return;
     }
     if (url.pathname === "/api/driver/drivers/NearbyDriver") {
@@ -276,6 +289,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
       let raw = "";
       for await (const chunk of req) raw += chunk;
       requests.push({ method: req.method, path: url.pathname, body: raw ? JSON.parse(raw) : {} });
+      directChatOpened = true;
       res.writeHead(201, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ created: true, room: { id: 9, key: "direct:303:404", kind: "DIRECT", title: "NearbyDriver", lastCursor: null } }));
       return;
@@ -432,23 +446,21 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   assert.equal(await page.locator("#driver-card-name").textContent(), "NearbyDriver");
   await page.locator("#driver-card-chat").click();
   await page.locator("#chat-view:not([hidden])").waitFor();
-  await page.waitForFunction(() => document.querySelector("#chat-room-title").textContent.includes("NearbyDriver"));
+  await page.waitForFunction(() => document.querySelector(".chat-conversation-identity strong")?.textContent.includes("NearbyDriver"));
   assert.deepEqual(requests.find((item) => item.path === "/api/driver/chat/direct").body, { nickname: "NearbyDriver" });
-  assert.equal(await page.locator("#chat-rooms button.active").textContent(), "Личный: NearbyDriver");
+  assert.equal(await page.locator("#chat-rooms button.chat-room-row.active").textContent().then((text) => text.includes("NearbyDriver")), true);
   assert.equal(await page.locator("#chat-rooms button").count(), 2);
   assert.equal(await page.locator("#chat-rooms").textContent().then((text) => text.includes("Общий чат")), true);
   assert.equal(await page.locator("#chat-direct-help").isHidden(), true);
   assert.equal(await page.locator(".chat-message").count(), 2);
-  assert.equal(await page.locator(".chat-message .message-menu").count(), 2);
-  assert.equal(await page.locator(".chat-message .message-menu button").filter({ hasText: "Копировать" }).count(), 2);
-  assert.equal(await page.locator(".chat-message .message-menu button").filter({ hasText: "Удалить" }).count(), 1);
-  await page.locator('.chat-message[data-message-id="901"] .message-menu summary').click();
-  await page.locator('.chat-message[data-message-id="901"] .message-menu button').filter({ hasText: "Копировать" }).click();
+  assert.equal(await page.locator(".chat-message .chat-message-menu").count(), 2);
+  await page.locator('.chat-message[data-message-id="901"] .chat-message-menu button').click();
+  await page.locator("dialog.chat-dialog[open] button").filter({ hasText: "Копировать" }).click();
   await page.waitForFunction(() => window.__copiedText === "Моё сообщение");
   page.once("dialog", (dialog) => dialog.accept());
-  await page.locator('.chat-message[data-message-id="901"] .message-menu summary').click();
-  await page.locator('.chat-message[data-message-id="901"] .message-menu button.danger').click();
-  await page.waitForFunction(() => document.querySelectorAll(".chat-message").length === 1);
+  await page.locator('.chat-message[data-message-id="901"] .chat-message-menu button').click();
+  await page.locator("dialog.chat-dialog[open] button").filter({ hasText: "Удалить у всех" }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".chat-message").length === 2 && document.querySelector('.chat-message[data-message-id="901"]')?.textContent.includes("Сообщение удалено"));
   assert.equal(requests.some((item) => item.path === "/api/driver/chat/messages/901" && item.method === "DELETE"), true);
 
   await page.locator('[data-driver-target="radio"]').click();

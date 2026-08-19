@@ -199,6 +199,7 @@ const driverGps = exists("driver/gps/index.js") ? read("driver/gps/index.js") : 
 const driverLocation = exists("server/driver/location.js") ? read("server/driver/location.js") : "";
 const driverRoutes = exists("server/driver/routes.js") ? read("server/driver/routes.js") : "";
 const chatRoutes = exists("server/chat/routes.js") ? read("server/chat/routes.js") : "";
+const chatRoutesV2 = exists("server/chat/routes-v2.js") ? read("server/chat/routes-v2.js") : "";
 const chatRepository = exists("server/chat/repository.js") ? read("server/chat/repository.js") : "";
 const driverRegistry = exists("driver/module-registry.json") ? read("driver/module-registry.json") : "";
 const scenarioChecks = [
@@ -228,7 +229,7 @@ const scenarioChecks = [
   [authDb.includes("CREATE TABLE driver_locations"), "Backend must migrate current Driver locations without route history"],
   [authDb.includes("gps_enabled") && driverRoutes.includes("/api/driver/gps"), "Backend must persist the single Driver GPS state"],
   [authDb.includes("CREATE TABLE chat_rooms") && authDb.includes("CREATE TABLE chat_messages"), "Backend must migrate persistent Driver chat"],
-  [authDb.includes("CREATE TABLE chat_direct_pairs") && chatRoutes.includes("/api/driver/chat/direct") && chatRepository.includes("createDirectRoom"), "Backend must provide unique Driver direct chats"],
+  [authDb.includes("CREATE TABLE chat_direct_pairs") && (chatRoutes.includes("/api/driver/chat/direct") || chatRoutesV2.includes("/api/driver/chat/direct")) && chatRepository.includes("createDirectRoom"), "Backend must provide unique Driver direct chats"],
   [authDb.includes("CREATE TABLE principal_owner"), "Backend must enforce one immutable principal Owner"],
   [driverRoutes.includes("/api/driver/location") && driverRoutes.includes("/api/driver/nearby"), "Backend must expose Driver location APIs through Driver routes"],
   [authServer.includes('require("../driver/routes")') && driverRoutes.includes('require("./location")') && driverLocation.includes("createLocationRepository"), "Backend must keep Driver routes and location policy in module boundaries"],

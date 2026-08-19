@@ -1,3 +1,7 @@
+## Chat Console V2 — развёрнут 19 августа 2026
+
+Рабочий сайт получил проверенный Chat Console V2. Все локальные автотесты, build, verify и browser suite прошли. Точный состав, commits и обязательный ручной smoke-сценарий записаны в `AI_HANDOFF.md`.
+
 # Current Engineering State — PaTaP.eu
 
 **Purpose:** this is the current, safe starting point for AI work. It describes what is actually deployed and tested, not an idea or a wish list.
