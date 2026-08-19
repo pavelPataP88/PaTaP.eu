@@ -73,7 +73,7 @@ const navigation = createNavigationController({
 });
 
 async function setupRuntime() {
-  const registry = await loadDriverModuleRegistry("/module-registry.json?v=20260725-4");
+  const registry = await loadDriverModuleRegistry("/module-registry.json?v=20260819-people-v1");
   const modules = validateDriverModuleRegistry(registry).filter((module) => module.enabled);
   profileRequiredViews = modules.filter((module) => module.requiresProfile && module.view).map((module) => module.view);
   navigation.configure(modules);
@@ -94,10 +94,32 @@ async function setupRuntime() {
         await chat.openDirect(nickname);
         navigation.show("chat");
       },
+      openChatRoom: async (roomId) => {
+        const chat = runtime?.get("chat");
+        if (!chat?.openRoom) return showError("Чат сообщества временно недоступен.");
+        await chat.openRoom(roomId);
+        navigation.show("chat");
+      },
       openDirectRadio: async (nickname) => {
         const radio = runtime?.get("radio");
         if (!radio) return showError("Рация временно недоступна.");
         await radio.openDirect(nickname);
+        navigation.show("radio");
+      },
+      openRadioChannel: async (channelId) => {
+        const radio = runtime?.get("radio");
+        if (!radio) return showError("Рация временно недоступна.");
+        await radio.activate();
+        const search = document.querySelector(".radio-console-search input");
+        if (search?.value) {
+          search.value = "";
+          search.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        const channelTab = document.querySelectorAll(".radio-console-tabs button")[1];
+        channelTab?.click();
+        const row = document.querySelector(`.radio-channel-item[data-channel-id="${Number(channelId)}"]`);
+        if (!row) return showError("Радиоканал сообщества больше недоступен.");
+        row.click();
         navigation.show("radio");
       },
       onProfileSaved: async (profile) => {

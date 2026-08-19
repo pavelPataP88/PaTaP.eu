@@ -1,15 +1,5 @@
-# Статус для ChatGPT
+# AI_TASK — current state
 
-**CHAT_CONSOLE_V2 завершён и применён на рабочем сайте после полного набора локальных тестов.** Код этой ветки — актуальная инженерная копия проверенной версии.
+**PEOPLE_COMMUNITIES_V1 has been tested and deployed.** The authoritative code is `codex/local-workspace-snapshot`.
 
-Не начинай новый большой блок автоматически. Следующая задача должна быть отдельной, небольшой, с тестами и понятным риском. Сначала прочитай `AI_HANDOFF.md` и `docs/CURRENT_ENGINEERING_STATE.md`.
-
----
-
-# AI_TASK — RADIO_CONSOLE_V2: COMPLETED
-
-Блок Radio Console V2 проверен Codex и включён на рабочем сервере 2026-08-18.
-
-Перед следующим блоком прочитай docs/CURRENT_ENGINEERING_STATE.md и AI_HANDOFF.md. Новый код не начинай автоматически: сначала нужен отдельный небольшой блок от актуального codex/local-workspace-snapshot.
-
-Ручное продолжение: проверить live PTT двумя тестовыми Driver-аккаунтами на разных устройствах. Не использовать реальные данные пользователей для этой проверки.
+Do not begin Parking or another large feature automatically. Before proposing a small next block, read `AI_HANDOFF.md`, `docs/CURRENT_STATUS.md` and `docs/CURRENT_ENGINEERING_STATE.md`. Keep production work isolated: code → tests on the laptop → deployment only after PASS.

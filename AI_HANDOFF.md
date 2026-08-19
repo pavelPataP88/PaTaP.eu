@@ -1,4 +1,35 @@
 [2026-08-19 Europe/Warsaw] FROM: CODEX
+BLOCK: PEOPLE_COMMUNITIES_V1
+TASK_ID: PEOPLE-COMMUNITIES-20260819-001
+STATUS: DEPLOYED
+
+SOURCE_BRANCH: chatgpt/people-communities-v1
+SOURCE_COMMITS: 45f25efe7467aa75b98ec39cdfbafc3d44ec186f (code/tests); d55bdbcfbc4b096a2b301729b5b3b9334b82ff9c (handoff)
+
+Applied:
+- People Console replaces the basic Contacts view: contacts, favorites, trusted contacts, private notes, nearby, requests, communities, blocks and driver search.
+- Server-side People privacy now controls discoverability, requests, vehicle visibility and both People Nearby and old exact map markers.
+- Community member graph is synchronized with linked private Chat GROUP and Radio GROUP; standalone membership actions return 409 community_managed.
+- SQLite schema is additive and module-local; global auth migration remains 12.
+- Codex updated only the existing browser test mock and its card-click selector for the intended People API/UI. GPS assertions remain unchanged.
+
+Factual checks:
+- npm ci — PASS.
+- npm run test:auth — PASS, 23/23.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:driver-modules — PASS, 47/47.
+- npm run test:client — PASS, 2/2.
+- npm run test:config — PASS, 4/4.
+- npm run verify — PASS.
+- npm run test:browser — PASS.
+- SQLite backup created locally before backend restart; not published.
+- Backend health — HTTP 200. Public patap.eu and driver.patap.eu opened successfully; guest Driver remains read-only and console-error-free.
+
+Manual follow-up (not claimed as completed):
+- Use temporary accounts on two or three devices to exercise Community membership/roles/ban/owner transfer, People privacy and real media/PTT in a Community.
+
+---
+[2026-08-19 Europe/Warsaw] FROM: CODEX
 BLOCK: REPOSITORY_HYGIENE
 STATUS: COMPLETED
 

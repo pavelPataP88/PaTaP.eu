@@ -19,7 +19,7 @@
       "id": "chat",
       "label": "Чат",
       "view": "chat",
-      "entry": "./chat/index.js?v=20260819-chat-v2",
+      "entry": "./chat/index.js?v=20260819-chat-v2-people1",
       "enabled": true,
       "requiresProfile": true,
       "dependsOn": []
@@ -43,10 +43,18 @@
     },
     {
       "id": "driver-card",
-      "entry": "./driver-card/index.js?v=20260725-2",
+      "entry": "./driver-card/index.js?v=20260819-people-v1",
       "enabled": true,
       "dependsOn": []
     },
-    { "id": "contacts", "label": "Контакты", "view": "contacts", "entry": "./contacts/index.js?v=20260725-2", "enabled": true, "requiresProfile": true, "dependsOn": [] }
+    {
+      "id": "contacts",
+      "label": "Люди",
+      "view": "contacts",
+      "entry": "./contacts/index.js?v=20260819-people-v1",
+      "enabled": true,
+      "requiresProfile": true,
+      "dependsOn": []
+    }
   ]
 }

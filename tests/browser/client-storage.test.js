@@ -285,6 +285,27 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
       res.end(JSON.stringify({ drivers: [driver], groups: { incoming: [], outgoing: [], contacts: [driver], blocked: [] } }));
       return;
     }
+    if (url.pathname === "/api/driver/people/overview") {
+      if (contactsUnauthorized) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "authentication_required" }));
+        return;
+      }
+      const driver = {
+        nickname: "NearbyDriver", driverType: "DELIVERY", vehicle: "Van", countryCode: "PL",
+        gps: "ACTIVE", locationUpdatedAt: new Date().toISOString(), relationship: nearbyRelationship,
+        favorite: false, trusted: false, privateNote: "", canRequestContact: true, canChat: true, canRadio: nearbyRelationship === "CONTACT"
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        settings: { discoverability: "EVERYONE", nearbyVisibility: "EVERYONE", contactRequests: "EVERYONE", communityInvites: "CONTACTS", vehicleVisibility: "EVERYONE" },
+        drivers: [driver],
+        groups: { incoming: [], outgoing: [], contacts: [driver], favorites: [], trusted: [], blocked: [] },
+        communities: [], communityInvites: [],
+        counts: { contacts: 1, incoming: 0, favorites: 0, trusted: 0, blocked: 0, communities: 0, communityInvites: 0 }
+      }));
+      return;
+    }
     if (url.pathname === "/api/driver/chat/direct" && req.method === "POST") {
       let raw = "";
       for await (const chunk of req) raw += chunk;
@@ -481,7 +502,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   nearbyRelationship = "CONTACT";
   await page.locator('[data-driver-target="contacts"]').click();
   await page.locator("#contacts-view:not([hidden])").waitFor();
-  await page.locator(".contacts-driver").click();
+  await page.locator(".people-card").filter({ hasText: "NearbyDriver" }).locator("button").filter({ hasText: "Карточка" }).click();
   await page.locator("#map-view:not([hidden])").waitFor();
   await page.locator("#driver-card:not([hidden])").waitFor();
   assert.equal(await page.locator("#driver-card-name").textContent(), "NearbyDriver");

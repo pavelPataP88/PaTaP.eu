@@ -76,6 +76,14 @@ Keep minimum registration password length **6**. Do not weaken CSRF, rate limits
 - `npm ci`, auth 20/20, radio live 1/1, Driver modules 40/40, client 2/2, config 4/4, build, verify и browser suite фактически прошли 19 августа 2026 года.
 - Ручная проверка с двумя временными аккаунтами и устройствами для вложений, голоса, ролей и блокировки остаётся обязательным следующим smoke-сценарием.
 
+## People & Communities v1 — deployed
+
+- People Console, серверная приватность, направленное доверие и закрытые/открытые сообщества развёрнуты.
+- Один Community синхронизирует membership и роли своего Chat GROUP и Radio GROUP; несинхронные standalone-mutations возвращают `409 community_managed`.
+- Добавочная People schema v1 активирована после локального backup SQLite. Глобальная auth schema остаётся 12.
+- Полный набор локальных автоматических тестов и browser smoke прошёл 19 августа 2026 года.
+- Нужен только ручной temporary-account smoke на двух/трёх устройствах.
+
 ## Current next block
 
 No coding block is active. Read `AI_TASK.md` and `AI_HANDOFF.md` before proposing a new small block from the current snapshot.
