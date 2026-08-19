@@ -89,6 +89,13 @@ export function createDriverModule(context) {
     return visible[index];
   }
 
+  document.addEventListener("patap:open-chat-room", (event) => {
+    const id = Number(event.detail?.roomId);
+    if (!Number.isSafeInteger(id) || id <= 0) return;
+    document.querySelector('[data-driver-target="chat"]')?.click();
+    Promise.resolve(openRoom(id)).catch(() => context.showError?.("Не удалось открыть чат сообщества."));
+  });
+
   return {
     ...module,
     openRoom,
