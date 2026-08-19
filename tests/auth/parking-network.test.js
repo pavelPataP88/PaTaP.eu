@@ -41,14 +41,15 @@ test("Parking live occupancy requires a fresh nearby Driver GPS position and ret
 test("Parking along-route search and Plan B keep FULL parking visible but rank usable alternatives",async()=>{
   const driver=await createDriver("route");await setLocation(driver,50.2700,19.0300);const full=await createPlace(driver,"Full Near",50.2705,19.0305),open=await createPlace(driver,"Open Alternative",50.2800,19.0400);
   let r=await driver.client.request(`/api/driver/parking/places/${full.id}/occupancy`,{method:"POST",body:{status:"FULL"}});assert.equal(r.response.status,200);
-  await setLocation(driver,50.2800,19.0400);r=await driver.client.request(`/api/driver/parking/places/${open.id}/occupancy`,{method:"POST",body:{status:"AVAILABLE"}});assert.equal(r.response.status,200);
+  r=await driver.client.request(`/api/driver/parking/places/${open.id}/occupancy`,{method:"POST",body:{status:"AVAILABLE"}});assert.equal(r.response.status,200);
   r=await driver.client.request("/api/driver/parking/along-route",{method:"POST",body:{points:[{lat:50.269,lon:19.029},{lat:50.29,lon:19.05}],corridorKm:5,limit:20}});assert.equal(r.response.status,200);const ids=r.data.places.map(p=>p.id);assert.ok(ids.includes(full.id));assert.ok(ids.includes(open.id));assert.ok(ids.indexOf(open.id)<ids.indexOf(full.id),"AVAILABLE alternative should rank above FULL parking despite small distance difference");
   r=await driver.client.request(`/api/driver/parking/places/${full.id}`);assert.equal(r.response.status,200);assert.ok(r.data.alternatives.some(p=>p.id===open.id));
 });
 
-test("Parking photo upload is authenticated private media and uploader can remove it",async()=>{
-  const driver=await createDriver("photo");const place=await createPlace(driver,"Photo Parking",50.32,19.11);const bytes=Buffer.from([0xff,0xd8,0xff,0xdb,0x00,0x43,0x00,0x01,0x02,0x03]);
-  let r=await driver.client.binary(`/api/driver/parking/places/${place.id}/photos`,bytes,"image/jpeg","test.jpg");assert.equal(r.response.status,201);const photoId=r.data.photo.id;assert.ok(photoId);
+test("Parking photo upload validates bytes, serves authenticated private media and uploader can remove it",async()=>{
+  const driver=await createDriver("photo");const place=await createPlace(driver,"Photo Parking",50.32,19.11);
+  let r=await driver.client.binary(`/api/driver/parking/places/${place.id}/photos`,Buffer.from("not-an-image"),"image/jpeg","fake.jpg");assert.equal(r.response.status,415);assert.equal(r.data.error,"invalid_parking_photo_signature");
+  const bytes=Buffer.from([0xff,0xd8,0xff,0xdb,0x00,0x43,0x00,0x01,0x02,0x03]);r=await driver.client.binary(`/api/driver/parking/places/${place.id}/photos`,bytes,"image/jpeg","test.jpg");assert.equal(r.response.status,201);const photoId=r.data.photo.id;assert.ok(photoId);
   const get=await fetch(`${baseUrl}/api/driver/parking/photos/${photoId}/content`,{headers:driver.client.headers()});assert.equal(get.status,200);assert.equal(get.headers.get("x-content-type-options"),"nosniff");assert.match(get.headers.get("cache-control")||"",/no-store/);assert.deepEqual(Buffer.from(await get.arrayBuffer()),bytes);
   r=await driver.client.request(`/api/driver/parking/photos/${photoId}`,{method:"DELETE",body:{}});assert.equal(r.response.status,200);const gone=await fetch(`${baseUrl}/api/driver/parking/photos/${photoId}/content`,{headers:driver.client.headers()});assert.equal(gone.status,404);
 });
