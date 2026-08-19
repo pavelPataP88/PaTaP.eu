@@ -5,7 +5,7 @@
       "id": "map",
       "label": "Карта",
       "view": "map",
-      "entry": "./map/index.js?v=20260725-2",
+      "entry": "./map/index.js?v=20260819-parking1",
       "enabled": true,
       "dependsOn": []
     },
@@ -19,10 +19,10 @@
       "id": "parking",
       "label": "Паркинги",
       "view": "parking",
-      "entry": "./parking/index.js?v=20260819-parking2",
+      "entry": "./parking/index.js?v=20260819-parking3",
       "enabled": true,
       "requiresProfile": true,
-      "dependsOn": []
+      "dependsOn": ["map"]
     },
     {
       "id": "chat",
