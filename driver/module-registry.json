@@ -16,6 +16,15 @@
       "dependsOn": ["map"]
     },
     {
+      "id": "parking",
+      "label": "Паркинги",
+      "view": "parking",
+      "entry": "./parking/index.js?v=20260819-parking1",
+      "enabled": true,
+      "requiresProfile": true,
+      "dependsOn": []
+    },
+    {
       "id": "chat",
       "label": "Чат",
       "view": "chat",
