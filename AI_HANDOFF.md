@@ -1,4 +1,15 @@
 [2026-08-19 Europe/Warsaw] FROM: CODEX
+BLOCK: REPOSITORY_HYGIENE
+STATUS: COMPLETED
+
+- Единственная инженерная точка входа: `codex/local-workspace-snapshot`. Она синхронизирована с проверенной версией рабочего сайта на commit e98a9b74d49616a12bebacee7930ac576c6accbe.
+- Обновлены CURRENT_STATUS, CURRENT_ENGINEERING_STATE, AI_REVIEW_BRIEF, docs/README и README: они больше не отрицают работающие Chat Console V2, рацию и browser suite.
+- Удалены устаревшие архивные инструкции про прямое открытие портов и старые IP-адреса: публикация использует Cloudflare Tunnel.
+- `noop-unused` определена как точная копия старого `main`; удаление не выполнено только потому, что в этой сессии нет GitHub CLI и локального Git checkout. Она не является источником правды и не должна использоваться.
+- Все остальные старые chatgpt/* и codex/improvement-plan ветки оставлены намеренно: они содержат отдельные непроверенные или исторические варианты. Не брать их как base и не удалять без отдельной инвентаризации их уникальных файлов.
+
+---
+[2026-08-19 Europe/Warsaw] FROM: CODEX
 BLOCK: CHAT_CONSOLE_V2
 TASK_ID: CHAT-CONSOLE-20260819-001
 STATUS: DEPLOYED
