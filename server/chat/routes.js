@@ -10,9 +10,35 @@ function isReadOnlyGroup(chat, userId, roomId) {
   return room?.kind === "GROUP" && chat.roomForUser(userId, roomId)?.role === "READONLY";
 }
 
+function sanitizeRealtimeEvent(event) {
+  if (!event || !Number.isSafeInteger(Number(event.roomId))) return event;
+  const roomId = Number(event.roomId);
+  if (["chat.message.updated", "chat.poll.updated"].includes(event.type)) {
+    return { type: "chat.receipt.updated", roomId, readMessageId: 0, reason: event.type };
+  }
+  if (event.type === "chat.receipt.updated") {
+    return { type: "chat.receipt.updated", roomId, readMessageId: Number(event.readMessageId || 0) };
+  }
+  if (event.type === "chat.room.updated") return { type: "chat.room.updated", roomId };
+  if (event.type === "chat.message.committed" && event.message) {
+    const message = {
+      ...event.message,
+      receipts: null,
+      reactions: (event.message.reactions || []).map(({ reactedByMe, ...reaction }) => reaction),
+      poll: event.message.poll ? {
+        ...event.message.poll,
+        options: (event.message.poll.options || []).map(({ votedByMe, ...option }) => option)
+      } : null
+    };
+    return { type: event.type, roomId, cursor: Number(event.cursor || message.id), message };
+  }
+  return event;
+}
+
 function createChatRoutes(options) {
   const innerOptions = {
     ...options,
+    publish(event) { options.publish(sanitizeRealtimeEvent(event)); },
     json(res, status, payload) {
       if (res.__chatLegacyDelete === true) {
         if (status === 403 && payload?.error === "chat_delete_forbidden") {
@@ -167,4 +193,4 @@ function createChatRoutes(options) {
   };
 }
 
-module.exports = { ...policy, createChatRoutes };
+module.exports = { ...policy, createChatRoutes, sanitizeRealtimeEvent };
