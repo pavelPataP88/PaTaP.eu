@@ -4,11 +4,13 @@ import { readFile } from "node:fs/promises";
 import { CHAT_REACTIONS, reactionView } from "../../driver/chat/index.js";
 import { attachmentKind, formatBytes, formatDuration, CHAT_MAX_VOICE_MS } from "../../driver/chat/media.mjs";
 import { CHAT_ROOM_KIND_LABELS, CHAT_ROLE_LABELS } from "../../driver/chat/console.mjs";
+import { CHAT_EXPIRY_OPTIONS, CHAT_NOTIFICATION_OPTIONS } from "../../driver/chat/advanced.mjs";
 
 const entrySource = await readFile(new URL("../../driver/chat/index.js", import.meta.url), "utf8");
 const indexSource = await readFile(new URL("../../driver/chat/index-v2.js", import.meta.url), "utf8");
 const consoleSource = await readFile(new URL("../../driver/chat/console-v2.mjs", import.meta.url), "utf8");
 const policySource = await readFile(new URL("../../driver/chat/console.mjs", import.meta.url), "utf8");
+const advancedSource = await readFile(new URL("../../driver/chat/advanced.mjs", import.meta.url), "utf8");
 const mediaSource = await readFile(new URL("../../driver/chat/media.mjs", import.meta.url), "utf8");
 const schemaSource = await readFile(new URL("../../server/chat/schema.js", import.meta.url), "utf8");
 const repositorySource = await readFile(new URL("../../server/chat/repository.js", import.meta.url), "utf8");
@@ -31,11 +33,23 @@ test("Chat Console exposes a messenger-grade room architecture without copying a
   assert.doesNotMatch(indexSource, /end-to-end encrypted|E2EE|сквозн.*шифр/i);
 });
 
-test("Chat Console entry opts into deletion tombstones while legacy API compatibility stays possible", () => {
+test("Chat Console entry opts into deletion tombstones and wires advanced controls to the active room", () => {
   assert.match(entrySource, /includeDeleted=1/);
-  assert.match(entrySource, /withChatV2Api/);
+  assert.match(entrySource, /createChatV2Api/);
+  assert.match(entrySource, /patap:chat-room-changed/);
+  assert.match(entrySource, /expiresInSeconds/);
   assert.match(entryRoutesSource, /__chatHideDeleted/);
   assert.match(entryRoutesSource, /message\.deletedAt/);
+});
+
+test("advanced chat controls expose disappearing messages, notification modes, radio handoff and owner transfer", () => {
+  assert.deepEqual(CHAT_EXPIRY_OPTIONS.map((item) => item.seconds), [0, 3600, 86400, 604800, 2592000]);
+  assert.deepEqual(CHAT_NOTIFICATION_OPTIONS.map(([value]) => value), ["ALL", "MENTIONS", "NONE"]);
+  assert.match(advancedSource, /patap_chat_expiry_v1/);
+  assert.match(advancedSource, /notificationLevel/);
+  assert.match(advancedSource, /openDirectRadio/);
+  assert.match(advancedSource, /role: "OWNER"/);
+  assert.match(advancedSource, /Таймер применяется только к вашим новым сообщениям/);
 });
 
 test("reaction model supports 12 curated actions and keeps personalized state", () => {
