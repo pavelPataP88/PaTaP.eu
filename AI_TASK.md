@@ -1,15 +1,45 @@
-# Статус для ChatGPT
+# AI_TASK — PEOPLE_COMMUNITIES_V1: CODEX REVIEW
 
-**CHAT_CONSOLE_V2 завершён и применён на рабочем сайте после полного набора локальных тестов.** Код этой ветки — актуальная инженерная копия проверенной версии.
+Пользователь утвердил следующий большой функциональный блок Driver Patap: `Люди / контакты / сообщества` до финальной переработки общего интерфейса.
 
-Не начинай новый большой блок автоматически. Следующая задача должна быть отдельной, небольшой, с тестами и понятным риском. Сначала прочитай `AI_HANDOFF.md` и `docs/CURRENT_ENGINEERING_STATE.md`.
+Готовый кандидат:
 
----
+`chatgpt/people-communities-v1`
 
-# AI_TASK — RADIO_CONSOLE_V2: COMPLETED
+Точная база кандидата:
 
-Блок Radio Console V2 проверен Codex и включён на рабочем сервере 2026-08-18.
+`codex/local-workspace-snapshot @ d735d21ae9bd5867460f02b0f4a87e82ed280510`
 
-Перед следующим блоком прочитай docs/CURRENT_ENGINEERING_STATE.md и AI_HANDOFF.md. Новый код не начинай автоматически: сначала нужен отдельный небольшой блок от актуального codex/local-workspace-snapshot.
+Код + тесты + research до handoff-документа:
 
-Ручное продолжение: проверить live PTT двумя тестовыми Driver-аккаунтами на разных устройствах. Не использовать реальные данные пользователей для этой проверки.
+`45f25efe7467aa75b98ec39cdfbafc3d44ec186f`
+
+Сначала прочитай:
+
+- `docs/PEOPLE_COMMUNITIES_V1_RESEARCH.md`
+- `docs/PEOPLE_COMMUNITIES_V1_HANDOFF.md`
+- актуальный `AI_HANDOFF.md`
+
+Основная архитектура: один Community — один авторитетный состав участников + один связанный Chat GROUP + один связанный Radio GROUP. Вступление, приглашения, роли, бан, выход и передача владельца управляются через People и синхронизируются. Не разрешай отдельным Chat/Radio membership-действиям рассинхронизировать Community.
+
+Перед первым запуском backend с кандидатом обязательно сделай локальный backup рабочей SQLite: People добавляет модульную схему/триггеры при старте сервера. Backup и runtime-данные не публиковать.
+
+После проверки diff запусти весь обязательный набор из handoff:
+
+- `npm ci`
+- `npm run test:auth`
+- `npm run test:radio-live`
+- `npm run test:driver-modules`
+- `npm run test:client`
+- `npm run test:config`
+- `npm run build`
+- `npm run verify`
+- `npm run test:browser`
+
+Затем обязательный smoke на временных Driver-аккаунтах: privacy/search/map visibility, trusted contact, Community create/join/invite, синхронные Chat/Radio роли/бан/выход/owner transfer, точные переходы в связанный чат/радиоканал и `409 community_managed` для попытки отдельно менять linked membership.
+
+ChatGPT не запускал локальные npm-тесты и не заявляет PASS: его контейнер не смог получить ветку по сети. Только фактический прогон на `D:\WWW.PATAP.EU` определяет готовность.
+
+Только после PASS применяй блок, штатно перезапускай Node backend, проверяй stack/public HTTP и синхронизируй принятый код в `codex/local-workspace-snapshot`.
+
+Если есть failure — production не менять, следующий блок не начинать, записать точную ошибку в начало `AI_HANDOFF.md` для ChatGPT.
