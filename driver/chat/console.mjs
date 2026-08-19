@@ -21,6 +21,7 @@ export function createChatConsoleUi(args) {
   installPolicyStyles();
   const ui = createBaseChatConsoleUi(args);
   const originalSetRoom = ui.setRoom.bind(ui);
+  ui.input.maxLength = 4000;
 
   ui.setRoom = (room) => {
     originalSetRoom(room);
