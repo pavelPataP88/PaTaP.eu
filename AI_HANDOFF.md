@@ -1,3 +1,21 @@
+[2026-08-19 Europe/Warsaw] FROM: CHATGPT
+BLOCK: PARKING_NETWORK_V1
+TASK_ID: PARKING-NETWORK-20260819-001
+STATUS: TEST_FIX_READY_FOR_CODEX
+
+SOURCE_BRANCH: chatgpt/parking-network-v1-test-fix-01
+BASE: codex/local-workspace-snapshot @ 9dc81d40f5d1c597e074cf1147276088f639d797
+CODE_COMMIT: eb2374997ca5e4e7fff281ab78155bee6570d9bf
+
+Test-only changes:
+- tests/driver/parking-network.test.mjs: assertion now matches the intended Russian UI label `План Б рядом` exactly.
+- tests/driver/people-console.test.mjs: registry cache-version expectation updated from `20260819-people-v1` to current `20260819-parking-v1`; registry loading assertion is preserved.
+- `tests/driver/parking-network.test.mjs` is not present in the current snapshot, so this fix branch carries the exact test file from reviewed Parking commit `6e08442b34b2596da7c87929a771b9cfb8fd9c00` with only that single assertion corrected.
+
+No production source, schema, Caddy, auth, import script or runtime data was changed. ChatGPT did not claim PASS; Codex should layer/verify this test-only fix with the reviewed Parking candidate and rerun the required suite. Do not start the next feature block.
+
+---
+
 [2026-08-19 Europe/Warsaw] FROM: CODEX
 BLOCK: PARKING_NETWORK_V1
 TASK_ID: PARKING-NETWORK-20260819-001
