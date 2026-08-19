@@ -72,10 +72,9 @@ function createChatRepository(db) {
   }
 
   function directPeer(userId, roomId) {
-    return db.prepare(`SELECT m.user_id, p.nickname, p.driver_type, u.last_seen_at
+    return db.prepare(`SELECT m.user_id, p.nickname, p.driver_type
       FROM chat_room_members m
       JOIN driver_profiles p ON p.user_id = m.user_id
-      JOIN users u ON u.id = m.user_id
       WHERE m.room_id = ? AND m.user_id != ? LIMIT 1`).get(roomId, userId) || null;
   }
 
@@ -193,7 +192,7 @@ function createChatRepository(db) {
       archived: Boolean(state.archived),
       pinnedRank: state.pinned_rank === null ? null : Number(state.pinned_rank),
       notificationLevel: state.notification_level,
-      peer: peer ? { nickname: peer.nickname, driverType: peer.driver_type, lastSeenAt: peer.last_seen_at } : null,
+      peer: peer ? { nickname: peer.nickname, driverType: peer.driver_type, lastSeenAt: null } : null,
       draft: draft ? { text: draft.body, replyToMessageId: draft.reply_to_message_id === null ? null : Number(draft.reply_to_message_id), updatedAt: draft.updated_at } : null
     };
   }
@@ -392,11 +391,11 @@ function createChatRepository(db) {
     const room = getRoom(roomId);
     const access = roomAccessError(userId, room);
     if (access) return { error: access, status: 404 };
-    const rows = db.prepare(`SELECT p.nickname, p.driver_type, m.role, m.joined_at, u.last_seen_at
-      FROM chat_room_members m JOIN driver_profiles p ON p.user_id = m.user_id JOIN users u ON u.id = m.user_id
+    const rows = db.prepare(`SELECT p.nickname, p.driver_type, m.role, m.joined_at
+      FROM chat_room_members m JOIN driver_profiles p ON p.user_id = m.user_id
       WHERE m.room_id = ?
       ORDER BY CASE m.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'MODERATOR' THEN 2 WHEN 'MEMBER' THEN 3 ELSE 4 END, p.nickname COLLATE NOCASE`).all(roomId);
-    return { members: rows.map((row) => ({ nickname: row.nickname, driverType: row.driver_type, role: row.role, joinedAt: row.joined_at, lastSeenAt: row.last_seen_at })) };
+    return { members: rows.map((row) => ({ nickname: row.nickname, driverType: row.driver_type, role: row.role, joinedAt: row.joined_at, lastSeenAt: null })) };
   }
 
   function setMemberRole(userId, roomId, nickname, nextRole) {
