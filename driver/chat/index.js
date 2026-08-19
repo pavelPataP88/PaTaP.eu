@@ -80,6 +80,11 @@ export function createDriverModule(context) {
     const visible = latestRooms.filter((room) => !room.archived);
     const index = visible.findIndex((room) => Number(room.id) === id);
     if (index < 0) throw new Error("chat_room_not_found");
+    const roomSearch = card?.querySelector(".chat-room-search input");
+    if (roomSearch?.value) {
+      roomSearch.value = "";
+      roomSearch.dispatchEvent(new Event("input", { bubbles: true }));
+    }
     const allFilter = card?.querySelector('.chat-room-filters button[data-filter="ALL"]');
     allFilter?.click();
     const rows = [...(card?.querySelectorAll(".chat-room-row") || [])];
