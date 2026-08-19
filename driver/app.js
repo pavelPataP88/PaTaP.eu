@@ -110,6 +110,13 @@ async function setupRuntime() {
         const radio = runtime?.get("radio");
         if (!radio) return showError("Рация временно недоступна.");
         await radio.activate();
+        const search = document.querySelector(".radio-console-search input");
+        if (search?.value) {
+          search.value = "";
+          search.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        const channelTab = document.querySelectorAll(".radio-console-tabs button")[1];
+        channelTab?.click();
         const row = document.querySelector(`.radio-channel-item[data-channel-id="${Number(channelId)}"]`);
         if (!row) return showError("Радиоканал сообщества больше недоступен.");
         row.click();
