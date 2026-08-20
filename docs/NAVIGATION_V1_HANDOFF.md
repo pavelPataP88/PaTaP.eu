@@ -7,8 +7,7 @@ Status: **READY_FOR_CODEX_REVIEW — NOT DEPLOYED BY CHATGPT**
 
 - Branch: `chatgpt/navigation-engine-v1`
 - Base: `codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692`
-- **Code + tests commit: `d46715fa24377d5edb647b4787f4d8e9b4a00a2a`**
-- Provider/deployment contract update: `fb2beb2262cb9780ca36ce54058be487083cecc6`
+- **Code + tests commit: `8e0afa67483d6627f818ff0aadd02213c2a46139`**
 - Research: `docs/NAVIGATION_V1_RESEARCH.md`
 - Architecture: `docs/NAVIGATION_V1_ARCHITECTURE.md`
 - Provider gate: `docs/NAVIGATION_V1_PROVIDER_DEPLOYMENT.md`
@@ -35,6 +34,8 @@ Main capabilities in this candidate:
 - destination search combines PaTaP Parking with an optional server-side approved/self-hosted Nominatim-compatible geocoder;
 - public `nominatim.openstreetmap.org` is rejected by configuration;
 - active route cache is sanitized and **scoped per signed-in Driver**, with the old global cache removed;
+- owner scope is preserved while an account is creating its Driver profile; logout/reset removes that owner's cache;
+- a transient server failure may display only that same owner's sanitized cached route as stale, while 401/404 invalidates it;
 - traffic delay and toll price remain unavailable/null until backed by a real reviewed source.
 
 ## Important safety correction made before handoff
@@ -81,12 +82,12 @@ They cover, among other things:
 ## Mandatory Codex sequence
 
 ### A. Candidate integrity
-1. Compare exact base `e78ecbea105c1011a092d67f247b058f5fb2a692` to `chatgpt/navigation-engine-v1`.
+1. Compare exact base `e78ecbea105c1011a092d67f247b058f5fb2a692` to `chatgpt/navigation-engine-v1 @ 8e0afa67483d6627f818ff0aadd02213c2a46139` for product code/tests; subsequent commits are handoff metadata only.
 2. Confirm no `main` changes and no runtime/private data in the candidate.
 3. Run `node --check` over **every changed JS/MJS file** before starting a test server.
 4. Confirm `driver/module-registry.json` still has exactly six enabled entries with a `view`; `navigation` must have no `view` and depend on `map`.
 5. Confirm there is no hard-coded public routing backend and `nominatim.openstreetmap.org` remains rejected.
-6. Confirm neither code nor tests contain `hgv_no_access_penalty` as a required routing guarantee.
+6. Confirm neither code nor tests rely on `hgv_no_access_penalty` as a routing/legal guarantee.
 
 ### B. Automated tests on isolated workspace
 1. `npm ci`
@@ -138,7 +139,7 @@ If a reviewed real router is available:
 8. if geocoder configured, verify attribution/privacy and confirm it is not public `nominatim.openstreetmap.org`;
 9. then restart/apply production and run local/public health checks.
 
-If **no reviewed real router is available**, do not fake success. Record automated candidate as accepted if all suites pass, but mark production Navigation `BLOCKED_PROVIDER` / not functionally enabled and leave current verified production unchanged (or keep the navigation module disabled until provider setup is separately approved).
+If **no reviewed real router is available**, do not fake success. Record automated candidate as accepted if all suites pass, but mark production Navigation `BLOCKED_PROVIDER` / not enabled and leave current verified production unchanged (or keep the navigation module disabled until provider setup is separately approved).
 
 ## Truth statement
 
