@@ -23,7 +23,7 @@ If the geocoder URL is missing, route creation still works from map-picked/manua
 
 ## 2. Public demo services are not production dependencies
 
-Do not configure end-user production navigation to depend on `valhalla.openstreetmap.de` as its normal backend. Valhalla's own documentation calls it a public demo server and describes fair-use/rate limits.
+Do not configure end-user production navigation to depend on `valhalla.openstreetmap.de` as its normal backend. Valhalla's own documentation describes public/demo use and such an endpoint is not a PaTaP SLA.
 
 Do not configure `nominatim.openstreetmap.org` as PaTaP autocomplete. The public Nominatim usage policy does not permit client-side autocomplete. The PaTaP adapter rejects that hostname deliberately.
 
@@ -61,20 +61,21 @@ For the first serious server, prefer a dedicated Linux host/container deployment
 
 For `TRUCK`, the current adapter sends and Route Guard verifies where configured:
 
-- `costing=truck`
-- height
-- width
-- length
-- gross weight
-- axle load
-- axle count
-- hazmat boolean
-- max speed
-- `hgv_no_access_penalty=43200`
-- preference for designated HGV routes (`use_truck_route`)
-- toll/ferry/unpaved preferences
+- `costing=truck`;
+- height;
+- width;
+- length;
+- gross weight;
+- axle load;
+- axle count;
+- hazmat boolean;
+- max speed;
+- preference for designated HGV routes (`use_truck_route`);
+- toll/ferry/unpaved preferences.
 
-If PaTaP has a non-`NONE` ADR tunnel code or other hazardous-goods categories that the active router adapter cannot enforce, Route Guard rejects strict guidance rather than claiming the restriction is covered.
+PaTaP deliberately does **not** invent a numeric HGV penalty and call it a hard legal restriction. HGV access comes from the provider's truck costing and road graph. Route Guard checks the declared truck/HGV capability plus the exact hard vehicle fields actually sent.
+
+If PaTaP has a non-`NONE` ADR tunnel code, explicit hazardous-goods categories, or an emission-zone class that the active provider adapter cannot enforce, Route Guard rejects strict truck guidance rather than claiming those restrictions are covered. CO2 class is retained as known-but-not-used for toll calculation until a reviewed toll source exists.
 
 Traffic delay and toll price stay `null/unavailable` unless a reviewed data source is actually configured.
 
@@ -88,7 +89,7 @@ A destination query can reveal travel intent. Therefore:
 - do not expose provider credentials to the browser;
 - if a managed third-party geocoder is introduced, document what query/location data it receives before activation.
 
-Current `NAV_GEOCODER_URL` is a server configuration value, not user input.
+Current `NAV_GEOCODER_URL` is a server configuration value, not user input. The current Nominatim-compatible adapter rejects the public `nominatim.openstreetmap.org` hostname, so its fast search UI can only use an explicitly configured non-public/self-hosted or separately approved endpoint.
 
 ## 7. Deployment acceptance sequence
 
@@ -100,12 +101,14 @@ Required sequence:
 2. Configure a reviewed real `NAV_ROUTER_URL` outside GitHub.
 3. Confirm the route service graph actually covers the intended smoke-test corridor.
 4. Create a temporary Driver test account/profile with explicit truck dimensions.
-5. Run a real route smoke and verify the provider receives `truck`, dimensions, weight and HGV constraints.
+5. Run a real route smoke and verify the provider receives `truck`, dimensions, weight, axle/hazmat fields that are configured.
 6. Verify a deliberately impossible/over-restricted truck request fails closed and does not retry as car.
 7. Verify map route drawing, alternative selection, guidance and reroute with temporary data.
 8. If a geocoder is configured, verify search attribution/privacy and that `nominatim.openstreetmap.org` is not the configured production endpoint.
 9. Verify PaTaP Parking/Road enrichment only shows actual current PaTaP data; empty data remains empty.
 10. Only then restart/apply production and record exact provider/data scope in `AI_HANDOFF.md`.
+
+If no reviewed real router is available on the current machine, Codex may still accept the **code candidate** after all automated tests, but must record production Navigation as `BLOCKED_PROVIDER`/not enabled rather than pretending the fake test provider is a live navigation backend.
 
 ## 8. Future provider seams
 
