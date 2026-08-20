@@ -1,5 +1,5 @@
 import { api, ensureCsrf, resetCsrf, uploadBinary } from "./shared/api.js?v=20260721-1";
-import { createNavigationController } from "./core/navigation.js?v=20260714-8";
+import { createNavigationController } from "./core/navigation.js?v=20260819-parking1";
 import {
   createDriverModuleRuntime,
   loadDriverModuleRegistry,
@@ -73,7 +73,7 @@ const navigation = createNavigationController({
 });
 
 async function setupRuntime() {
-  const registry = await loadDriverModuleRegistry("/module-registry.json?v=20260819-people-v1");
+  const registry = await loadDriverModuleRegistry("/module-registry.json?v=20260819-parking-v1");
   const modules = validateDriverModuleRegistry(registry).filter((module) => module.enabled);
   profileRequiredViews = modules.filter((module) => module.requiresProfile && module.view).map((module) => module.view);
   navigation.configure(modules);

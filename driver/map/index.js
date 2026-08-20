@@ -6,6 +6,7 @@ import { installMapUiStyles } from "./map-ui-styles.mjs?v=20260818-mapv1";
 
 const INITIAL_MAP_ZOOM = 11;
 const GPS_FOCUS_ZOOM = 14;
+const PARKING_FOCUS_ZOOM = 15;
 const DRIVER_TYPE_LABELS = Object.freeze({ TIR: "TIR", TAXI: "Taxi", DELIVERY: "Дост.", GENERAL: "Driver" });
 
 function driverMarkerElement(driver) {
@@ -19,6 +20,20 @@ function driverMarkerElement(driver) {
   const name = document.createElement("span");
   name.textContent = `${countryFlag(driver.countryCode)} ${driver.nickname}`.trim();
   button.append(badge, name);
+  return button;
+}
+
+function parkingMarkerElement(place) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "parking-map-marker";
+  button.dataset.parkingStatus = place.occupancy?.status || "UNKNOWN";
+  button.setAttribute("aria-label", `Паркинг ${place.name} · ${place.occupancy?.status || "UNKNOWN"}`);
+  const icon = document.createElement("strong");
+  icon.textContent = "P";
+  const name = document.createElement("span");
+  name.textContent = place.name;
+  button.append(icon, name);
   return button;
 }
 
@@ -45,6 +60,8 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   const config = JSON.parse(document.querySelector("#driver-map-config").textContent);
   let map = null;
   let ownMarker = null;
+  let parkingMarker = null;
+  let focusedParking = null;
   let ownLocation = null;
   let locationButton = null;
   let resizeObserver = null;
@@ -105,15 +122,31 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     if (!map || !ownLocation) return false;
     if (follow) experience?.setFollowMode("FOLLOW");
     const currentZoom = map.getZoom?.();
-    map.easeTo({
-      center: [ownLocation.longitude, ownLocation.latitude],
-      zoom: Math.max(GPS_FOCUS_ZOOM, Number.isFinite(currentZoom) ? currentZoom : GPS_FOCUS_ZOOM),
-      duration: 450
-    });
+    map.easeTo({ center: [ownLocation.longitude, ownLocation.latitude], zoom: Math.max(GPS_FOCUS_ZOOM, Number.isFinite(currentZoom) ? currentZoom : GPS_FOCUS_ZOOM), duration: 450 });
     return true;
   }
 
   function recenterOwn() { return focusOwn({ follow: true }); }
+
+  function clearParkingPlace() {
+    parkingMarker?.remove?.();
+    parkingMarker = null;
+    focusedParking = null;
+  }
+
+  async function showParkingPlace(place) {
+    const latitude = Number(place?.latitude), longitude = Number(place?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+    if (!(await init())) return false;
+    clearParkingPlace();
+    focusedParking = { ...place, latitude, longitude };
+    const element = parkingMarkerElement(focusedParking);
+    element.addEventListener("click", () => map?.easeTo?.({ center: [longitude, latitude], zoom: Math.max(PARKING_FOCUS_ZOOM, map?.getZoom?.() || PARKING_FOCUS_ZOOM), duration: 300 }));
+    parkingMarker = new window.maplibregl.Marker({ element, anchor: "bottom" }).setLngLat([longitude, latitude]).addTo(map);
+    experience?.setFollowMode?.("FREE");
+    map.easeTo?.({ center: [longitude, latitude], zoom: PARKING_FOCUS_ZOOM, duration: 450 });
+    return true;
+  }
 
   function createLocationControl() {
     return { onAdd() { const container = document.createElement("div"); container.className = "maplibregl-ctrl maplibregl-ctrl-group driver-location-control"; locationButton = document.createElement("button"); locationButton.id = "map-locate"; locationButton.type = "button"; locationButton.setAttribute("aria-label", "Вернуться к моему местоположению и следить"); locationButton.textContent = "⌖"; locationButton.addEventListener("click", recenterOwn); container.append(locationButton); updateLocationControl(); return container; }, onRemove() { locationButton = null; } };
@@ -178,10 +211,10 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   function clearNearby() { nearbyDrivers = []; experience?.setDrivers([]); removeNearbyMarkers(); }
   function setProfileReady(value) { profileReady = Boolean(value); }
 
-  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, refreshRoadReports() { return roadReports?.refresh?.(); }, setProfileReady, getMapExperienceState() { return experience?.getState?.() || null; } };
+  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, showParkingPlace, clearParkingPlace, refreshRoadReports() { return roadReports?.refresh?.(); }, setProfileReady, getMapExperienceState() { return experience?.getState?.() || null; }, getFocusedParking() { return focusedParking; } };
 }
 
 export function createDriverModule(context) {
   const controller = createMapController({ api: context.api, onAuthLost: context.onAuthLost, showError: context.showError, setState(text, state) { context.getModule("gps")?.controller?.setState(text, state); }, onDriverCard(nickname) { return context.openDriverCard?.(nickname); } });
-  return { controller, async activate() { await controller.init(); await controller.refreshRoadReports(); window.setTimeout(() => controller.resize(), 0); }, setSession({ profile }) { controller.setProfileReady(Boolean(profile)); }, setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); }, reset() { controller.setProfileReady(false); } };
+  return { controller, async activate() { await controller.init(); await controller.refreshRoadReports(); window.setTimeout(() => controller.resize(), 0); }, setSession({ profile }) { controller.setProfileReady(Boolean(profile)); }, setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); }, reset() { controller.setProfileReady(false); controller.clearParkingPlace(); } };
 }

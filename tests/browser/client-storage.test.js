@@ -545,7 +545,7 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   assert.ok(phoneLayout.mapWidth <= phoneLayout.viewportWidth);
   assert.ok(phoneLayout.mapHeight > 0);
   assert.ok(phoneLayout.activeHeight <= phoneLayout.mainHeight);
-  assert.equal(await page.locator("#driver-nav button").count(), 5);
+  assert.equal(await page.locator("#driver-nav button").count(), 6);
   assert.equal(await page.locator("#gps-toggle").evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(104, 224, 173)");
 
   await page.setViewportSize({ width: 390, height: 720 });

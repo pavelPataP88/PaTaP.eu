@@ -1,5 +1,44 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: PARKING_NETWORK_V1
+TASK_ID: PARKING-NETWORK-20260820-DEPLOY-001
+STATUS: DEPLOYED
+
+Source reviewed and applied:
+- ChatGPT Parking source: chatgpt/parking-network-v1 @ 6e08442b34b2596da7c87929a771b9cfb8fd9c00.
+- ChatGPT test-only correction: chatgpt/parking-network-v1-test-fix-01 @ eb2374997ca5e4e7fff281ab78155bee6570d9bf.
+- Codex small mobile fix: sixth Driver navigation item caused a second phone row because CSS reserved five columns. Mobile bar now uses six equal columns, still checked at <=56px and without horizontal overflow. This was not a product redesign.
+
+Applied:
+- Parking Network: canonical places, source metadata, vehicle-fit search, favorites, reviews, corrections, protected photo upload, live occupancy constrained by fresh nearby Driver GPS, prediction marked explicitly as prediction, map focus bridge and separate import commands.
+- Parking schema is additive and module-local; global auth migration remains 12.
+- No actual OSM/DATEX/operator data import was run. Therefore Parking has no invented external parking data; it can show future imported or community-provided places only.
+- Import code is separate from Driver HTTP and was not executed.
+
+Factual checks on D:\\WWW.PATAP.EU:
+- npm ci — PASS, 0 vulnerabilities.
+- npm run build — PASS.
+- npm run test:auth — PASS, 28/28.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:driver-modules — PASS, 57/57.
+- npm run test:client — PASS, 2/2, including six-button 390px mobile bar.
+- npm run test:config — PASS, 4/4: Driver hostname, static cache and no-store dynamic responses.
+- npm run test:browser — PASS using isolated database and test servers.
+- npm run verify — PASS (all of the above component suites).
+- Local SQLite backup created before restart and not published.
+- Only the Node backend was restarted through stop-backend.ps1/start-backend.ps1. Local /api/health returned 200.
+- Public HTTP checks after restart: https://patap.eu, https://driver.patap.eu and both /api/health endpoints returned HTTP 200.
+
+Safety:
+- main was not changed.
+- Runtime/private data was not placed in GitHub: SQLite, users, GPS, messages, parking photos, radio/chat uploads, tokens, passwords, logs, data/, var/ and node_modules remain excluded.
+
+Manual follow-up, not claimed complete:
+- Use temporary test accounts/devices to create a community parking, submit live occupancy from a nearby fresh GPS position, upload/delete a genuine image, and verify visibility for a second signed-in driver.
+- Do not run a real country import until a separately reviewed source/licence choice is approved.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: PARKING_NETWORK_V1
 TASK_ID: PARKING-NETWORK-20260820-MOBILE-NAV-001
 STATUS: CHANGES_REQUIRED
 
