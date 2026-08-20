@@ -30,6 +30,7 @@ test("Event schema is additive durable outbox projection for committed domain st
   assert.match(schema,/AFTER UPDATE OF state ON radio_transmissions WHEN NEW\.state='COMMITTED'/);
   assert.doesNotMatch(schema,/DROP TABLE|ALTER TABLE/);
   assert.match(service,/source_important_only/);assert.match(service,/driving_mode|roadReport/);
+  assert.match(service,/require\("\.\.\/road-reports\/repository"\)/);assert.doesNotMatch(service,/require\("\.\.\/driver\/location"\)/);
 });
 
 test("VAPID key material stays local and JWT verifies as ES256 P-256",()=>{
