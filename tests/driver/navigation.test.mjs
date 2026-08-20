@@ -28,21 +28,22 @@ test("Navigation is a Map-owned global layer and bottom navigation stays exactly
   assert.match(panelSource,/navigation-launch/);assert.match(panelSource,/Маршрут/);assert.match(panelSource,/data-moving/);assert.match(panelSource,/@media\(max-width:700px\)/);
 });
 
-test("Valhalla truck request carries hard vehicle constraints and non-truck mode is explicitly auto",()=>{
+test("Valhalla truck request carries hard vehicle constraints and taxi uses its native costing",()=>{
   const payload=requestPayload(routeInput);assert.equal(payload.costing,"truck");assert.equal(payload.alternates,2);const options=payload.costing_options.truck;
-  assert.equal(options.height,4);assert.equal(options.width,2.55);assert.equal(options.length,16.5);assert.equal(options.weight,40);assert.equal(options.axle_load,11.5);assert.equal(options.hazmat,true);assert.equal(options.top_speed,90);assert.equal(options.use_ferry,0);assert.equal(options.exclude_unpaved,true);
+  assert.equal(options.height,4);assert.equal(options.width,2.55);assert.equal(options.length,16.5);assert.equal(options.weight,40);assert.equal(options.axle_load,11.5);assert.equal(options.axle_count,5);assert.equal(options.hazmat,true);assert.equal(options.top_speed,90);assert.equal(options.use_ferry,0);assert.equal(options.exclude_unpaved,true);
+  const taxi=requestPayload({...routeInput,vehicle:{...vehicle,vehicleClass:"TAXI",hazardousGoods:false},strategy:"FASTEST_LEGAL"});assert.equal(taxi.costing,"taxi");assert.equal(Object.hasOwn(taxi.costing_options.taxi,"hazmat"),false);
   const car=requestPayload({...routeInput,vehicle:{...vehicle,vehicleClass:"CAR",hazardousGoods:false},strategy:"FASTEST_LEGAL"});assert.equal(car.costing,"auto");assert.equal(Object.hasOwn(car.costing_options.auto,"hazmat"),false);
 });
 
 test("Unconfigured routing provider is an honest unavailable state, never a synthetic route",async()=>{
-  const provider=createValhallaProvider({baseUrl:"",fetchImpl:async()=>{assert.fail("fetch must not run when provider is unconfigured");}});const status=provider.status();assert.equal(status.configured,false);assert.equal(status.capabilities.truck,true);await assert.rejects(()=>provider.route(routeInput),error=>error?.message==="navigation_provider_unavailable"&&error?.status===503);
+  const provider=createValhallaProvider({baseUrl:"",fetchImpl:async()=>{assert.fail("fetch must not run when provider is unconfigured");}});const status=provider.status();assert.equal(status.configured,false);assert.equal(status.capabilities.truck,true);assert.equal(status.capabilities.axleCount,true);await assert.rejects(()=>provider.route(routeInput),error=>error?.message==="navigation_provider_unavailable"&&error?.status===503);
 });
 
 test("Route Guard exposes unknown traffic/tolls and verifies strict truck constraint transmission",()=>{
-  const providerStatus={name:"VALHALLA",capabilities:{truck:true,axleCount:false,adrTunnelCode:false,traffic:false,tolls:false}};
-  const providerResult={provider:"VALHALLA",requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,hazmat:true}},rawWarnings:[]};
-  const guard=createRouteGuard({providerStatus,vehicle,providerResult});assert.equal(guard.strictVehicleProfile,true);assert.ok(guard.unknowns.includes("live_traffic_unavailable"));assert.ok(guard.unknowns.includes("toll_cost_unavailable"));assert.ok(guard.unknowns.includes("axle_count_not_provider_enforced"));assert.ok(guard.warnings.includes("adr_tunnel_code_not_provider_enforced"));
-  const broken=createRouteGuard({providerStatus,vehicle,providerResult:{...providerResult,requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,hazmat:false}}}});assert.equal(broken.strictVehicleProfile,false);assert.ok(broken.warnings.includes("hazmat_not_sent_to_provider"));
+  const providerStatus={name:"VALHALLA",capabilities:{truck:true,axleCount:true,adrTunnelCode:false,traffic:false,tolls:false}};
+  const providerResult={provider:"VALHALLA",requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:true}},rawWarnings:[]};
+  const guard=createRouteGuard({providerStatus,vehicle,providerResult});assert.equal(guard.strictVehicleProfile,true);assert.ok(guard.unknowns.includes("live_traffic_unavailable"));assert.ok(guard.unknowns.includes("toll_cost_unavailable"));assert.equal(guard.unknowns.includes("axle_count_not_provider_enforced"),false);assert.ok(guard.warnings.includes("adr_tunnel_code_not_provider_enforced"));
+  const broken=createRouteGuard({providerStatus,vehicle,providerResult:{...providerResult,requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:false}}}});assert.equal(broken.strictVehicleProfile,false);assert.ok(broken.warnings.includes("hazmat_not_sent_to_provider"));
 });
 
 test("Active-route cache is bounded to route guidance data and strips unrelated/private fields",()=>{
