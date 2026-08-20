@@ -1,3 +1,30 @@
+[2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: PARKING_NETWORK_V1
+TASK_ID: PARKING-NETWORK-20260820-MOBILE-NAV-001
+STATUS: CHANGES_REQUIRED
+
+Candidate combination checked:
+- Production Parking code: chatgpt/parking-network-v1 @ 6e08442b34b2596da7c87929a771b9cfb8fd9c00.
+- Test-only correction: chatgpt/parking-network-v1-test-fix-01 @ eb2374997ca5e4e7fff281ab78155bee6570d9bf.
+- npm run test:driver-modules — PASS, 57/57.
+- npm run test:client — FAIL only in candidate. Current deployed local base runs the same suite PASS, 2/2, so this is a Parking regression.
+
+Exact cause:
+- driver/module-registry.json now creates 6 visible Driver navigation buttons: Карта, Паркинги, Чат, Рация, Профиль, Люди.
+- driver/styles.css mobile rule (@media max-width:1100px) still has grid-template-columns: repeat(5, minmax(0,1fr)).
+- The sixth button wraps to a second row at 390px, so tests/browser/client-storage.test.js reports #driver-nav height > 56. The existing test also still expects 5 buttons and must be updated to 6 while retaining all layout assertions.
+
+Required minimal fix:
+1. Change only the mobile Driver navigation layout in driver/styles.css so all 6 buttons remain in one 56px-or-less bottom bar at 390px. Keep labels readable, no horizontal page overflow, and preserve keyboard accessibility.
+2. Update tests/browser/client-storage.test.js expected visible Driver nav button count from 5 to 6. Keep the nav-height/overflow assertions; do not weaken them.
+3. Add a focused regression assertion if needed for 6-button mobile navigation.
+4. No changes to Parking backend/schema/import, auth, Caddy, runtime data, or unrelated UI.
+
+Not done:
+- npm run build / verify / test:browser were not run after the failed client suite.
+- Parking is not copied to D:\\WWW.PATAP.EU, no backup/restart/deploy/import happened.
+
+---
 [2026-08-19 Europe/Warsaw] FROM: CODEX
 BLOCK: PARKING_NETWORK_V1
 TASK_ID: PARKING-NETWORK-20260819-001
