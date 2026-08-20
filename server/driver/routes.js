@@ -3,6 +3,7 @@ const { normalizeDriverProfile, publicDriverProfile, createProfileRepository } =
 const { createDriverDirectory } = require("./directory");
 const { createPeopleRoutes } = require("../people/routes");
 const { createParkingRoutes } = require("../parking/routes");
+const { createNavigationRoutes } = require("../navigation/routes");
 const { createEventRuntime } = require("../events/factory");
 const { createEventRoutes } = require("../events/routes");
 const {
@@ -35,11 +36,13 @@ function createDriverRoutes({
   const handlePeopleRoute = createPeopleRoutes(routeOptions);
   const eventRuntime = createEventRuntime({ db, nowIso });
   const handleEventRoute = createEventRoutes({ ...routeOptions, events: eventRuntime.events, push: eventRuntime.push });
+  const handleNavigationRoute = createNavigationRoutes(routeOptions, { roadReports });
   eventRuntime.dispatcher.start();
 
   return async function handleDriverRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/")) return false;
     if (await handleEventRoute(req, res, url, body)) return true;
+    if (await handleNavigationRoute(req, res, url, body)) return true;
     if (await handleParkingRoute(req, res, url, body)) return true;
     if (await handlePeopleRoute(req, res, url, body)) return true;
 
@@ -323,4 +326,3 @@ function createDriverRoutes({
 }
 
 module.exports = { createDriverRoutes };
-
