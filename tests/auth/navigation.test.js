@@ -38,11 +38,11 @@ test("Navigation seeds truck profile from Parking, refuses incomplete TIR constr
   const driver=await createDriver("core");primary=driver;await setLocation(driver,ORIGIN.latitude,ORIGIN.longitude);
 
   let r=await driver.client.request("/api/driver/parking/preferences",{method:"PATCH",body:{vehicleClass:"TIR",lengthM:16.5,heightM:4.0,weightT:40,adrRequired:true,refrigerated:true,maxDetourKm:20}});assert.equal(r.response.status,200);
-  r=await driver.client.request("/api/driver/navigation/profile");assert.equal(r.response.status,200);assert.equal(r.data.profile.vehicleClass,"TRUCK");assert.equal(r.data.profile.lengthM,16.5);assert.equal(r.data.profile.heightM,4);assert.equal(r.data.profile.grossWeightT,40);assert.equal(r.data.profile.widthM,null);assert.equal(r.data.profile.hazardousGoods,true);assert.equal(r.data.profile.refrigerated,true);
+  r=await driver.client.request("/api/driver/navigation/profile");assert.equal(r.response.status,200);assert.equal(r.data.profile.vehicleClass,"TRUCK");assert.equal(r.data.profile.lengthM,16.5);assert.equal(r.data.profile.heightM,4);assert.equal(r.data.profile.grossWeightT,40);assert.equal(r.data.profile.widthM,null);assert.equal(r.data.profile.hazardousGoods,true);assert.equal(r.data.profile.refrigerated,true);assert.equal(r.data.profile.adrTunnelCode,"NONE");
 
   r=await driver.client.request("/api/driver/navigation/routes",{method:"POST",body:{destination:DESTINATION,strategy:"PRACTICAL_TRUCK",alternatives:3}});assert.equal(r.response.status,409);assert.equal(r.data.error,"navigation_vehicle_profile_incomplete");assert.ok(r.data.missing.includes("widthM"));
 
-  r=await driver.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{widthM:2.55,axleLoadT:11.5,axleCount:5,maxSpeedKph:90,trailer:true,hazardousGoods:true,adrTunnelCode:"D",preferredStrategy:"PRACTICAL_TRUCK",avoidUnpaved:true}});assert.equal(r.response.status,200);assert.equal(r.data.profile.widthM,2.55);assert.equal(r.data.profile.adrTunnelCode,"D");
+  r=await driver.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{widthM:2.55,axleLoadT:11.5,axleCount:5,maxSpeedKph:90,trailer:true,hazardousGoods:true,adrTunnelCode:"NONE",preferredStrategy:"PRACTICAL_TRUCK",avoidUnpaved:true}});assert.equal(r.response.status,200);assert.equal(r.data.profile.widthM,2.55);assert.equal(r.data.profile.adrTunnelCode,"NONE");
   r=await driver.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{widthM:7}});assert.equal(r.response.status,400);assert.equal(r.data.error,"invalid_navigation_profile");
 
   const middle={latitude:(ORIGIN.latitude+DESTINATION.latitude)/2,longitude:(ORIGIN.longitude+DESTINATION.longitude)/2};
@@ -71,6 +71,15 @@ test("Navigation route ownership, selection and reroute preserve the original st
   const requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"truck");assert.equal(requests[0].costing_options.truck.width,2.55);assert.equal(requests[0].costing_options.truck.height,4);assert.equal(requests[0].costing_options.truck.weight,40);assert.equal(requests[0].costing_options.truck.axle_count,5);
 
   r=await primary.client.request(`/api/driver/navigation/routes/${primaryRoute.id}/finish`,{method:"POST",body:{state:"COMPLETED"}});assert.equal(r.response.status,200);assert.equal(r.data.route.status,"COMPLETED");
+});
+
+test("Navigation blocks an ADR tunnel profile that the router cannot enforce and does not fall back",async()=>{
+  assert.ok(primary);
+  let r=await primary.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{adrTunnelCode:"D",hazardousGoods:true}});assert.equal(r.response.status,200);assert.equal(r.data.profile.adrTunnelCode,"D");
+  await resetProvider();
+  r=await primary.client.request("/api/driver/navigation/routes",{method:"POST",body:{destination:DESTINATION,strategy:"PRACTICAL_TRUCK",alternatives:2}});assert.equal(r.response.status,422);assert.equal(r.data.error,"navigation_hard_constraints_unenforced");assert.equal(r.data.guard.strictVehicleProfile,false);assert.ok(r.data.guard.warnings.includes("adr_tunnel_code_not_provider_enforced"));
+  const requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"truck");
+  r=await primary.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{adrTunnelCode:"NONE"}});assert.equal(r.response.status,200);assert.equal(r.data.profile.adrTunnelCode,"NONE");
 });
 
 test("Navigation provider failures are explicit and a failed truck route makes exactly one truck request with no car fallback",async()=>{
