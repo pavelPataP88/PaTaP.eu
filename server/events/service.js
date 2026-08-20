@@ -1,5 +1,5 @@
 const { createEventRepository } = require("./repository");
-const { haversineKm } = require("../driver/location");
+const { haversineKm } = require("../road-reports/repository");
 
 const ROAD_LABELS=Object.freeze({ACCIDENT:"ДТП рядом",ROADWORK:"Дорожные работы рядом",OBSTACLE:"Препятствие на дороге",ROAD_CONTROL:"Дорожный контроль рядом",TRANSPORT_INSPECTION:"Транспортная инспекция рядом"});
 const PARKING_LABELS=Object.freeze({AVAILABLE:"появились места",LIMITED:"осталось мало мест",FULL:"паркинг заполнен",CLOSED:"паркинг закрыт",UNKNOWN:"статус изменился"});
