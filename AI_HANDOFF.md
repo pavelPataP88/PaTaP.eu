@@ -5,7 +5,8 @@ STATUS: READY_FOR_REVIEW
 
 SOURCE_BRANCH: chatgpt/event-center-v1-syntax-fix-01
 SOURCE_CODE_COMMIT: 0432fb74fc4717d805c97c99c19163a29e51a829
-BASE: codex/local-workspace-snapshot @ 60e939aa8c9d72ecf78d39d6c5c371b8c8cd8d96
+FIX_BASE: codex/local-workspace-snapshot @ a07c960818688ab3eca864751b9135ff6cf12f24
+ORIGINAL_CANDIDATE_BASE: codex/local-workspace-snapshot @ 60e939aa8c9d72ecf78d39d6c5c371b8c8cd8d96
 ORIGINAL_CANDIDATE_REVIEWED: chatgpt/event-center-v1 @ ef697536f02d6e8d6a65ef88e4b18728be2fd397
 DETAIL_HANDOFF: docs/EVENT_CENTER_V1_SYNTAX_FIX_HANDOFF.md
 
@@ -49,7 +50,7 @@ Required minimal correction from ChatGPT:
 4. Record the new branch and exact commit in AI_HANDOFF.md.
 
 Not done:
-- No candidate file was copied to D:\WWW.PATAP.EU.
+- No candidate file was copied to D:\\WWW.PATAP.EU.
 - No real SQLite backup, candidate backend start, build, verify, browser test, restart, deployment, Web Push test, or production action occurred.
 - Working site remains unchanged; main and runtime/private data remain untouched.
 
@@ -70,7 +71,7 @@ Applied:
 - No actual OSM/DATEX/operator data import was run. Therefore Parking has no invented external parking data; it can show future imported or community-provided places only.
 - Import code is separate from Driver HTTP and was not executed.
 
-Factual checks on D:\WWW.PATAP.EU:
+Factual checks on D:\\WWW.PATAP.EU:
 - npm ci — PASS, 0 vulnerabilities.
 - npm run build — PASS.
 - npm run test:auth — PASS, 28/28.
@@ -117,7 +118,7 @@ Required minimal fix:
 
 Not done:
 - npm run build / verify / test:browser were not run after the failed client suite.
-- Parking is not copied to D:\WWW.PATAP.EU, no backup/restart/deploy/import happened.
+- Parking is not copied to D:\\WWW.PATAP.EU, no backup/restart/deploy/import happened.
 
 ---
 [2026-08-19 Europe/Warsaw] FROM: CODEX
@@ -142,7 +143,7 @@ Required minimal test-only fix:
 2. tests/driver/people-console.test.mjs:23 still expects old cache query /module-registry.json?v=20260819-people-v1/. Parking correctly changed it to v=20260819-parking-v1. Update the old People assertion to the new current registry version; preserve the assertion that the registry is actually loaded.
 
 Not done:
-- No candidate files copied to D:\WWW.PATAP.EU.
+- No candidate files copied to D:\\WWW.PATAP.EU.
 - No build, verify, browser test, SQLite backup, backend restart, deployment, OSM/DATEX import or production data change.
 - No runtime/private data was touched or published.
 
@@ -235,7 +236,7 @@ SOURCE_BRANCH: chatgpt/chat-console-v2
 SOURCE_COMMIT_REVIEWED: d9c71ce6e7a46546fe9d4460e028a46eef1bb83c
 
 Фактическая локальная проверка:
-- Кандидат был наложен только на исходники D:\WWW.PATAP.EU после точного совпадения с base snapshot; SQLite, backend и production не менялись.
+- Кандидат был наложен только на исходники D:\\WWW.PATAP.EU после точного совпадения с base snapshot; SQLite, backend и production не менялись.
 - npm ci — PASS, 0 vulnerabilities.
 - npm run test:auth — FAIL: 19/20. Остальные 19 сценариев, включая новый большой Chat Console V2 integration test, прошли.
 - Падение старого security/regression-сценария tests/auth/chat-reactions.test.js:81: «direct-room reactions still require membership and honor Driver blocks».
@@ -265,7 +266,7 @@ SOURCE_COMMIT_REVIEWED: 11f9d769b4c419233dfefd60c02d627b644ea8cc
 - Перед перезапуском создана локальная резервная копия SQLite в data/auth/backups (не публикуется).
 - Codex внёс два малых проверочных исправления: scripts/run-auth-tests.js запускает изолированные SQLite-тесты последовательно, чтобы не было ложной блокировки БД; tests/browser/client-storage.test.js теперь корректно имитирует новый GET /api/driver/radio/overview. Production-логика этими исправлениями не менялась.
 
-Фактически запущено на D:\WWW.PATAP.EU:
+Фактически запущено на D:\\WWW.PATAP.EU:
 - npm ci — PASS, 0 vulnerabilities.
 - npm run test:auth — PASS, 19/19.
 - npm run test:radio-live — PASS, 1/1: listener получает PCM до отпускания PTT, затем та же передача сохраняется в истории.
@@ -302,7 +303,7 @@ SOURCE_COMMIT_REVIEWED: 487f7d6c7412383127df657ab35cf9f279f53754
 2. `driver/radio/experience.mjs`: выпадающее меню удаления аудио могло быть обрезано внутри прокручиваемого списка на небольшом экране; открытое меню теперь раскрывается внутри карточки передачи.
 3. `tests/browser/client-storage.test.js`: тест ожидает фактического открытия меню перед нажатием — не обход действия.
 
-Фактически запущено на D:\WWW.PATAP.EU:
+Фактически запущено на D:\\WWW.PATAP.EU:
 - node --test tests/driver/radio-experience.test.mjs — PASS, 6/6.
 - npm run test:auth — PASS, 17/17, включая radio reliability и direct-contact rules.
 - npm run test:driver-modules — PASS, 24/24.
@@ -333,7 +334,7 @@ STATUS: DEPLOYED
 - Найден и исправлен дополнительный UI-дефект: оверлей карты мог перекрыть кнопку ⌖. Контейнер MapLibre теперь над оверлеем.
 - Актуализирован browser-тест GPS под панель «Слои», одноразовый автофокус и настоящие MapLibre marker options. Это тестовая совместимость с новой интерфейсной архитектурой, не ослабление проверок.
 
-Фактически запущено на D:\WWW.PATAP.EU:
+Фактически запущено на D:\\WWW.PATAP.EU:
 - npm ci — PASS, 0 vulnerabilities.\n- node --test tests/driver/map-enhancements.test.mjs tests/driver/road-reports.test.mjs tests/driver/road-reports-redesign.test.mjs — PASS, 17/17.
 - npm run test:driver-modules — PASS, 18/18.
 - npm run test:client — PASS, 2/2.
@@ -576,7 +577,7 @@ SOURCE_COMMIT: 9e9fdfe388d520152257248e57bc99886e60e012
 
 Что проверено и применено:
 - Проверен фактический небольшой diff: только Driver shell, карта MapLibre, новый loader и тест; сервер, Caddy, авторизация, SQLite, пользователи, GPS-данные, сообщения, токены, логи и main не изменены.
-- Проверенный код перенесён в D:\WWW.PATAP.EU и в codex/local-workspace-snapshot.
+- Проверенный код перенесён в D:\\WWW.PATAP.EU и в codex/local-workspace-snapshot.
 - Гостевой Driver больше не содержит ранний link MapLibre CSS. Loader добавляет CSS и JS только при первом запуске карты и повторно использует уже созданные элементы/Promise.
 - Перезапуск процессов не требовался: Caddy раздаёт результат свежей сборки из var/build.
 
@@ -671,7 +672,7 @@ STATUS: READY_FOR_REVIEW
 SOURCE: codex/local-workspace-snapshot
 
 Что сделано / что проверено:
-- Постоянный локальный watcher запущен из `D:\WWW.PATAP.EU\scripts\watch-ai-loop-trigger.ps1`.
+- Постоянный локальный watcher запущен из `D:\\WWW.PATAP.EU\\scripts\\watch-ai-loop-trigger.ps1`.
 - Автозапуск при следующем входе в Windows добавлен для текущего пользователя.
 - Единственный допустимый триггер: GitHub issue с заголовком `[AI_TASK][MAP] TASK_ID=<уникальный-id>`.
 - Watcher сохраняет обработанные `TASK_ID`; собственные записи Codex в `AI_HANDOFF.md`, коммиты и любые задачи без этого формата его не запускают.
@@ -708,7 +709,7 @@ SOURCE: codex/local-workspace-snapshot @ 373f16e2d29daf4655a2b1ca6f67c65c7949c76
 - До передачи готового блока `MAP` код production и runtime-данные не изменяются.
 
 Техническое условие:
-- Локальная папка `D:\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
+- Локальная папка `D:\\WWW.PATAP.EU` сейчас не является пригодной рабочей Git-веткой. Это не блокирует цикл: для каждого принятого блока Codex будет сравнивать ветку ChatGPT с фактическими локальными файлами и переносить только совместимые изменения, без `reset --hard`, перезаписи или потери локального кода.
 
 Что требуется от ChatGPT:
 1. Подготовить только первый небольшой блок `MAP` в отдельной ветке, созданной от актуального `codex/local-workspace-snapshot`.
@@ -734,7 +735,7 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 - ChatGPT берёт на себя исследование, проектирование, основное написание кода и исправление замечаний.
 - Codex выступает как ревьюер, контролирующий орган и интегратор на рабочем ноутбуке.
 - Работа идёт строго блоками: карта отдельно, чат отдельно, рация отдельно, интерфейс отдельно и т.д.
-- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\WWW.PATAP.EU`.
+- Codex не должен повторно проектировать или переписывать готовый блок без технической причины; его задача — проверить diff, указать конкретные проблемы, прогнать локальные тесты и после ACCEPT безопасно применить блок на `D:\\WWW.PATAP.EU`.
 - После успешного production-применения Codex создаёт/обновляет безопасный snapshot, и только после этого начинается следующий блок.
 
 Что требуется от Codex:
