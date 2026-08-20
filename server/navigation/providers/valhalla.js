@@ -22,7 +22,7 @@ function decodePolyline6(encoded) {
 function costingFor(vehicleClass){if(vehicleClass==="TRUCK")return "truck";if(vehicleClass==="TAXI")return "taxi";return "auto";}
 function physicalOptions(vehicle){
   const out={};
-  for(const [field,key] of [["heightM","height"],["widthM","width"],["lengthM","length"],["grossWeightT","weight"],["axleLoadT","axle_load"],["axleCount","axle_count"]]){
+  for(const [field,key] of [["heightM","height"],["widthM","width"],["lengthM","length"],["grossWeightT","weight"]]){
     const value=finite(vehicle[field]);if(value!==null)out[key]=value;
   }
   return out;
@@ -37,6 +37,8 @@ function commonOptions(vehicle){
 }
 function truckOptions(vehicle,strategy){
   const out=commonOptions(vehicle);
+  if(finite(vehicle.axleLoadT)!==null)out.axle_load=Number(vehicle.axleLoadT);
+  if(finite(vehicle.axleCount)!==null)out.axle_count=Number(vehicle.axleCount);
   if(vehicle.hazardousGoods)out.hazmat=true;
   if(strategy==="PRACTICAL_TRUCK"||strategy==="PARKING_AWARE"){
     out.use_highways=0.92;out.use_tracks=0.05;out.use_living_streets=0.08;out.maneuver_penalty=8;
