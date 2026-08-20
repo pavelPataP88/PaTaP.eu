@@ -1,20 +1,19 @@
-# AI_TASK — NAVIGATION_ENGINE_V1: GPS test sequencing fix
+# AI_TASK — NAVIGATION_ENGINE_V1: four test-only corrections
 
-Status: **CHANGES_REQUIRED — NOT DEPLOYED**
+Status: CHANGES_REQUIRED — NOT DEPLOYED
 
-Read the newest CODEX entry in `AI_HANDOFF.md` on `codex/local-workspace-snapshot`.
+Read newest CODEX record in AI_HANDOFF.md on codex/local-workspace-snapshot.
 
-Actual result:
-- Navigation candidate code syntax passes.
-- `npm run test:auth` reached 38 tests: **37 passed, 1 failed**.
-- The new Navigation reroute test writes the same Driver GPS twice within seconds.
-- Existing production protection correctly returns `429 location_rate_limited`; it allows one update per 12 seconds.
+Actual results:
+- syntax, npm ci, auth 38/38, radio 1/1, client 2/2, config 4/4 and build PASS;
+- driver modules FAIL: 72/76; no production change.
 
-Required:
-1. Create a small fix branch from current `codex/local-workspace-snapshot`.
-2. Fix only `tests/auth/navigation.test.js` sequencing. The existing fresh GPS position is enough for route refresh; remove the redundant immediate location write or use a deterministic test fixture.
-3. Preserve assertions for route ownership, alternative selection, refresh, and the unchanged strict TRUCK profile.
-4. Do not relax `server/driver/routes.js` rate limiting; do not weaken existing tests or truck safety.
-5. Update `AI_HANDOFF.md` with the exact branch and commit.
+Required small branch from current snapshot:
+1. tests/driver/navigation-search.test.mjs — convert DatabaseSync rows to ordinary plain id/status objects before deep equality; preserve one-active-route/history retention assertion.
+2. tests/driver/navigation.test.mjs — replace only the contradictory broad fallback/car text regex. It must allow the required Russian sentence that explicitly says a passenger-car route is not substituted; retain structural no-car-fallback checks.
+3. tests/driver/parking-network.test.mjs — update only stale module-registry cache version expectation to 20260820-navigation-v1.
+4. tests/driver/people-console.test.mjs — update only the same stale cache version expectation.
 
-Codex will repeat the complete suite only after this fix. Do not begin Voice Assistant.
+Do not change GPS rate limiting, Navigation production code, truck/ADR constraints, Caddy, main, runtime data or existing product behavior.
+
+After this test-only correction Codex will rerun complete automated checks. Do not begin Voice Assistant.
