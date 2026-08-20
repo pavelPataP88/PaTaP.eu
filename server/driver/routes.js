@@ -3,6 +3,8 @@ const { normalizeDriverProfile, publicDriverProfile, createProfileRepository } =
 const { createDriverDirectory } = require("./directory");
 const { createPeopleRoutes } = require("../people/routes");
 const { createParkingRoutes } = require("../parking/routes");
+const { createEventRuntime } = require("../events/factory");
+const { createEventRoutes } = require("../events/routes");
 const {
   createRoadReportStore,
   CONFIRMATIONS,
@@ -27,11 +29,17 @@ function createDriverRoutes({
   const directory = createDriverDirectory(db, { addMinutes, nowIso });
   const roadReports = createRoadReportStore();
   const routeOptions = { db, json, requireSession, requireCsrf, checkRate, audit, nowIso, addMinutes };
+  // Parking + People initialize their additive domain schemas, including Chat/Radio
+  // structures used by the Event Center projection triggers.
   const handleParkingRoute = createParkingRoutes(routeOptions);
   const handlePeopleRoute = createPeopleRoutes(routeOptions);
+  const eventRuntime = createEventRuntime({ db, nowIso });
+  const handleEventRoute = createEventRoutes({ ...routeOptions, events: eventRuntime.events, push: eventRuntime.push });
+  eventRuntime.dispatcher.start();
 
   return async function handleDriverRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/")) return false;
+    if (await handleEventRoute(req, res, url, body)) return true;
     if (await handleParkingRoute(req, res, url, body)) return true;
     if (await handlePeopleRoute(req, res, url, body)) return true;
 
@@ -106,6 +114,7 @@ function createDriverRoutes({
         return true;
       }
       const report = roadReports.create(session.user.id, input);
+      eventRuntime.events.roadReport(session.user.id, report);
       audit(req, "road_report_created", {
         userId: session.user.id,
         success: true,
