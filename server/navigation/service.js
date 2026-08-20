@@ -12,8 +12,9 @@ function point(value){const latitude=Number(value?.latitude??value?.lat),longitu
 function json(value,fallback){try{return JSON.parse(value);}catch{return fallback;}}
 function addMs(iso,ms){return new Date(Date.parse(iso)+ms).toISOString();}
 function routeError(message,status,extra={}){const error=new Error(message);error.status=status;Object.assign(error,extra);return error;}
+function placeKey(item){return `${Number(item.latitude).toFixed(5)}:${Number(item.longitude).toFixed(5)}:${text(item.label,80).toLocaleLowerCase("und")}`;}
 
-function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Date().toISOString()}={}){
+function createNavigationService({db,provider,geocoder=null,roadReports=null,nowIso=()=>new Date().toISOString()}={}){
   if(!db||!provider)throw new Error("navigation_service_configuration_required");
   ensureNavigationSchema(db,nowIso());
   const profiles=createVehicleProfileRepository(db,{nowIso});
@@ -21,7 +22,8 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
 
   function expire(now=nowIso()){db.prepare("UPDATE navigation_routes SET status='EXPIRED',updated_at=? WHERE status='ACTIVE' AND expires_at<=?").run(now,now);}
   function providerStatus(){return provider.status();}
-  function status(){const router=providerStatus();return {router,geocoder:{configured:false,name:null},traffic:{configured:Boolean(router.capabilities?.traffic),source:router.capabilities?.traffic?router.name:null},tolls:{configured:Boolean(router.capabilities?.tolls),source:router.capabilities?.tolls?router.name:null},offline:{activeRouteCache:true,offlineRerouting:false},truth:{carFallbackForTruck:false,fakeTraffic:false,fakeTolls:false}};}
+  function geocoderStatus(){return geocoder?.status?.()||{name:null,configured:false,interactiveSearch:false};}
+  function status(){const router=providerStatus(),geo=geocoderStatus();return {router,geocoder:geo,traffic:{configured:Boolean(router.capabilities?.traffic),source:router.capabilities?.traffic?router.name:null},tolls:{configured:Boolean(router.capabilities?.tolls),source:router.capabilities?.tolls?router.name:null},offline:{activeRouteCache:true,offlineRerouting:false},truth:{carFallbackForTruck:false,fakeTraffic:false,fakeTolls:false,publicNominatimHardcoded:false}};}
 
   function requireCompleteVehicle(vehicle){
     if(vehicle.vehicleClass!=="TRUCK")return;
@@ -47,6 +49,15 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
     return {origin,destination,waypoints,strategy,alternatives,departureAt,break:breakPlan};
   }
 
+  async function search(userId,query,{limit=8,near=null}={}){
+    const q=text(query,180);if(q.length<2)return {query:q,results:[],partial:false,warnings:[]};const bounded=Math.max(1,Math.min(10,Number(limit)||8));const origin=point(near)||freshOrigin(userId);const results=[];
+    for(const place of parking.search(userId,{query:q,limit:Math.min(5,bounded),...(origin?{latitude:origin.latitude,longitude:origin.longitude,radiusKm:300}: {})}))results.push({id:`parking:${place.id}`,kind:"PARKING",label:place.name,subtitle:[place.address,place.road,place.countryCode].filter(Boolean).join(" · "),latitude:place.latitude,longitude:place.longitude,countryCode:place.countryCode,provider:"PATAP_PARKING",parkingId:place.id,occupancy:place.occupancy,fit:place.fit,dataConfidence:place.dataConfidence});
+    let partial=false;const warnings=[];
+    if(geocoderStatus().configured){try{for(const item of await geocoder.search(q,{limit:bounded,language:"ru",near:origin}))results.push({id:`geocoder:${item.id}`,kind:"PLACE",label:item.label,subtitle:[item.type,item.countryCode].filter(Boolean).join(" · "),latitude:item.latitude,longitude:item.longitude,countryCode:item.countryCode,provider:item.provider,licence:item.licence});}catch(error){if(!results.length)throw error;partial=true;warnings.push(String(error?.message||"navigation_geocoder_unavailable"));}}
+    const unique=[],seen=new Set();for(const item of results){const key=placeKey(item);if(seen.has(key))continue;seen.add(key);unique.push(item);if(unique.length>=bounded)break;}
+    return {query:q,results:unique,partial,warnings,geocoderConfigured:Boolean(geocoderStatus().configured)};
+  }
+
   function decorateTimes(alternatives,departureAt){const base=departureAt&&Number.isFinite(Date.parse(departureAt))?Date.parse(departureAt):Date.parse(nowIso());return alternatives.map((alternative)=>({...alternative,eta:Number.isFinite(Number(alternative.durationSec))?new Date(base+Number(alternative.durationSec)*1000).toISOString():null}));}
   function routeRoadEvents(alternative){
     if(!roadReports?.list||!alternative?.geometry?.length)return[];const duration=Number(alternative.durationSec)||0;
@@ -64,9 +75,16 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
     return {places:places.slice(0,30),corridorKm:result.corridorKm,recommendedStops,planB,breakAdvisory};
   }
   function enrich(userId,alternative,input){return {roadEvents:routeRoadEvents(alternative),parking:parkingAlong(userId,alternative,input)};}
+  function chooseSelectedAlternative(strategy,alternatives,enrichment,input){
+    if(!alternatives.length)return null;if(strategy!=="PARKING_AWARE")return alternatives[0].id;
+    const anyParking=alternatives.some((alternative)=>(enrichment[alternative.id]?.parking?.places||[]).length);if(!anyParking)return alternatives[0].id;
+    const fastest=Math.min(...alternatives.map((a)=>Number(a.durationSec)||Infinity));let best=null;
+    for(const alternative of alternatives){const parkingInfo=enrichment[alternative.id]?.parking||{},recommended=parkingInfo.recommendedStops||[],available=recommended.filter((p)=>["AVAILABLE","LIMITED"].includes(p.occupancy?.status));let score=(Number(alternative.durationSec)||fastest)-fastest;if(!recommended.length)score+=input.break?.enabled?3600:1200;else if(!available.length)score+=600;score-=Math.min(available.length,3)*90;const first=recommended[0];if(first?.occupancy?.status==="FULL")score+=900;if(first?.routeDistanceKm)score+=Number(first.routeDistanceKm)*45;enrichment[alternative.id].selection={strategy:"PARKING_AWARE",scoreSec:Number(score.toFixed(0)),availableStops:available.length};if(!best||score<best.score)best={id:alternative.id,score};}
+    return best?.id||alternatives[0].id;
+  }
 
-  function storeRoute(userId,{providerResult,input,vehicle,alternatives,guard,enrichment},now=nowIso()){
-    const id=crypto.randomUUID(),selected=alternatives[0]?.id;if(!selected)throw routeError("navigation_provider_invalid_response",502);
+  function storeRoute(userId,{providerResult,input,vehicle,alternatives,guard,enrichment,selectedId},now=nowIso()){
+    const id=crypto.randomUUID(),selected=selectedId||alternatives[0]?.id;if(!selected)throw routeError("navigation_provider_invalid_response",502);
     db.prepare(`INSERT INTO navigation_routes(id,user_id,status,provider,provider_version,strategy,vehicle_snapshot_json,request_json,alternatives_json,selected_alternative_id,route_guard_json,enrichment_json,created_at,updated_at,expires_at) VALUES(?,?,'ACTIVE',?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id,Number(userId),providerResult.provider,providerResult.providerVersion||"",input.strategy,JSON.stringify(vehicle),JSON.stringify(input),JSON.stringify(alternatives),selected,JSON.stringify(guard),JSON.stringify(enrichment),now,now,addMs(now,ROUTE_TTL_MS));
     return publicRoute(db.prepare("SELECT * FROM navigation_routes WHERE id=?").get(id));
@@ -76,9 +94,9 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
 
   async function calculate(userId,input={}){
     const vehicle=profiles.get(userId);if(!vehicle)throw routeError("driver_profile_required",409);requireCompleteVehicle(vehicle);const normalized=normalizeInput(userId,input,vehicle);const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});
-    let alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt));const guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);
-    const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);
-    return storeRoute(userId,{providerResult,input:normalized,vehicle,alternatives,guard,enrichment});
+    const alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt));const guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);
+    const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);const selectedId=chooseSelectedAlternative(normalized.strategy,alternatives,enrichment,normalized);
+    return storeRoute(userId,{providerResult,input:normalized,vehicle,alternatives,guard,enrichment,selectedId});
   }
   function get(userId,routeId){return publicRoute(ownedRow(userId,routeId));}
   function select(userId,routeId,alternativeId,now=nowIso()){
@@ -86,11 +104,11 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
   }
   async function refresh(userId,routeId,input={},now=nowIso()){
     const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const previous=publicRoute(row),vehicle=previous.vehicleSnapshot;requireCompleteVehicle(vehicle);const normalized={...previous.request};if(input.origin){const next=point(input.origin);if(!next)return {error:"navigation_origin_required",status:400};normalized.origin=next;}else normalized.origin=freshOrigin(userId,now)||normalized.origin;
-    const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});const alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt)),guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);const selected=alternatives[0]?.id;if(!selected)return {error:"navigation_provider_invalid_response",status:502};db.prepare("UPDATE navigation_routes SET status='ACTIVE',provider=?,provider_version=?,request_json=?,alternatives_json=?,selected_alternative_id=?,route_guard_json=?,enrichment_json=?,updated_at=?,expires_at=? WHERE id=? AND user_id=?").run(providerResult.provider,providerResult.providerVersion||"",JSON.stringify(normalized),JSON.stringify(alternatives),selected,JSON.stringify(guard),JSON.stringify(enrichment),now,addMs(now,ROUTE_TTL_MS),row.id,Number(userId));return {route:publicRoute(ownedRow(userId,row.id))};
+    const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});const alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt)),guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);const selected=chooseSelectedAlternative(normalized.strategy,alternatives,enrichment,normalized);if(!selected)return {error:"navigation_provider_invalid_response",status:502};db.prepare("UPDATE navigation_routes SET status='ACTIVE',provider=?,provider_version=?,request_json=?,alternatives_json=?,selected_alternative_id=?,route_guard_json=?,enrichment_json=?,updated_at=?,expires_at=? WHERE id=? AND user_id=?").run(providerResult.provider,providerResult.providerVersion||"",JSON.stringify(normalized),JSON.stringify(alternatives),selected,JSON.stringify(guard),JSON.stringify(enrichment),now,addMs(now,ROUTE_TTL_MS),row.id,Number(userId));return {route:publicRoute(ownedRow(userId,row.id))};
   }
   function finish(userId,routeId,state="COMPLETED",now=nowIso()){const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const status=state==="CANCELLED"?"CANCELLED":"COMPLETED";db.prepare("UPDATE navigation_routes SET status=?,updated_at=? WHERE id=? AND user_id=?").run(status,now,row.id,Number(userId));return {route:publicRoute(db.prepare("SELECT * FROM navigation_routes WHERE id=? AND user_id=?").get(row.id,Number(userId)))};}
 
-  return {status,profiles,calculate,get,select,refresh,finish};
+  return {status,profiles,search,calculate,get,select,refresh,finish};
 }
 
 module.exports={createNavigationService,ROUTE_TTL_MS,ROAD_CORRIDOR_KM};
