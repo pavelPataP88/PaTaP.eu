@@ -73,7 +73,7 @@ const navigation = createNavigationController({
 });
 
 async function setupRuntime() {
-  const registry = await loadDriverModuleRegistry("/module-registry.json?v=20260819-parking-v1");
+  const registry = await loadDriverModuleRegistry("/module-registry.json?v=20260820-navigation-v1");
   const modules = validateDriverModuleRegistry(registry).filter((module) => module.enabled);
   profileRequiredViews = modules.filter((module) => module.requiresProfile && module.view).map((module) => module.view);
   navigation.configure(modules);
