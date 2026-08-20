@@ -39,11 +39,14 @@ test("Unconfigured routing provider is an honest unavailable state, never a synt
   const provider=createValhallaProvider({baseUrl:"",fetchImpl:async()=>{assert.fail("fetch must not run when provider is unconfigured");}});const status=provider.status();assert.equal(status.configured,false);assert.equal(status.capabilities.truck,true);assert.equal(status.capabilities.axleCount,true);await assert.rejects(()=>provider.route(routeInput),error=>error?.message==="navigation_provider_unavailable"&&error?.status===503);
 });
 
-test("Route Guard exposes unknown traffic/tolls and verifies strict truck constraint transmission",()=>{
+test("Route Guard is strict only when every configured hard truck constraint is enforced",()=>{
   const providerStatus={name:"VALHALLA",capabilities:{truck:true,axleCount:true,adrTunnelCode:false,traffic:false,tolls:false}};
+  const strictVehicle={...vehicle,adrTunnelCode:"NONE"};
   const providerResult={provider:"VALHALLA",requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:true}},rawWarnings:[]};
-  const guard=createRouteGuard({providerStatus,vehicle,providerResult});assert.equal(guard.strictVehicleProfile,true);assert.ok(guard.unknowns.includes("live_traffic_unavailable"));assert.ok(guard.unknowns.includes("toll_cost_unavailable"));assert.equal(guard.unknowns.includes("axle_count_not_provider_enforced"),false);assert.ok(guard.warnings.includes("adr_tunnel_code_not_provider_enforced"));
-  const broken=createRouteGuard({providerStatus,vehicle,providerResult:{...providerResult,requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:false}}}});assert.equal(broken.strictVehicleProfile,false);assert.ok(broken.warnings.includes("hazmat_not_sent_to_provider"));
+  const guard=createRouteGuard({providerStatus,vehicle:strictVehicle,providerResult});assert.equal(guard.strictVehicleProfile,true);assert.ok(guard.unknowns.includes("live_traffic_unavailable"));assert.ok(guard.unknowns.includes("toll_cost_unavailable"));assert.equal(guard.unknowns.includes("axle_count_not_provider_enforced"),false);assert.equal(guard.warnings.includes("adr_tunnel_code_not_provider_enforced"),false);
+  const adrBlocked=createRouteGuard({providerStatus,vehicle,providerResult});assert.equal(adrBlocked.strictVehicleProfile,false);assert.ok(adrBlocked.warnings.includes("adr_tunnel_code_not_provider_enforced"));
+  const missingAxle=createRouteGuard({providerStatus,vehicle:strictVehicle,providerResult:{...providerResult,requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,hazmat:true}}}});assert.equal(missingAxle.strictVehicleProfile,false);assert.ok(missingAxle.warnings.includes("constraint_not_sent:axle_count"));
+  const brokenHazmat=createRouteGuard({providerStatus,vehicle:strictVehicle,providerResult:{...providerResult,requestMeta:{costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:false}}}});assert.equal(brokenHazmat.strictVehicleProfile,false);assert.ok(brokenHazmat.warnings.includes("hazmat_not_sent_to_provider"));
 });
 
 test("Active-route cache is bounded to route guidance data and strips unrelated/private fields",()=>{
@@ -62,5 +65,5 @@ test("Map exposes one route source with draw, clear, fit and map-point selection
 });
 
 test("Navigation UI does not hard-code public Nominatim, fake traffic/tolls or automatic car fallback",()=>{
-  const all=`${navigationSource}\n${panelSource}\n${serviceSource}`;assert.doesNotMatch(all,/nominatim\.openstreetmap\.org/i);assert.doesNotMatch(all,/fallback[^\n]{0,80}car|car[^\n]{0,80}fallback/i);assert.match(navigationSource,/не будет подменять его приблизительным маршрутом/);assert.match(navigationSource,/Маршрут легкового автомобиля автоматически не подставляется/);assert.match(panelSource,/Трафик:.*источник не подключён/);assert.match(panelSource,/Стоимость платных дорог:.*источник не подключён/);
+  const all=`${navigationSource}\n${panelSource}\n${serviceSource}`;assert.doesNotMatch(all,/nominatim\.openstreetmap\.org/i);assert.doesNotMatch(all,/fallback[^\n]{0,80}car|car[^\n]{0,80}fallback/i);assert.match(navigationSource,/не будет подменять его приблизительным маршрутом/);assert.match(navigationSource,/Маршрут легкового автомобиля автоматически не подставляется/);assert.match(panelSource,/Трафик:.*источник не подключён/);assert.match(panelSource,/Стоимость платных дорог:.*источник не подключён/);assert.match(serviceSource,/navigation_hard_constraints_unenforced/);
 });
