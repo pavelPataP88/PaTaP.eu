@@ -1,6 +1,6 @@
 const crypto=require("crypto");
 const {ensureNavigationSchema}=require("./schema");
-const {createVehicleProfileRepository,STRATEGIES}=require("./vehicle-profile");
+const {createVehicleProfileRepository,strategyAllowed}=require("./vehicle-profile");
 const {createParkingRepository}=require("../parking/repository");
 const {createRouteGuard,applyDifficulty}=require("./route-guard");
 const {sampleGeometry,closestGeometryPoint,corridorItems}=require("./geometry");
@@ -39,7 +39,7 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
   function normalizeInput(userId,input,vehicle){
     const origin=point(input?.origin)||freshOrigin(userId);const destination=point(input?.destination);if(!origin)throw routeError("navigation_origin_required",409);if(!destination)throw routeError("navigation_destination_required",400);
     const waypoints=Array.isArray(input?.waypoints)?input.waypoints.slice(0,20).map(point):[];if(waypoints.some((p)=>!p))throw routeError("invalid_navigation_waypoint",400);
-    const strategy=String(input?.strategy||vehicle.preferredStrategy||"FASTEST_LEGAL").toUpperCase();if(!STRATEGIES.has(strategy))throw routeError("invalid_navigation_strategy",400);
+    const strategy=String(input?.strategy||vehicle.preferredStrategy||"FASTEST_LEGAL").toUpperCase();if(!strategyAllowed(vehicle.vehicleClass,strategy))throw routeError("invalid_navigation_strategy",400);
     const alternatives=Math.max(1,Math.min(3,Number(input?.alternatives)||3));
     let departureAt=null;if(input?.departureAt){const ms=Date.parse(input.departureAt);if(!Number.isFinite(ms))throw routeError("invalid_navigation_departure",400);departureAt=new Date(ms).toISOString();}
     let breakPlan={enabled:false,remainingDriveMinutes:null,desiredBreakMinutes:45};
