@@ -2,6 +2,7 @@ const { ensureNavigationSchema } = require("./schema");
 
 const VEHICLE_CLASSES = new Set(["TRUCK","VAN","CAR","TAXI","OTHER"]);
 const STRATEGIES = new Set(["FASTEST_LEGAL","PRACTICAL_TRUCK","EASY_TRUCK","ECONOMY","PARKING_AWARE"]);
+const TRUCK_ONLY_STRATEGIES = new Set(["PRACTICAL_TRUCK","EASY_TRUCK"]);
 const ADR_CODES = new Set(["NONE","A","B","C","D","E"]);
 
 function numberOrNull(value) {
@@ -41,6 +42,7 @@ function parkingClass(value, fallback) {
   }
 }
 function bool(value) { return value === true || value === 1 || value === "1"; }
+function strategyAllowed(vehicleClass,strategy){return STRATEGIES.has(strategy)&&(!TRUCK_ONLY_STRATEGIES.has(strategy)||vehicleClass==="TRUCK");}
 
 function createVehicleProfileRepository(db,{nowIso=()=>new Date().toISOString()}={}) {
   ensureNavigationSchema(db,nowIso());
@@ -111,9 +113,13 @@ function createVehicleProfileRepository(db,{nowIso=()=>new Date().toISOString()}
     const current=seed(userId,now);if(!current)return {error:"driver_profile_required",status:409};
     try {
       const vehicleClass=input.vehicleClass===undefined?current.vehicle_class:String(input.vehicleClass).toUpperCase();
-      const strategy=input.preferredStrategy===undefined?current.preferred_strategy:String(input.preferredStrategy).toUpperCase();
+      let strategy=input.preferredStrategy===undefined?current.preferred_strategy:String(input.preferredStrategy).toUpperCase();
       const adr=input.adrTunnelCode===undefined?current.adr_tunnel_code:String(input.adrTunnelCode).toUpperCase();
       if(!VEHICLE_CLASSES.has(vehicleClass)||!STRATEGIES.has(strategy)||!ADR_CODES.has(adr))throw new Error("invalid_navigation_profile");
+      if(!strategyAllowed(vehicleClass,strategy)){
+        if(input.preferredStrategy===undefined&&vehicleClass!==current.vehicle_class)strategy="FASTEST_LEGAL";
+        else throw new Error("invalid_navigation_profile");
+      }
       const values={
         vehicleClass,
         lengthM:dimension(input,"lengthM",current.length_m,1,40),
@@ -146,4 +152,4 @@ function createVehicleProfileRepository(db,{nowIso=()=>new Date().toISOString()}
   return { seed, row, publicProfile, get(userId){return publicProfile(seed(userId));}, update };
 }
 
-module.exports={createVehicleProfileRepository,VEHICLE_CLASSES,STRATEGIES,ADR_CODES};
+module.exports={createVehicleProfileRepository,VEHICLE_CLASSES,STRATEGIES,TRUCK_ONLY_STRATEGIES,ADR_CODES,strategyAllowed};
