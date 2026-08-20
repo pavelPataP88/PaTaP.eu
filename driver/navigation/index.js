@@ -5,6 +5,7 @@ import {projectGuidance,isMoving} from "./guidance.mjs?v=20260820-nav1";
 function routeErrorText(error){
   const code=String(error?.message||"");
   if(code==="navigation_vehicle_profile_incomplete")return "Заполните высоту, ширину, длину и полный вес машины. Без этого грузовой маршрут не строится.";
+  if(code==="navigation_hard_constraints_unenforced")return "Маршрутизатор не умеет применить одно из обязательных ограничений этой машины. PaTaP не разрешает использовать такой маршрут для ведения.";
   if(code==="navigation_provider_unavailable")return "Маршрутизатор сейчас недоступен. PaTaP не будет подменять его приблизительным маршрутом.";
   if(code==="navigation_provider_timeout")return "Маршрутизатор не ответил вовремя. Повторите расчёт.";
   if(code==="navigation_no_route")return "Строгий маршрут для этого профиля машины не найден. Маршрут легкового автомобиля автоматически не подставляется.";
