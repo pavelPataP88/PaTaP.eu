@@ -18,13 +18,12 @@ function createRouteGuard({providerStatus,vehicle,providerResult}={}){
   if(isTruck){
     if(String(providerResult?.requestMeta?.costing||"")!=="truck"){warnings.push("truck_costing_not_used");strict=false;confidence-=0.5;}
     if(!capabilities.hgvAccess){warnings.push("hgv_access_not_provider_enforced");strict=false;confidence-=0.35;}
-    if(Number(providerResult?.requestMeta?.costingOptions?.hgv_no_access_penalty)!==43200){warnings.push("hgv_no_access_not_hard");strict=false;confidence-=0.35;}
     for(const [field,label] of [["heightM","vehicle_height_unknown"],["widthM","vehicle_width_unknown"],["lengthM","vehicle_length_unknown"],["grossWeightT","vehicle_weight_unknown"]])if(vehicle?.[field]===null||vehicle?.[field]===undefined){unknowns.push(label);strict=false;confidence-=0.07;}
     if(vehicle?.axleCount!=null&&!capabilities.axleCount){unknowns.push("axle_count_not_provider_enforced");strict=false;confidence-=0.1;}
     if(vehicle?.adrTunnelCode&&vehicle.adrTunnelCode!=="NONE"&&!capabilities.adrTunnelCode){warnings.push("adr_tunnel_code_not_provider_enforced");strict=false;confidence-=0.2;}
-    if(Array.isArray(vehicle?.hazmatCategories)&&vehicle.hazmatCategories.length){warnings.push("hazmat_categories_not_provider_enforced");strict=false;confidence-=0.12;}
-    if(vehicle?.emissionClass){unknowns.push("emission_class_not_provider_enforced");confidence-=0.05;}
-    if(vehicle?.co2Class){unknowns.push("co2_class_not_provider_enforced");confidence-=0.04;}
+    if(Array.isArray(vehicle?.hazmatCategories)&&vehicle.hazmatCategories.length&&!capabilities.hazmatCategories){warnings.push("hazmat_categories_not_provider_enforced");strict=false;confidence-=0.12;}
+    if(vehicle?.emissionClass&&!capabilities.emissionZones){warnings.push("emission_class_not_provider_enforced");strict=false;confidence-=0.12;}
+    if(vehicle?.co2Class){unknowns.push("co2_class_not_used_for_toll_calculation");confidence-=0.04;}
     if(vehicle?.hazardousGoods&&providerResult?.requestMeta?.costingOptions?.hazmat!==true){warnings.push("hazmat_not_sent_to_provider");strict=false;confidence-=0.25;}
     const expected=[["heightM","height"],["widthM","width"],["lengthM","length"],["grossWeightT","weight"],["axleLoadT","axle_load"],["axleCount","axle_count"]];
     for(const [field,key] of expected){if(vehicle?.[field]!=null&&Number(providerResult?.requestMeta?.costingOptions?.[key])!==Number(vehicle[field])){warnings.push(`constraint_not_sent:${key}`);strict=false;confidence-=0.2;}}
