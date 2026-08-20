@@ -6,7 +6,7 @@ function createNavigationRoutes(options,{roadReports=null,provider=null}={}){
   function respond(res,status,payload){options.json(res,status,payload);return true;}
   function requireUser(req,res){const session=options.requireSession(req,res);if(!session)return null;const profile=navigation.profiles.get(session.user.id);if(!profile){respond(res,409,{error:"driver_profile_required"});return null;}return session;}
   function requireMutation(req,res,key,limit=30,minutes=1){const session=requireUser(req,res);if(!session||!options.requireCsrf(req,res,session))return null;if(!options.checkRate(`navigation:${key}:user:${session.user.id}`,limit,minutes)){respond(res,429,{error:"navigation_rate_limited"});return null;}return session;}
-  function serviceError(res,error){const status=Number(error?.status)||500;const payload={error:String(error?.message||"navigation_failed")};if(Array.isArray(error?.missing))payload.missing=error.missing;if(error?.providerStatus)payload.providerStatus=Number(error.providerStatus);return respond(res,status,payload);}
+  function serviceError(res,error){const status=Number(error?.status)||500;const payload={error:String(error?.message||"navigation_failed")};if(Array.isArray(error?.missing))payload.missing=error.missing;if(error?.providerStatus)payload.providerStatus=Number(error.providerStatus);if(error?.guard&&typeof error.guard==="object")payload.guard=error.guard;return respond(res,status,payload);}
   function result(res,value,success=200){if(value?.error)return respond(res,value.status||400,value);return respond(res,success,value);}
 
   return async function handleNavigationRoute(req,res,url,body){
