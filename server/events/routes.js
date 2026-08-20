@@ -44,7 +44,9 @@ function createEventRoutes({events,push,json,requireSession,requireCsrf,checkRat
       const session=mutation(req,res,"mark-all",20,1);if(!session)return true;const value=events.repo.markAllRead(session.user.id,nowIso());events.publishCounts(session.user.id);return respond(res,200,value);
     }
     if(req.method==="POST"&&url.pathname==="/api/driver/events/push-subscriptions"){
-      const session=mutation(req,res,"push-subscribe",20,10);if(!session)return true;return result(res,events.repo.upsertPushSubscription(session.user.id,body,req.headers["user-agent"]||"",nowIso()),201);
+      const session=mutation(req,res,"push-subscribe",20,10);if(!session)return true;
+      if(!push.validateEndpoint(body?.endpoint))return respond(res,400,{error:"unsupported_push_endpoint"});
+      return result(res,events.repo.upsertPushSubscription(session.user.id,body,req.headers["user-agent"]||"",nowIso()),201);
     }
     if(req.method==="DELETE"&&url.pathname==="/api/driver/events/push-subscriptions"){
       const session=mutation(req,res,"push-unsubscribe",30,10);if(!session)return true;return result(res,events.repo.revokePushSubscription(session.user.id,body?.endpoint,nowIso()));
