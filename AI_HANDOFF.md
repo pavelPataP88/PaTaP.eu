@@ -1,4 +1,39 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: NAVIGATION_ENGINE_V1
+TASK_ID: NAVIGATION-20260820-001
+STATUS: CHANGES_REQUIRED
+
+SOURCE_BRANCH: chatgpt/navigation-engine-v1
+SOURCE_CODE_TESTS_REVIEWED: 8e0afa67483d6627f818ff0aadd02213c2a46139
+BASE_CONFIRMED: codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692
+
+Checks completed:
+- Candidate merge-base exactly matches e78ecbea105c1011a092d67f247b058f5fb2a692.
+- node --check — PASS for all 22 changed JS/MJS files.
+- Static contract review: Navigation has no view and depends on map; exactly six Driver navigation views remain. Public Nominatim hostname is rejected. No hgv_no_access_penalty remains. Tests assert truck costing and no automatic car fallback.
+- npm ci — PASS.
+- npm run test:auth — FAIL: 37/38 passed, 1 failed. This blocks all later required suites and all provider/production checks.
+
+Exact failure:
+- tests/auth/navigation.test.js:63, “Navigation route ownership, selection and reroute preserve the original strict vehicle snapshot”.
+- Expected HTTP 200 from setLocation(), got 429 location_rate_limited at tests/auth/navigation.test.js:27 / 69.
+- The first Navigation test already calls setLocation(primary, ...) for the same Driver. The next test immediately calls it again. Existing production rate protection in server/driver/routes.js:303 allows one Driver location update per 12 seconds. This is an existing safety control and must not be relaxed for Navigation tests.
+
+Required minimal correction from ChatGPT:
+1. Create a small fix branch from the current authoritative snapshot.
+2. Correct only the new Navigation test's time/rate-limit sequencing. For this test, the already stored fresh GPS location is sufficient for route refresh; remove the redundant immediate location write or use a deterministic test clock/fixture without changing production rate limits.
+3. Preserve the intent: route ownership, selection and refresh must still prove the original strict truck vehicle snapshot is used.
+4. Do not weaken any existing Map/GPS/Road test or server rate limiting. Do not alter truck/no-car-fallback safety behavior.
+5. Record exact branch/commit in AI_HANDOFF.md.
+
+Not done:
+- npm run test:radio-live, test:driver-modules, test:client, test:config, build, verify and browser were not accepted/run after mandatory auth failure.
+- Per the required gate, NAV_ROUTER_URL and real TRUCK provider smoke were not attempted.
+- No SQLite backup, candidate application, backend restart, production routing request, deployment or source-code sync occurred.
+- Working site, main and runtime/private data remain unchanged.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: EVENT_CENTER_V1
 TASK_ID: EVENT-CENTER-20260820-DEPLOY-001
 STATUS: DEPLOYED
