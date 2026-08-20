@@ -52,6 +52,7 @@ export function createDriverModule(context){
   function stopGuidanceLoop(){if(guidanceTimer!==null){window.clearInterval(guidanceTimer);guidanceTimer=null;}}
   function selectedAlternative(route=currentRoute){return route?.selectedAlternative||route?.alternatives?.find((a)=>a.id===route?.selectedAlternativeId)||route?.alternatives?.[0]||null;}
   function selectedEnrichment(route=currentRoute){return route?.enrichment?.[route?.selectedAlternativeId]||route?.enrichment||{};}
+  function clearRuntimeState({preserveOwner=false}={}){startupToken++;profileReady=false;guidanceActive=false;offRouteSince=0;lastAutoRerouteAt=0;rerouteInFlight=false;stopGuidanceLoop();currentRoute=null;clearActiveRoute(cacheOwner);if(!preserveOwner)cacheOwner="";destinationSearch.reset();panel.reset();mapController()?.clearRoute?.();}
 
   async function loadStatusAndProfile(){
     if(!profileReady)return;const token=++startupToken;
@@ -65,7 +66,7 @@ export function createDriverModule(context){
     const cached=loadActiveRoute(cacheOwner);if(!cached)return;
     currentRoute=cached;panel.renderRoute(cached);await openMap();await mapController()?.showRoute?.(cached);
     try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(cached.id)}`);if(data.route){currentRoute=data.route;saveActiveRoute(currentRoute,cacheOwner);panel.renderRoute(currentRoute);await mapController()?.showRoute?.(currentRoute);}}
-    catch{clearActiveRoute(cacheOwner);currentRoute=null;mapController()?.clearRoute?.();panel.reset();panel.setStateText("Сохранённый маршрут больше недоступен");}
+    catch(error){if(error?.status===401||error?.status===404){clearActiveRoute(cacheOwner);currentRoute=null;mapController()?.clearRoute?.();panel.reset();panel.setStateText("Сохранённый маршрут больше недоступен");}else panel.setStateText("Показан сохранённый маршрут · сервер временно недоступен");}
   }
 
   async function saveProfile(payload){
@@ -113,12 +114,12 @@ export function createDriverModule(context){
   }
 
   async function startSession(){await loadStatusAndProfile();await restoreActiveRoute();}
-  function reset(){startupToken++;profileReady=false;guidanceActive=false;offRouteSince=0;lastAutoRerouteAt=0;rerouteInFlight=false;stopGuidanceLoop();currentRoute=null;clearActiveRoute(cacheOwner);cacheOwner="";destinationSearch.reset();panel.reset();mapController()?.clearRoute?.();}
+  function reset(){clearRuntimeState();}
 
   return {
     async activate(){await openMap();panel.openPanel(currentRoute?(guidanceActive?"guidance":"planner"):"planner");},
-    setSession({user,profile}){cacheOwner=String(user?.id??user?.username??"");profileReady=Boolean(profile);if(profileReady)startSession().catch(()=>{});else reset();},
-    setProfileReady(profile){profileReady=Boolean(profile);if(profileReady)loadStatusAndProfile().catch(()=>{});else reset();},
+    setSession({user,profile}){cacheOwner=String(user?.id??user?.username??"");profileReady=Boolean(profile);if(profileReady)startSession().catch(()=>{});else clearRuntimeState({preserveOwner:true});},
+    setProfileReady(profile){profileReady=Boolean(profile);if(profileReady)loadStatusAndProfile().catch(()=>{});else clearRuntimeState({preserveOwner:true});},
     reset,
     getCurrentRoute(){return currentRoute;},
     async open(){await openMap();panel.openPanel(currentRoute?(guidanceActive?"guidance":"planner"):"planner");}
