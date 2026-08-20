@@ -16,7 +16,7 @@ function ensureNavigationSchema(db, now) {
       height_m REAL CHECK(height_m IS NULL OR (height_m >= 1 AND height_m <= 8)),
       gross_weight_t REAL CHECK(gross_weight_t IS NULL OR (gross_weight_t >= 0.5 AND gross_weight_t <= 100)),
       axle_load_t REAL CHECK(axle_load_t IS NULL OR (axle_load_t >= 0.5 AND axle_load_t <= 40)),
-      axle_count INTEGER CHECK(axle_count IS NULL OR (axle_count >= 1 AND axle_count <= 20)),
+      axle_count INTEGER CHECK(axle_count IS NULL OR (axle_count >= 2 AND axle_count <= 20)),
       max_speed_kph INTEGER CHECK(max_speed_kph IS NULL OR (max_speed_kph >= 20 AND max_speed_kph <= 180)),
       trailer INTEGER NOT NULL DEFAULT 0 CHECK(trailer IN (0,1)),
       hazardous_goods INTEGER NOT NULL DEFAULT 0 CHECK(hazardous_goods IN (0,1)),
