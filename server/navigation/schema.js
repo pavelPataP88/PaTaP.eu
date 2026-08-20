@@ -55,6 +55,24 @@ function ensureNavigationSchema(db, now) {
       ON navigation_routes(user_id,status,updated_at DESC);
     CREATE INDEX IF NOT EXISTS navigation_routes_expiry_idx
       ON navigation_routes(expires_at,status);
+
+    CREATE TRIGGER IF NOT EXISTS navigation_routes_one_active_insert
+    BEFORE INSERT ON navigation_routes
+    WHEN NEW.status='ACTIVE'
+    BEGIN
+      UPDATE navigation_routes
+      SET status='CANCELLED', updated_at=NEW.created_at
+      WHERE user_id=NEW.user_id AND status='ACTIVE';
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS navigation_routes_history_retention
+    AFTER INSERT ON navigation_routes
+    BEGIN
+      DELETE FROM navigation_routes
+      WHERE user_id=NEW.user_id
+        AND status!='ACTIVE'
+        AND julianday(updated_at) < julianday(NEW.created_at, '-30 days');
+    END;
   `);
 
   db.prepare(`INSERT INTO navigation_schema_meta(singleton,version,updated_at) VALUES(1,?,?)
