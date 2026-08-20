@@ -20,30 +20,33 @@ function decodePolyline6(encoded) {
 }
 
 function costingFor(vehicleClass){return vehicleClass==="TRUCK"?"truck":"auto";}
-
-function truckOptions(vehicle,strategy){
+function physicalOptions(vehicle){
   const out={};
   for(const [field,key] of [["heightM","height"],["widthM","width"],["lengthM","length"],["grossWeightT","weight"],["axleLoadT","axle_load"]]){
     const value=finite(vehicle[field]);if(value!==null)out[key]=value;
   }
-  if(vehicle.hazardousGoods)out.hazmat=true;
+  return out;
+}
+function commonOptions(vehicle){
+  const out=physicalOptions(vehicle);
   if(finite(vehicle.maxSpeedKph)!==null)out.top_speed=clamp(Number(vehicle.maxSpeedKph),20,180);
   out.use_tolls=vehicle.avoidTolls?0.05:0.6;
   out.use_ferry=vehicle.avoidFerries?0:0.5;
   if(vehicle.avoidUnpaved)out.exclude_unpaved=true;
+  return out;
+}
+function truckOptions(vehicle,strategy){
+  const out=commonOptions(vehicle);
+  if(vehicle.hazardousGoods)out.hazmat=true;
   if(strategy==="PRACTICAL_TRUCK"||strategy==="PARKING_AWARE"){
     out.use_highways=0.92;out.use_tracks=0.05;out.use_living_streets=0.08;out.maneuver_penalty=8;
   } else if(strategy==="EASY_TRUCK") {
     out.use_highways=1;out.use_tracks=0;out.use_living_streets=0;out.maneuver_penalty=15;
-  } else {
-    out.use_highways=1;
-  }
+  } else out.use_highways=1;
   return out;
 }
 function autoOptions(vehicle,strategy){
-  const out={use_tolls:vehicle.avoidTolls?0.05:0.6,use_ferry:vehicle.avoidFerries?0:0.5};
-  if(vehicle.avoidUnpaved)out.exclude_unpaved=true;
-  if(finite(vehicle.maxSpeedKph)!==null)out.top_speed=clamp(Number(vehicle.maxSpeedKph),20,180);
+  const out=commonOptions(vehicle);
   if(strategy==="ECONOMY")out.use_highways=0.55;
   return out;
 }
@@ -52,7 +55,8 @@ function requestPayload({origin,destination,waypoints=[],vehicle,strategy,langua
   const locations=[origin,...waypoints,destination].map((point,index,array)=>({lat:Number(point.latitude),lon:Number(point.longitude),type:index===0||index===array.length-1?"break":"through"}));
   const costing=costingFor(vehicle.vehicleClass);
   const options=costing==="truck"?truckOptions(vehicle,strategy):autoOptions(vehicle,strategy);
-  const payload={locations,costing,costing_options:{[costing]:options},units:"kilometers",language,alternates:clamp(Number(alternatives)||1,0,3),directions_options:{units:"kilometers",language}};
+  const desired=clamp(Number(alternatives)||1,1,3);
+  const payload={locations,costing,costing_options:{[costing]:options},units:"kilometers",alternates:desired-1,directions_options:{units:"kilometers",language}};
   if(departureAt)payload.date_time={type:1,value:String(departureAt).slice(0,16)};
   return payload;
 }
@@ -79,7 +83,7 @@ function normalizeTrip(trip,index=0){
     if(geometry.length&&decoded.length&&geometry[geometry.length-1][0]===decoded[0][0]&&geometry[geometry.length-1][1]===decoded[0][1])geometry.push(...decoded.slice(1));else geometry.push(...decoded);
     for(const maneuver of leg?.maneuvers||[])maneuvers.push(normalizeManeuver(maneuver,offset,maneuverIndex++));
   }
-  if(geometry.length<2)return null;
+  if(geometry.length<2||geometry.length>50_000)return null;
   const summary=trip.summary||{};
   const warnings=Array.isArray(trip.warnings)?trip.warnings.map((w)=>String(w?.description||w?.text||w).slice(0,300)):[];
   return {
@@ -89,7 +93,7 @@ function normalizeTrip(trip,index=0){
     trafficDelaySec:null,
     eta:null,
     geometry,
-    maneuvers,
+    maneuvers:maneuvers.slice(0,5000),
     providerWarnings:warnings,
     toll:{available:false,amount:null,currency:null,source:null,asOf:null},
     difficulty:{score:null,confidence:0,reasons:[]}
@@ -100,14 +104,14 @@ function normalizeResponse(data){
   const trips=[];
   if(data?.trip)trips.push(data.trip);
   for(const item of Array.isArray(data?.alternates)?data.alternates:[])trips.push(item?.trip||item);
-  const alternatives=trips.map((trip,index)=>normalizeTrip(trip,index)).filter(Boolean);
+  const alternatives=trips.map((trip,index)=>normalizeTrip(trip,index)).filter(Boolean).slice(0,3);
   if(!alternatives.length){const error=new Error("navigation_provider_invalid_response");error.status=502;throw error;}
   return {provider:"VALHALLA",providerVersion:String(data?.version||data?.trip?.version||"").slice(0,80),alternatives,rawWarnings:Array.isArray(data?.warnings)?data.warnings:[]};
 }
 
 function createValhallaProvider({baseUrl=process.env.NAV_ROUTER_URL,timeoutMs=process.env.NAV_ROUTER_TIMEOUT_MS,fetchImpl=globalThis.fetch}={}){
   const url=cleanBaseUrl(baseUrl);const timeout=clamp(Number(timeoutMs)||DEFAULT_TIMEOUT_MS,1000,60_000);
-  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:false}};}
+  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:false}};}
   async function route(input){
     if(!url||typeof fetchImpl!=="function"){const error=new Error("navigation_provider_unavailable");error.status=503;throw error;}
     const payload=requestPayload(input);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
