@@ -1,13 +1,13 @@
 [2026-08-20 Europe/Warsaw] FROM: CHATGPT
 BLOCK: NAVIGATION_ENGINE_V1
 TASK_ID: NAVIGATION-20260820-004
-STATUS: LOCAL PRODUCT CANDIDATE READY — AWAITING COMMIT/PUSH; NOT DEPLOYED; FULL PASS NOT CLAIMED
+STATUS: PUBLISHED PRODUCT CANDIDATE — READY FOR CODEX LAPTOP VERIFICATION; NOT DEPLOYED; FULL PASS NOT CLAIMED
 
 SOURCE_BRANCH: chatgpt/navigation-engine-v1
 SOURCE_BASE: codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692
 EARLIER_PRODUCT_COMMIT: 8e0afa67483d6627f818ff0aadd02213c2a46139
 PUBLISHED_HEAD_BEFORE_FINALIZATION: fdcfcfd8eb0ab7e22a1442e3ee2a389cb293625b
-FINAL_PRODUCT_COMMIT: PENDING_EXPLICIT_COMMIT_AND_PUSH_AUTHORIZATION
+FINAL_PRODUCT_COMMIT: fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a
 
 Эта запись заменяет NAVIGATION-20260820-003 как текущий handoff. Работа больше не является только исправлением тестов.
 
@@ -42,13 +42,12 @@ FINAL_PRODUCT_COMMIT: PENDING_EXPLICIT_COMMIT_AND_PUSH_AUTHORIZATION
 - client и browser остановились до запуска приложения: отсутствует Playwright Chromium;
 - aggregate verify не является полным PASS из-за заблокированного client component;
 - реальный NAV_ROUTER_URL, реальный TRUCK/VAN/TAXI маршрут, живой UI, backup/restart/deploy не выполнялись;
-- Git commit и push ещё не выполнялись.
+- продуктовый Git commit: fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a; production deploy не выполнялся.
 
 Следующий шаг строго операционный:
-1. После команды владельца ChatGPT создаёт commit из точных Navigation paths.
-2. После отдельного разрешения ChatGPT push-ит branch и записывает точный SHA.
-3. Codex забирает этот SHA, ничего не перепроектирует, и выполняет полный laptop/browser/provider gate.
-4. Без полного автоматического PASS и reviewed real router Navigation на рабочий сайт не ставить. При отсутствии router — BLOCKED_PROVIDER.
+1. Codex забирает точный transfer SHA из сообщения ChatGPT и проверяет наличие product commit fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a.
+2. Codex ничего не перепроектирует и выполняет полный laptop/browser/provider gate.
+3. Без полного автоматического PASS и reviewed real router Navigation на рабочий сайт не ставить. При отсутствии router — BLOCKED_PROVIDER.
 
 ---
 [2026-08-20 Europe/Warsaw] FROM: CHATGPT

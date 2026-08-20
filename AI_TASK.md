@@ -1,14 +1,14 @@
 # AI_TASK — NAVIGATION_ENGINE_V1: publish the completed product candidate
 
-Status: **LOCAL PRODUCT CANDIDATE READY — AWAITING OWNER COMMIT/PUSH AUTHORIZATION; NOT DEPLOYED; FULL PASS NOT CLAIMED**
+Status: **PUBLISHED PRODUCT CANDIDATE — READY FOR CODEX LAPTOP VERIFICATION; NOT DEPLOYED; FULL PASS NOT CLAIMED**
 
 ## Candidate lineage
 
 - working branch: chatgpt/navigation-engine-v1
 - original base: codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692
 - earlier reviewed Navigation code/tests: 8e0afa67483d6627f818ff0aadd02213c2a46139
-- current published branch head: fdcfcfd8eb0ab7e22a1442e3ee2a389cb293625b
-- final product-completion commit: **PENDING — do not start Codex integration until an exact published SHA is recorded**
+- published branch head before finalization: fdcfcfd8eb0ab7e22a1442e3ee2a389cb293625b
+- final product-completion commit: fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a
 
 This worktree is no longer a test-only correction. It contains the five accepted test fixes plus the final Navigation product completion described below.
 
@@ -57,11 +57,8 @@ This worktree is no longer a test-only correction. It contains the five accepted
 
 ## Required next action
 
-1. Owner explicitly authorizes a commit.
-2. Commit only the listed Navigation product, test and documentation paths; record the exact commit SHA.
-3. Owner separately authorizes push to chatgpt/navigation-engine-v1.
-4. Only after the SHA is published, Codex fetches that exact SHA into an isolated laptop checkout.
-5. Codex does not redesign or rewrite Navigation. It runs syntax, auth, radio-live, Driver modules, client, config, build, aggregate verify and browser tests.
-6. If the complete automated sequence passes, Codex checks a reviewed real NAV_ROUTER_URL and runs real TRUCK, VAN and TAXI smoke flows. If no reviewed router exists, record BLOCKED_PROVIDER and leave the live site unchanged.
-7. Before starting/applying a candidate backend against real data, create a SQLite backup.
-8. Do not deploy, restart production, change main or start Voice Assistant without the owner's explicit instruction.
+1. Codex fetches the exact transfer SHA supplied by ChatGPT from chatgpt/navigation-engine-v1 and confirms it contains product commit fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a.
+2. Codex does not redesign or rewrite Navigation. It runs syntax, auth, radio-live, Driver modules, client, config, build, aggregate verify and browser tests in an isolated laptop checkout.
+3. If the complete automated sequence passes, Codex checks a reviewed real NAV_ROUTER_URL and runs real TRUCK, VAN and TAXI smoke flows. If no reviewed router exists, record BLOCKED_PROVIDER and leave the live site unchanged.
+4. Before starting/applying a candidate backend against real data, create a SQLite backup.
+5. Do not deploy, restart production, change main or start Voice Assistant without the owner's explicit instruction.

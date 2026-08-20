@@ -1,7 +1,7 @@
 # NAVIGATION_ENGINE_V1 — CODEX HANDOFF
 
 Date: 2026-08-20 Europe/Warsaw
-Status: **LOCAL PRODUCT CANDIDATE READY — AWAITING COMMIT/PUSH; NOT DEPLOYED; FULL PASS NOT CLAIMED**
+Status: **PUBLISHED PRODUCT CANDIDATE — READY FOR CODEX LAPTOP VERIFICATION; NOT DEPLOYED; FULL PASS NOT CLAIMED**
 
 ## Exact candidate
 
@@ -9,12 +9,12 @@ Status: **LOCAL PRODUCT CANDIDATE READY — AWAITING COMMIT/PUSH; NOT DEPLOYED; 
 - Base: `codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692`
 - Earlier code + tests commit: `8e0afa67483d6627f818ff0aadd02213c2a46139`
 - Published branch head before final product completion: `fdcfcfd8eb0ab7e22a1442e3ee2a389cb293625b`
-- Final product-completion commit: **PENDING explicit commit and push authorization**
+- Final product-completion commit: `fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a`
 - Research: `docs/NAVIGATION_V1_RESEARCH.md`
 - Architecture: `docs/NAVIGATION_V1_ARCHITECTURE.md`
 - Provider gate: `docs/NAVIGATION_V1_PROVIDER_DEPLOYMENT.md`
 
-After publication, this branch will be the one self-contained candidate. Do not compose old Navigation branches or ask Codex to reconstruct the architecture.
+This branch is the one self-contained candidate. Do not compose old Navigation branches or ask Codex to reconstruct the architecture.
 
 ## Final product-completion status
 
@@ -51,7 +51,7 @@ Local Linux evidence after the product pass:
 - syntax, build, workspace verification and PlatformOS runtime checks completed;
 - Playwright client/browser checks stop before application launch because Chromium is absent in this workspace.
 
-The authoritative Codex rerun must still execute client, aggregate verify and browser on the working laptop. No complete-suite PASS, real-provider smoke, commit, push or deployment is claimed here.
+The authoritative Codex rerun must still execute client, aggregate verify and browser on the working laptop. No complete-suite PASS, real-provider smoke or deployment is claimed here.
 
 ## Product contract
 
@@ -125,7 +125,7 @@ They cover, among other things:
 ## Mandatory Codex sequence
 
 ### A. Candidate integrity
-1. Fetch the exact final SHA recorded after owner-authorized publication; do not review only the earlier `8e0afa67483d6627f818ff0aadd02213c2a46139` commit because the final product pass is still uncommitted at the time of this handoff.
+1. Fetch the exact transfer SHA supplied by ChatGPT and confirm it contains final product commit `fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a`; do not review only the earlier `8e0afa67483d6627f818ff0aadd02213c2a46139`.
 2. Confirm no `main` changes and no runtime/private data in the candidate.
 3. Run `node --check` over **every changed JS/MJS file** before starting a test server.
 4. Confirm `driver/module-registry.json` still has exactly six enabled entries with a `view`; `navigation` must have no `view` and depend on `map`.
@@ -190,6 +190,6 @@ If **no reviewed real router is available**, do not fake success. Record automat
 
 ## Truth statement
 
-ChatGPT completed the final research, architecture, product code, tests and documentation in the local branch worktree. The focused Navigation subset passed 14/14, Driver modules 76/76, auth 40/40, radio-live 1/1, config 4/4, build, workspace verification and PlatformOS runtime. Playwright client/browser could not launch because this workspace has no Chromium, so aggregate PASS is not claimed. No real router smoke, commit, push, production deployment or production routing coverage is claimed. After owner-authorized publication, Codex owns the independent laptop/browser/real-provider verification on `D:\WWW.PATAP.EU`; it does not own Navigation redesign.
+ChatGPT completed and committed the final research, architecture, product code, tests and documentation. The focused Navigation subset passed 14/14, Driver modules 76/76, auth 40/40, radio-live 1/1, config 4/4, build, workspace verification and PlatformOS runtime. Playwright client/browser could not launch because this workspace has no Chromium, so aggregate PASS is not claimed. No real router smoke, production deployment or production routing coverage is claimed. Codex owns the independent laptop/browser/real-provider verification on `D:\WWW.PATAP.EU`; it does not own Navigation redesign.
 
 After final PASS/deployment decision, update `AI_HANDOFF.md` and synchronize only the actually tested/applied source into `codex/local-workspace-snapshot`. Do not start Voice Assistant automatically.
