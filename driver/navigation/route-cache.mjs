@@ -1,6 +1,8 @@
-const KEY="patap.driver.navigation.active.v1";
+const BASE_KEY="patap.driver.navigation.active.v1";
 const MAX_AGE_MS=7*24*60*60_000;
 
+function ownerToken(owner){const value=String(owner??"").trim();return value?encodeURIComponent(value).slice(0,160):"";}
+export function activeRouteCacheKey(owner){const token=ownerToken(owner);return token?`${BASE_KEY}:${token}`:null;}
 function cleanPoint(point){if(!Array.isArray(point)||point.length<2)return null;const lon=Number(point[0]),lat=Number(point[1]);return Number.isFinite(lon)&&lon>=-180&&lon<=180&&Number.isFinite(lat)&&lat>=-90&&lat<=90?[lon,lat]:null;}
 function safeAlternative(alternative){
   if(!alternative)return null;const geometry=(alternative.geometry||[]).slice(0,50000).map(cleanPoint).filter(Boolean);if(geometry.length<2)return null;
@@ -10,7 +12,8 @@ function safeRoute(route){
   const selected=safeAlternative(route?.selectedAlternative||route?.alternatives?.find((a)=>a.id===route?.selectedAlternativeId)||route?.alternatives?.[0]);if(!selected)return null;
   return {id:String(route.id||"").slice(0,80),status:String(route.status||"ACTIVE").slice(0,20),provider:String(route.provider||"").slice(0,80),strategy:String(route.strategy||"").slice(0,40),selectedAlternativeId:selected.id,selectedAlternative:selected,routeGuard:route.routeGuard||{},enrichment:route.enrichment?.[selected.id]||route.enrichment||{},request:{destination:route.request?.destination||null,break:route.request?.break||null},updatedAt:route.updatedAt||new Date().toISOString(),expiresAt:route.expiresAt||new Date(Date.now()+MAX_AGE_MS).toISOString()};
 }
-export function saveActiveRoute(route,storage=globalThis.localStorage){try{const safe=safeRoute(route);if(!safe)return false;storage?.setItem(KEY,JSON.stringify(safe));return true;}catch{return false;}}
-export function loadActiveRoute(storage=globalThis.localStorage,{now=Date.now()}={}){try{const raw=storage?.getItem(KEY);if(!raw)return null;const parsed=JSON.parse(raw),expires=Date.parse(parsed?.expiresAt||"");if(!Number.isFinite(expires)||expires<=now||now-Date.parse(parsed.updatedAt||0)>MAX_AGE_MS){storage?.removeItem(KEY);return null;}return safeRoute(parsed);}catch{return null;}}
-export function clearActiveRoute(storage=globalThis.localStorage){try{storage?.removeItem(KEY);}catch{}}
-export const ACTIVE_ROUTE_CACHE_KEY=KEY;
+function removeLegacy(storage){try{storage?.removeItem(BASE_KEY);}catch{}}
+export function saveActiveRoute(route,owner,storage=globalThis.localStorage){try{const key=activeRouteCacheKey(owner),safe=safeRoute(route);removeLegacy(storage);if(!key||!safe)return false;storage?.setItem(key,JSON.stringify(safe));return true;}catch{return false;}}
+export function loadActiveRoute(owner,storage=globalThis.localStorage,{now=Date.now()}={}){try{removeLegacy(storage);const key=activeRouteCacheKey(owner);if(!key)return null;const raw=storage?.getItem(key);if(!raw)return null;const parsed=JSON.parse(raw),expires=Date.parse(parsed?.expiresAt||""),updated=Date.parse(parsed?.updatedAt||"");if(!Number.isFinite(expires)||expires<=now||!Number.isFinite(updated)||now-updated>MAX_AGE_MS){storage?.removeItem(key);return null;}return safeRoute(parsed);}catch{return null;}}
+export function clearActiveRoute(owner,storage=globalThis.localStorage){try{removeLegacy(storage);const key=activeRouteCacheKey(owner);if(key)storage?.removeItem(key);}catch{}}
+export const ACTIVE_ROUTE_CACHE_KEY=BASE_KEY;
