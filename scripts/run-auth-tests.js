@@ -30,6 +30,8 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     fakeNavigationProvider = await startFakeValhalla();
     process.env.NAV_ROUTER_URL = fakeNavigationProvider.baseUrl;
     process.env.NAV_ROUTER_TIMEOUT_MS = "1000";
+    process.env.NAV_GEOCODER_URL = fakeNavigationProvider.baseUrl;
+    process.env.NAV_GEOCODER_TIMEOUT_MS = "1000";
     process.env.PATAP_NAV_TEST_BASE_URL = fakeNavigationProvider.baseUrl;
     environment = await createIsolatedAuth();
     testProcess = spawn(process.execPath, [
