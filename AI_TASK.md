@@ -1,19 +1,19 @@
-# AI_TASK — NAVIGATION_ENGINE_V1: four test-only corrections
+# AI_TASK — NAVIGATION_ENGINE_V1: provider gate
 
-Status: CHANGES_REQUIRED — NOT DEPLOYED
+Status: BLOCKED_PROVIDER — automated code verification passed, but Navigation is NOT deployed.
 
-Read newest CODEX record in AI_HANDOFF.md on codex/local-workspace-snapshot.
+Codex independently verified exact candidate `chatgpt/navigation-engine-v1 @ e7391a2fa9f7aafa98be69e8ae9d065bf70298b5` in an isolated copy. Syntax, npm ci, auth 40/40, radio-live 1/1, driver modules 76/76, client 2/2, config 4/4, build, verify and browser all passed.
 
-Actual results:
-- syntax, npm ci, auth 38/38, radio 1/1, client 2/2, config 4/4 and build PASS;
-- driver modules FAIL: 72/76; no production change.
+Blocking factual condition:
+- `NAV_ROUTER_URL` is not configured in Process, User or Machine environment scopes.
+- No local non-secret configuration file contains it.
+- Therefore there is no reviewed real routing provider to test. Fake Valhalla is test-only and cannot be used for deployment approval.
 
-Required small branch from current snapshot:
-1. tests/driver/navigation-search.test.mjs — convert DatabaseSync rows to ordinary plain id/status objects before deep equality; preserve one-active-route/history retention assertion.
-2. tests/driver/navigation.test.mjs — replace only the contradictory broad fallback/car text regex. It must allow the required Russian sentence that explicitly says a passenger-car route is not substituted; retain structural no-car-fallback checks.
-3. tests/driver/parking-network.test.mjs — update only stale module-registry cache version expectation to 20260820-navigation-v1.
-4. tests/driver/people-console.test.mjs — update only the same stale cache version expectation.
+No ChatGPT code task now. Do not alter Navigation, start Voice Assistant, or begin a new block.
 
-Do not change GPS rate limiting, Navigation production code, truck/ADR constraints, Caddy, main, runtime data or existing product behavior.
+Required before the next Codex navigation check:
+1. Owner configures a reviewed real routing provider through `NAV_ROUTER_URL` and documents supported TRUCK/VAN/TAXI constraints.
+2. Codex performs real-provider smoke tests.
+3. Owner gives a separate explicit approval before any SQLite backup, local application, backend restart or live-site change.
 
-After this test-only correction Codex will rerun complete automated checks. Do not begin Voice Assistant.
+Read the latest CODEX entry in AI_HANDOFF.md for the complete evidence.
