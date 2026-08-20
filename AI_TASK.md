@@ -1,24 +1,32 @@
-# AI_TASK — EVENT_CENTER_V1: Road Report regression fix
+# AI_TASK — EVENT_CENTER_V1: Codex re-review
 
-Status: **CHANGES_REQUIRED — NOT DEPLOYED**
+Status: **READY_FOR_CODEX_REVIEW — NOT DEPLOYED**
 
-Read first:
-1. newest CODEX record in `AI_HANDOFF.md` on `codex/local-workspace-snapshot`;
-2. `server/events/service.js` from `chatgpt/event-center-v1`;
-3. `server/road-reports/repository.js` and its exports.
+Use this single self-contained candidate:
+- branch: `chatgpt/event-center-v1-road-fix-01`
+- base: `codex/local-workspace-snapshot @ 776b35b7d2ad7ec4ab385d8541bd2a65c93e5437`
+- **code + tests commit: `56c9484b54018712e060d30f44d2c2e639fa179f`**
+- review instructions: `docs/EVENT_CENTER_V1_ROAD_FIX_HANDOFF.md`
+- full product/deployment instructions: `docs/EVENT_CENTER_V1_HANDOFF.md`
 
-Actual verified result:
-- The syntax correction passes `node --check`.
-- The full Event Center composition reaches `npm run test:auth`: **29 passed, 2 failed**.
-- Creating a Road Report returns **HTTP 500**, breaking the new Event Center Road test and existing Road Report regression.
-- Exact error: `TypeError: haversineKm is not a function` at `server/events/service.js:75`.
-- `server/events/service.js` imports `haversineKm` from `../driver/location`, which does not export it.
+This candidate already contains:
+1. full `EVENT_CENTER_V1`;
+2. the prior `categoryPreferences()` syntax repair;
+3. the Road Report regression repair: `server/events/service.js` now imports `haversineKm` from `../road-reports/repository`, the existing deployed Road Reports helper;
+4. a focused regression assertion preventing a return to the invalid `../driver/location` import.
 
-Required:
-1. Create one self-contained candidate branch from current `codex/local-workspace-snapshot`.
-2. Include the full EVENT_CENTER_V1 block plus the prior syntax fix and this correct distance-helper fix.
-3. Use the compatible existing Road Report distance helper (or a small shared helper with identical tested behavior); do not weaken Road or Event tests.
-4. Update `AI_HANDOFF.md` with exact branch and code commit.
+Do not manually compose the old Event Center branch and old syntax-fix branch again.
 
-Do not change `main`, Caddy, global auth migration, six-character password rule, runtime data, or unrelated product behavior.
-Production remains unchanged until the full required suite passes.
+Codex must:
+1. diff the exact base against the code + tests commit;
+2. run `node --check` across changed JS/MJS;
+3. run `npm ci` and `npm run test:auth` first; both previously failing Road create assertions must pass without weakening tests;
+4. only then run the complete suite listed in `docs/EVENT_CENTER_V1_ROAD_FIX_HANDOFF.md` / `docs/EVENT_CENTER_V1_HANDOFF.md`;
+5. back up the real SQLite before the first real candidate backend start/apply;
+6. deploy only after full PASS, then perform public health, multi-account Event Center and real-device Web Push smoke;
+7. sync the actually tested result into `codex/local-workspace-snapshot` and record exact results;
+8. do not start the next functional block automatically.
+
+Do not change `main`, Caddy, global auth migration, six-character password rule, runtime/private data, Road Report behavior, or unrelated product behavior.
+
+ChatGPT does not claim PASS or deployment. Production remains unchanged until Codex verifies it.
