@@ -1,7 +1,9 @@
 function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={}){
-  let timer=null,running=false;
+  let timer=null,running=false,lastCleanupAt=0;
   const ids=(ref)=>String(ref||"").split(":").map(Number);
   const nick=(userId)=>db.prepare("SELECT nickname FROM driver_profiles WHERE user_id=?").get(Number(userId))?.nickname||null;
+  const OUTBOX_RETENTION_MS=7*24*60*60*1000;
+  const CLEANUP_INTERVAL_MS=60*60*1000;
 
   function processRow(row){
     if(row.event_kind==="CHAT_MESSAGE"){
@@ -38,14 +40,22 @@ function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={
     }
   }
 
-  function processBatch(limit=100){if(running)return {processed:0};running=true;let processed=0;try{
+  function cleanupProcessed(now=nowIso()){
+    const nowMs=Date.parse(now);if(!Number.isFinite(nowMs))return 0;
+    if(lastCleanupAt&&nowMs-lastCleanupAt<CLEANUP_INTERVAL_MS)return 0;
+    lastCleanupAt=nowMs;
+    const cutoff=new Date(nowMs-OUTBOX_RETENTION_MS).toISOString();
+    return Number(db.prepare("DELETE FROM driver_event_outbox WHERE processed_at IS NOT NULL AND processed_at < ?").run(cutoff).changes||0);
+  }
+
+  function processBatch(limit=100){if(running)return {processed:0,cleaned:0};running=true;let processed=0;try{
     const rows=db.prepare("SELECT * FROM driver_event_outbox WHERE processed_at IS NULL ORDER BY id LIMIT ?").all(Math.min(500,Math.max(1,Number(limit)||100)));
     for(const row of rows){const now=nowIso();try{processRow(row);db.prepare("UPDATE driver_event_outbox SET processed_at=?,attempts=attempts+1,last_error=NULL WHERE id=?").run(now,row.id);processed++;}catch(error){const attempts=Number(row.attempts||0)+1;db.prepare("UPDATE driver_event_outbox SET attempts=?,last_error=?,processed_at=CASE WHEN ?>=5 THEN ? ELSE NULL END WHERE id=?").run(attempts,String(error?.message||"event_dispatch_failed").slice(0,500),attempts,now,row.id);}}
-    return {processed};
+    return {processed,cleaned:cleanupProcessed(nowIso())};
   }finally{running=false;}}
   function start(intervalMs=1000){if(timer)return;processBatch();timer=setInterval(()=>processBatch(),Math.max(500,intervalMs));timer.unref?.();}
   function stop(){if(timer){clearInterval(timer);timer=null;}}
-  return {processBatch,start,stop};
+  return {processBatch,cleanupProcessed,start,stop};
 }
 
 module.exports={createEventDispatcher};
