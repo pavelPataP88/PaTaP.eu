@@ -16,6 +16,9 @@ function createRouteGuard({providerStatus,vehicle,providerResult}={}){
   const isTruck=vehicle?.vehicleClass==="TRUCK";let strict=true;
   if(isTruck&&!capabilities.truck){warnings.push("provider_has_no_truck_routing");strict=false;confidence-=0.5;}
   if(isTruck){
+    if(String(providerResult?.requestMeta?.costing||"")!=="truck"){warnings.push("truck_costing_not_used");strict=false;confidence-=0.5;}
+    if(!capabilities.hgvAccess){warnings.push("hgv_access_not_provider_enforced");strict=false;confidence-=0.35;}
+    if(Number(providerResult?.requestMeta?.costingOptions?.hgv_no_access_penalty)!==43200){warnings.push("hgv_no_access_not_hard");strict=false;confidence-=0.35;}
     for(const [field,label] of [["heightM","vehicle_height_unknown"],["widthM","vehicle_width_unknown"],["lengthM","vehicle_length_unknown"],["grossWeightT","vehicle_weight_unknown"]])if(vehicle?.[field]===null||vehicle?.[field]===undefined){unknowns.push(label);strict=false;confidence-=0.07;}
     if(vehicle?.axleCount!=null&&!capabilities.axleCount){unknowns.push("axle_count_not_provider_enforced");strict=false;confidence-=0.1;}
     if(vehicle?.adrTunnelCode&&vehicle.adrTunnelCode!=="NONE"&&!capabilities.adrTunnelCode){warnings.push("adr_tunnel_code_not_provider_enforced");strict=false;confidence-=0.2;}
