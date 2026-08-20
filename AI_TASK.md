@@ -1,18 +1,20 @@
-# AI_TASK — EVENT_CENTER_V1: deployed
+# AI_TASK — NAVIGATION_ENGINE_V1: GPS test sequencing fix
 
-Status: **DEPLOYED AND VERIFIED**
+Status: **CHANGES_REQUIRED — NOT DEPLOYED**
 
-The current safe engineering snapshot contains the actually applied Event Center code.
+Read the newest CODEX entry in `AI_HANDOFF.md` on `codex/local-workspace-snapshot`.
 
-Verified by Codex on `D:\WWW.PATAP.EU`:
-- full automated suite, build, browser suite and public health checks passed;
-- backend restarted normally;
-- `main` was not modified;
-- SQLite, users, GPS, events, Push subscriptions, VAPID keys, messages, media, tokens and logs are excluded from GitHub.
+Actual result:
+- Navigation candidate code syntax passes.
+- `npm run test:auth` reached 38 tests: **37 passed, 1 failed**.
+- The new Navigation reroute test writes the same Driver GPS twice within seconds.
+- Existing production protection correctly returns `429 location_rate_limited`; it allows one update per 12 seconds.
 
-Manual work still outstanding:
-- signed-in two-account Event Center UI smoke;
-- genuine device-to-device flow;
-- real-device Web Push delivery.
+Required:
+1. Create a small fix branch from current `codex/local-workspace-snapshot`.
+2. Fix only `tests/auth/navigation.test.js` sequencing. The existing fresh GPS position is enough for route refresh; remove the redundant immediate location write or use a deterministic test fixture.
+3. Preserve assertions for route ownership, alternative selection, refresh, and the unchanged strict TRUCK profile.
+4. Do not relax `server/driver/routes.js` rate limiting; do not weaken existing tests or truck safety.
+5. Update `AI_HANDOFF.md` with the exact branch and commit.
 
-Do not begin another large feature automatically. Keep the current source snapshot as the base for the next explicitly chosen block.
+Codex will repeat the complete suite only after this fix. Do not begin Voice Assistant.
