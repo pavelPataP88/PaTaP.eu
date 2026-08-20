@@ -28,6 +28,10 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
     const missing=[];for(const [key,label] of [["heightM","heightM"],["widthM","widthM"],["lengthM","lengthM"],["grossWeightT","grossWeightT"]])if(vehicle[key]===null||vehicle[key]===undefined)missing.push(label);
     if(missing.length)throw routeError("navigation_vehicle_profile_incomplete",409,{missing});
   }
+  function requireEnforcedHardConstraints(vehicle,guard){
+    if(vehicle?.vehicleClass!=="TRUCK"||guard?.strictVehicleProfile)return;
+    throw routeError("navigation_hard_constraints_unenforced",422,{guard});
+  }
   function freshOrigin(userId,now=nowIso()){
     const profile=db.prepare("SELECT gps_enabled FROM driver_profiles WHERE user_id=?").get(Number(userId));if(!profile?.gps_enabled)return null;
     const row=db.prepare("SELECT latitude,longitude,updated_at FROM driver_locations WHERE user_id=?").get(Number(userId));if(!row)return null;const age=Date.parse(now)-Date.parse(row.updated_at);if(!Number.isFinite(age)||age>5*60_000)return null;return point(row);
@@ -72,7 +76,7 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
 
   async function calculate(userId,input={}){
     const vehicle=profiles.get(userId);if(!vehicle)throw routeError("driver_profile_required",409);requireCompleteVehicle(vehicle);const normalized=normalizeInput(userId,input,vehicle);const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});
-    let alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt));const guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});
+    let alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt));const guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);
     const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);
     return storeRoute(userId,{providerResult,input:normalized,vehicle,alternatives,guard,enrichment});
   }
@@ -82,7 +86,7 @@ function createNavigationService({db,provider,roadReports=null,nowIso=()=>new Da
   }
   async function refresh(userId,routeId,input={},now=nowIso()){
     const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const previous=publicRoute(row),vehicle=previous.vehicleSnapshot;requireCompleteVehicle(vehicle);const normalized={...previous.request};if(input.origin){const next=point(input.origin);if(!next)return {error:"navigation_origin_required",status:400};normalized.origin=next;}else normalized.origin=freshOrigin(userId,now)||normalized.origin;
-    const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});const alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt)),guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);const selected=alternatives[0]?.id;if(!selected)return {error:"navigation_provider_invalid_response",status:502};db.prepare("UPDATE navigation_routes SET status='ACTIVE',provider=?,provider_version=?,request_json=?,alternatives_json=?,selected_alternative_id=?,route_guard_json=?,enrichment_json=?,updated_at=?,expires_at=? WHERE id=? AND user_id=?").run(providerResult.provider,providerResult.providerVersion||"",JSON.stringify(normalized),JSON.stringify(alternatives),selected,JSON.stringify(guard),JSON.stringify(enrichment),now,addMs(now,ROUTE_TTL_MS),row.id,Number(userId));return {route:publicRoute(ownedRow(userId,row.id))};
+    const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});const alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt)),guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);const selected=alternatives[0]?.id;if(!selected)return {error:"navigation_provider_invalid_response",status:502};db.prepare("UPDATE navigation_routes SET status='ACTIVE',provider=?,provider_version=?,request_json=?,alternatives_json=?,selected_alternative_id=?,route_guard_json=?,enrichment_json=?,updated_at=?,expires_at=? WHERE id=? AND user_id=?").run(providerResult.provider,providerResult.providerVersion||"",JSON.stringify(normalized),JSON.stringify(alternatives),selected,JSON.stringify(guard),JSON.stringify(enrichment),now,addMs(now,ROUTE_TTL_MS),row.id,Number(userId));return {route:publicRoute(ownedRow(userId,row.id))};
   }
   function finish(userId,routeId,state="COMPLETED",now=nowIso()){const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const status=state==="CANCELLED"?"CANCELLED":"COMPLETED";db.prepare("UPDATE navigation_routes SET status=?,updated_at=? WHERE id=? AND user_id=?").run(status,now,row.id,Number(userId));return {route:publicRoute(db.prepare("SELECT * FROM navigation_routes WHERE id=? AND user_id=?").get(row.id,Number(userId)))};}
 
