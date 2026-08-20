@@ -15,7 +15,8 @@ function createEventService({db,nowIso=()=>new Date().toISOString(),sendPush=asy
   function removeListener(userId,res){const set=listeners.get(Number(userId));if(!set)return;set.delete(res);if(!set.size)listeners.delete(Number(userId));}
   function sendSse(res,payload){try{res.write(`event: driver-event\ndata: ${JSON.stringify(payload)}\n\n`);return true;}catch{return false;}}
   function publish(userId,event){
-    if(!event)return;const policy=repo.deliveryPolicy(userId,event,nowIso());
+    if(!event)return;let policy=repo.deliveryPolicy(userId,event,nowIso());
+    if(repo.sourceOverride(userId,event.source.kind,event.source.id)==="IMPORTANT"&&!(["URGENT","IMPORTANT"].includes(event.priority)))policy={interrupt:false,push:false,reason:"source_important_only"};
     for(const res of [...(listeners.get(Number(userId))||[])])if(!sendSse(res,{type:"event.committed",event,policy}))removeListener(userId,res);
     if(policy.push)Promise.resolve(sendPush(Number(userId),event,policy)).catch(()=>{});
   }
