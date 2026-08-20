@@ -43,9 +43,10 @@ for ($attempt = 0; $attempt -lt 20 -and -not $health; $attempt++) {
 }
 
 [PSCustomObject]@{
-  SupervisorRunning = [bool](if (Test-Path -LiteralPath $supervisorPidFile) {
+  SupervisorRunning = [bool]$(if (Test-Path -LiteralPath $supervisorPidFile) {
     $supervisorPid = [int](Get-Content -LiteralPath $supervisorPidFile -Raw)
     Get-Process -Id $supervisorPid -ErrorAction SilentlyContinue
   })
   BackendHealth = $health
 }
+

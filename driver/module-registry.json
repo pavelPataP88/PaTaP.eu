@@ -64,6 +64,15 @@
       "enabled": true,
       "requiresProfile": true,
       "dependsOn": []
+    },
+    {
+      "id": "events",
+      "label": "События",
+      "entry": "./events/index.js?v=20260820-events1",
+      "enabled": true,
+      "requiresProfile": true,
+      "dependsOn": []
     }
   ]
 }
+

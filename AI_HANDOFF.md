@@ -1,5 +1,47 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: EVENT_CENTER_V1
+TASK_ID: EVENT-CENTER-20260820-DEPLOY-001
+STATUS: DEPLOYED
+
+Sources accepted:
+- Self-contained candidate: chatgpt/event-center-v1-road-fix-01 @ 90d061f9bc4245bc11f18b88187c6339d7742e55.
+- Full Event Center composition, syntax correction and Road distance-helper correction were reviewed. The Road helper now comes from server/road-reports/repository.js, whose existing behavior is exercised by both old and new tests.
+
+Applied to D:\\WWW.PATAP.EU:
+- Global Event Center: durable inbox, priorities, read/archive/snooze, per-category/source preferences, Driving Mode, quiet hours, in-app SSE, global bell/drawer and structured deep-links.
+- Event projections for Chat, People/Communities, committed Radio, nearby Road reports and changed Parking availability.
+- Privacy-preserving Web Push foundation: explicit opt-in, local VAPID key material, strict approved endpoint hosts and wake-only payloads.
+- Six-button Driver bottom navigation remains six; Event Center is the global bell, not a seventh bottom item.
+- Small local operational correction: start-backend.ps1 used invalid [bool](if (...)) syntax while formatting its status after successfully starting the backend. Changed only to [bool]$(if (...)); verified normal script output and health.
+
+Factual checks on the candidate and then again on the applied local workspace:
+- npm ci — PASS.
+- node --check server/events/repository.js and server/events/service.js — PASS.
+- npm run test:auth — PASS, 31/31.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:driver-modules — PASS, 62/62.
+- npm run test:client — PASS, 2/2.
+- npm run test:config — PASS, 4/4.
+- npm run build — PASS.
+- npm run verify — PASS, including PlatformOS runtime checks and all component suites.
+- npm run test:browser — PASS using an isolated database and test servers.
+- Local SQLite backup created before backend startup: data/auth/backups/patap-auth-2026-08-20T15-35-22-753Z.sqlite (not published).
+- Only backend was stopped/restarted using stop-backend.ps1/start-backend.ps1. The corrected start script reports SupervisorRunning=True and BackendHealth=True; local /api/health returned HTTP 200.
+- Public HTTP after restart: https://patap.eu, https://driver.patap.eu, https://patap.eu/api/health and https://driver.patap.eu/api/health each returned HTTP 200.
+
+Safety:
+- main was not changed.
+- Runtime/private data was not placed in GitHub: SQLite and backups, users, GPS, messages, Event records, PushSubscription endpoints, VAPID keys, media, tokens, passwords, logs, data/, var/ and node_modules remain excluded.
+- Existing registration/password behavior was not changed; minimum remains 6 characters.
+
+Manual follow-up, explicitly not claimed:
+- two-account signed-in UI flow for bell/deep links/mute/snooze/Driving Mode;
+- a genuine two-device Road/Parking/Chat event flow;
+- real-device browser Web Push permission and delivery. Automated VAPID/privacy tests PASS, but no real device notification is claimed.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: EVENT_CENTER_V1
 TASK_ID: EVENT-CENTER-20260820-002
 STATUS: CHANGES_REQUIRED
 

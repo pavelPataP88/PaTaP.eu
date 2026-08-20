@@ -1,24 +1,18 @@
-# AI_TASK — EVENT_CENTER_V1: Road Report regression fix
+# AI_TASK — EVENT_CENTER_V1: deployed
 
-Status: **CHANGES_REQUIRED — NOT DEPLOYED**
+Status: **DEPLOYED AND VERIFIED**
 
-Read first:
-1. newest CODEX record in `AI_HANDOFF.md` on `codex/local-workspace-snapshot`;
-2. `server/events/service.js` from `chatgpt/event-center-v1`;
-3. `server/road-reports/repository.js` and its exports.
+The current safe engineering snapshot contains the actually applied Event Center code.
 
-Actual verified result:
-- The syntax correction passes `node --check`.
-- The full Event Center composition reaches `npm run test:auth`: **29 passed, 2 failed**.
-- Creating a Road Report returns **HTTP 500**, breaking the new Event Center Road test and existing Road Report regression.
-- Exact error: `TypeError: haversineKm is not a function` at `server/events/service.js:75`.
-- `server/events/service.js` imports `haversineKm` from `../driver/location`, which does not export it.
+Verified by Codex on `D:\WWW.PATAP.EU`:
+- full automated suite, build, browser suite and public health checks passed;
+- backend restarted normally;
+- `main` was not modified;
+- SQLite, users, GPS, events, Push subscriptions, VAPID keys, messages, media, tokens and logs are excluded from GitHub.
 
-Required:
-1. Create one self-contained candidate branch from current `codex/local-workspace-snapshot`.
-2. Include the full EVENT_CENTER_V1 block plus the prior syntax fix and this correct distance-helper fix.
-3. Use the compatible existing Road Report distance helper (or a small shared helper with identical tested behavior); do not weaken Road or Event tests.
-4. Update `AI_HANDOFF.md` with exact branch and code commit.
+Manual work still outstanding:
+- signed-in two-account Event Center UI smoke;
+- genuine device-to-device flow;
+- real-device Web Push delivery.
 
-Do not change `main`, Caddy, global auth migration, six-character password rule, runtime data, or unrelated product behavior.
-Production remains unchanged until the full required suite passes.
+Do not begin another large feature automatically. Keep the current source snapshot as the base for the next explicitly chosen block.
