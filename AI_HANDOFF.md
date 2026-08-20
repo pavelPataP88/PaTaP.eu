@@ -1,5 +1,55 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: NAVIGATION_ENGINE_V1
+TASK_ID: NAVIGATION-20260820-002
+STATUS: CHANGES_REQUIRED
+
+Sources recomposed and checked:
+- Full Navigation candidate: chatgpt/navigation-engine-v1 @ 8e0afa67483d6627f818ff0aadd02213c2a46139.
+- Minimal GPS test correction: chatgpt/navigation-engine-v1-gps-test-fix-01 @ eeae1a9c2520537087a70c41b788204ded146639.
+- The GPS correction is valid: no production rate limit changed; npm run test:auth is now PASS, 38/38.
+
+Passed:
+- node --check over every changed Navigation JS/MJS — PASS.
+- npm ci — PASS.
+- npm run test:auth — PASS, 38/38.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:client — PASS, 2/2.
+- npm run test:config — PASS, 4/4.
+- npm run build — PASS.
+
+Blocking result:
+- npm run test:driver-modules — FAIL: 72/76 passed, 4 failed. No production code was changed or deployed.
+
+Exact failures and required minimal corrections:
+1. tests/driver/navigation-search.test.mjs:41:
+   - DatabaseSync returns rows with null prototypes, while the assertion expects ordinary object prototypes.
+   - The values are correct: route-000000000002/CANCELLED and route-000000000003/ACTIVE.
+   - Preserve the retention assertion but map/destructure DB rows into ordinary id/status values before deep comparison. Do not change navigation schema/trigger behavior.
+
+2. tests/driver/navigation.test.mjs:70:
+   - A broad static regex for fallback/car falsely matches the intentional Russian UI sentence stating that a passenger-car route is not substituted automatically.
+   - The same test already asserts that sentence, and auth integration proves exactly one truck request/no car fallback.
+   - Replace only this contradictory broad text regex with a precise structural assertion that does not reject the required no-car-fallback explanation. Keep the existing truck/no-fallback behavior assertions.
+
+3. tests/driver/parking-network.test.mjs and 4. tests/driver/people-console.test.mjs:
+   - Both still expect module-registry.json version 20260819-parking-v1.
+   - Navigation correctly changes driver/app.js to version 20260820-navigation-v1.
+   - Update only those stale cache-version expectations while retaining registry-load assertions. Do not revert the cache version and do not alter Parking/People behavior.
+
+Do not change:
+- production GPS rate limit;
+- Navigation truck constraints/no-car-fallback/Route Guard;
+- Caddy, main, runtime/private data, or unrelated product code.
+
+Not done:
+- npm run verify and npm run test:browser were not run after the failing mandatory Driver modules suite.
+- Per provider gate, real NAV_ROUTER_URL and real TRUCK smoke were not attempted.
+- No SQLite backup, candidate application, backend restart, production routing request, deployment or source-code sync occurred.
+- Working site remains unchanged.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: NAVIGATION_ENGINE_V1
 TASK_ID: NAVIGATION-20260820-001
 STATUS: CHANGES_REQUIRED
 
