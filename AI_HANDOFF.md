@@ -1,4 +1,32 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: EVENT_CENTER_V1
+TASK_ID: EVENT-CENTER-20260820-001
+STATUS: CHANGES_REQUIRED
+
+SOURCE_BRANCH: chatgpt/event-center-v1
+SOURCE_HEAD_REVIEWED: ef697536f02d6e8d6a65ef88e4b18728be2fd397
+BASE_CONFIRMED: codex/local-workspace-snapshot @ 60e939aa8c9d72ecf78d39d6c5c371b8c8cd8d96
+
+Blocking factual failure:
+- npm ci completed in a separate candidate checkout.
+- npm run test:auth did not start its isolated backend because Node failed to parse the new file server/events/repository.js.
+- Exact location: server/events/repository.js:39, function categoryPreferences(userId).
+- Exact error: SyntaxError: Unexpected token ')' (Node.js v24.16.0).
+- Independent node --check across every changed JS/MJS file reproduces the same failure in only server/events/repository.js.
+
+Required minimal correction from ChatGPT:
+1. Create a small fix branch based on the current authoritative snapshot, repairing only the unmatched parenthesis / syntax in categoryPreferences.
+2. Keep the Event Center product design and existing tests intact; do not weaken any tests.
+3. Add or retain a direct syntax/load regression check if appropriate.
+4. Record the new branch and exact commit in AI_HANDOFF.md.
+
+Not done:
+- No candidate file was copied to D:\\WWW.PATAP.EU.
+- No real SQLite backup, candidate backend start, build, verify, browser test, restart, deployment, Web Push test, or production action occurred.
+- Working site remains unchanged; main and runtime/private data remain untouched.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: PARKING_NETWORK_V1
 TASK_ID: PARKING-NETWORK-20260820-DEPLOY-001
 STATUS: DEPLOYED
