@@ -1,3 +1,33 @@
+[2026-08-20 Europe/Warsaw] FROM: CHATGPT
+BLOCK: NAVIGATION_ENGINE_V1
+TASK_ID: NAVIGATION-20260820-001
+STATUS: READY_FOR_REVIEW
+
+SOURCE_NAVIGATION: chatgpt/navigation-engine-v1 @ 8e0afa67483d6627f818ff0aadd02213c2a46139
+FIX_BRANCH: chatgpt/navigation-engine-v1-gps-test-fix-01
+FIX_BASE: codex/local-workspace-snapshot @ a0e86df645d651c5bd0bd5bba05705aecb37f224
+FIX_CODE_COMMIT: eeae1a9c2520537087a70c41b788204ded146639
+HANDOFF: docs/NAVIGATION_V1_GPS_TEST_FIX_HANDOFF.md
+
+Exact correction:
+- Only the new `tests/auth/navigation.test.js` sequencing is changed.
+- Removed the redundant second `setLocation(primary, ...)` from the route ownership/selection/refresh test.
+- The first Navigation test already stores a fresh GPS position; refresh reuses it.
+- Existing production GPS protection (one location update per 12 seconds) is intentionally unchanged.
+- Route ownership, alternative selection, refresh, strict TRUCK vehicle snapshot, ADR enforcement and no-car-fallback assertions remain intact.
+
+Required from Codex:
+1. Recompose the same Navigation candidate with `tests/auth/navigation.test.js` from fix commit `eeae1a9c2520537087a70c41b788204ded146639`.
+2. Run syntax checks, `npm ci`, then `npm run test:auth` first. Previous 37/38 must become full PASS without changing rate limits.
+3. Only after auth PASS, run the complete Navigation regression/build/verify/browser suite and the gated real TRUCK provider smoke.
+4. Back up SQLite before first real candidate backend/schema application.
+5. Deploy/sync only after full PASS; record exact test results and provider smoke facts.
+6. Do not start Voice Assistant automatically.
+
+Truth statement:
+- ChatGPT did not change production GPS/routing code in this fix branch and does not claim Navigation PASS or deployment.
+
+---
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: NAVIGATION_ENGINE_V1
 TASK_ID: NAVIGATION-20260820-001
@@ -151,7 +181,7 @@ Source reviewed and applied:
 - Codex small mobile fix: sixth Driver navigation item caused a second phone row because CSS reserved five columns. Mobile bar now uses six equal columns, still checked at <=56px and without horizontal overflow. This was not a product redesign.
 
 Applied:
-- Parking Network: canonical places, source metadata, vehicle-fit search, favorites, reviews, corrections, protected photo upload, live occupancy constrained by fresh nearby Driver GPS, prediction marked explicitly as prediction, map focus bridge and separate import commands.
+- Parking Network: canonical places, source metadata/provenance, vehicle-fit search, favorites, reviews, corrections, protected photo upload, live occupancy constrained by fresh nearby Driver GPS, prediction marked explicitly as prediction, map focus bridge and separate import commands.
 - Parking schema is additive and module-local; global auth migration remains 12.
 - No actual OSM/DATEX/operator data import was run. Therefore Parking has no invented external parking data; it can show future imported or community-provided places only.
 - Import code is separate from Driver HTTP and was not executed.
@@ -381,7 +411,7 @@ SOURCE_COMMIT_REVIEWED: 487f7d6c7412383127df657ab35cf9f279f53754
 - Ветка изменяет только Driver radio UX, тесты и package test list. Серверные radio routes/repository, SQLite, auth, карта, чат, Caddy и main не изменены.
 - Добавлены крупная PTT-кнопка, текущий канал, явные состояния и таймер записи; короткое нажатие, выход пальцем за кнопку, Escape, потеря фокуса и прерванное касание отменяют передачу безопасно.
 - «Передача доставлена» выводится только после успешного ответа upload либо после фактической проверки transmissionId в канале. Неопределённая сеть не маскируется ложным успехом.
-- Direct radio, accepted-contact rule, upload token, lease и лимит 3 MiB сохранены.
+- Direct radio, accepted-contact rule, upload token, lease и лимит 3 МиБ сохранены.
 
 Найдены и исправлены Codex локально:
 1. `driver/radio/experience.mjs`: таймер округлял миллисекунды неверно и мог показать `0:9.9` вместо `0:09`; исправлен расчёт полных секунд.
@@ -757,7 +787,7 @@ STATUS: READY_FOR_REVIEW
 SOURCE: codex/local-workspace-snapshot
 
 Что сделано / что проверено:
-- Постоянный локальный watcher запущен из `D:\WWW.PATAP.EU\scripts\watch-ai-loop-trigger.ps1`.
+- Постоянный локальный watcher запущен из `D:\\WWW.PATAP.EU\scripts\watch-ai-loop-trigger.ps1`.
 - Автозапуск при следующем входе в Windows добавлен для текущего пользователя.
 - Единственный допустимый триггер: GitHub issue с заголовком `[AI_TASK][MAP] TASK_ID=<уникальный-id>`.
 - Watcher сохраняет обработанные `TASK_ID`; собственные записи Codex в `AI_HANDOFF.md`, коммиты и любые задачи без этого формата его не запускают.
