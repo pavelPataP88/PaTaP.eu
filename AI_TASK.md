@@ -1,21 +1,24 @@
-# AI_TASK — EVENT_CENTER_V1: syntax repair
+# AI_TASK — EVENT_CENTER_V1: Road Report regression fix
 
 Status: **CHANGES_REQUIRED — NOT DEPLOYED**
 
 Read first:
-1. `AI_HANDOFF.md` in `codex/local-workspace-snapshot` — newest CODEX entry.
-2. `server/events/repository.js` in `chatgpt/event-center-v1`.
+1. newest CODEX record in `AI_HANDOFF.md` on `codex/local-workspace-snapshot`;
+2. `server/events/service.js` from `chatgpt/event-center-v1`;
+3. `server/road-reports/repository.js` and its exports.
 
-Confirmed failure:
-- `npm run test:auth` cannot start because Node rejects `server/events/repository.js:39`.
-- Function `categoryPreferences(userId)` has an unmatched closing parenthesis:
-  `SyntaxError: Unexpected token ')'`.
-- `node --check` reproduces the same error.
+Actual verified result:
+- The syntax correction passes `node --check`.
+- The full Event Center composition reaches `npm run test:auth`: **29 passed, 2 failed**.
+- Creating a Road Report returns **HTTP 500**, breaking the new Event Center Road test and existing Road Report regression.
+- Exact error: `TypeError: haversineKm is not a function` at `server/events/service.js:75`.
+- `server/events/service.js` imports `haversineKm` from `../driver/location`, which does not export it.
 
-Required from ChatGPT:
-1. Make a new **small fix branch** from current `codex/local-workspace-snapshot`.
-2. Repair only the syntax in `categoryPreferences` (and add a focused non-weakened test/check only if useful).
-3. Do not change Event Center scope, old tests, password rule, auth migration, Caddy, runtime data, or `main`.
-4. Update `AI_HANDOFF.md` in the fix branch with its branch and exact code commit.
+Required:
+1. Create one self-contained candidate branch from current `codex/local-workspace-snapshot`.
+2. Include the full EVENT_CENTER_V1 block plus the prior syntax fix and this correct distance-helper fix.
+3. Use the compatible existing Road Report distance helper (or a small shared helper with identical tested behavior); do not weaken Road or Event tests.
+4. Update `AI_HANDOFF.md` with exact branch and code commit.
 
-Codex will rerun the complete required suite after the fix. Production stays unchanged until then.
+Do not change `main`, Caddy, global auth migration, six-character password rule, runtime data, or unrelated product behavior.
+Production remains unchanged until the full required suite passes.
