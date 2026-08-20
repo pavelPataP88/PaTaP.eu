@@ -35,12 +35,12 @@ test("Destination autocomplete is server-side, accessible and retains map/coordi
 });
 
 test("Automatic reroute requires sustained moving off-route state and has a cooldown",()=>{
-  assert.match(indexSource,/AUTO_REROUTE_HOLD_MS=8_000/);assert.match(indexSource,/AUTO_REROUTE_COOLDOWN_MS=60_000/);assert.match(indexSource,/AUTO_REROUTE_DISTANCE_KM=0\.15/);assert.match(indexSource,/model\.offRoute&&moving/);assert.match(indexSource,/now-offRouteSince>=AUTO_REROUTE_HOLD_MS/);assert.match(indexSource,/now-lastAutoRerouteAt>=AUTO_REROUTE_COOLDOWN_MS/);assert.match(indexSource,/reroute\(\{automatic:true\}\)/);
+  assert.match(indexSource,/AUTO_REROUTE_HOLD_MS=8_000/);assert.match(indexSource,/AUTO_REROUTE_COOLDOWN_MS=60_000/);assert.match(indexSource,/AUTO_REROUTE_DISTANCE_KM=0\.15/);assert.match(indexSource,/model\.offRoute&&moving/);assert.match(indexSource,/isFreshLocation\(location\)/);assert.match(indexSource,/navigator\?\.onLine===false/);assert.match(indexSource,/now-offRouteSince>=AUTO_REROUTE_HOLD_MS/);assert.match(indexSource,/now-lastAutoRerouteAt>=AUTO_REROUTE_COOLDOWN_MS/);assert.match(indexSource,/reroute\(\{automatic:true\}\)/);assert.match(indexSource,/routeItemMetrics\(item\.routeProgress,lastGuidanceModel\)/);
 });
 
 test("Navigation keeps one active route per user and removes only stale inactive history",()=>{
   const db=new DatabaseSync(":memory:");db.exec("CREATE TABLE users(id INTEGER PRIMARY KEY)");db.prepare("INSERT INTO users(id) VALUES(1)").run();ensureNavigationSchema(db,"2026-01-01T00:00:00.000Z");
   const insert=(id,created)=>db.prepare(`INSERT INTO navigation_routes(id,user_id,status,provider,strategy,vehicle_snapshot_json,request_json,alternatives_json,selected_alternative_id,route_guard_json,enrichment_json,created_at,updated_at,expires_at) VALUES(?,1,'ACTIVE','TEST','FASTEST_LEGAL','{}','{}','[]','alt-1','{}','{}',?,?,?)`).run(id,created,created,new Date(Date.parse(created)+86400000).toISOString());
   insert("route-000000000001","2026-01-01T00:00:00.000Z");insert("route-000000000002","2026-01-02T00:00:00.000Z");let rows=db.prepare("SELECT id,status FROM navigation_routes ORDER BY id").all();assert.deepEqual(rows.map(r=>r.status),["CANCELLED","ACTIVE"]);
-  insert("route-000000000003","2026-03-05T00:00:00.000Z");rows=db.prepare("SELECT id,status FROM navigation_routes ORDER BY id").all();assert.deepEqual(rows,[{id:"route-000000000002",status:"CANCELLED"},{id:"route-000000000003",status:"ACTIVE"}]);db.close();
+  insert("route-000000000003","2026-03-05T00:00:00.000Z");rows=db.prepare("SELECT id,status FROM navigation_routes ORDER BY id").all().map(({id,status})=>({id,status}));assert.deepEqual(rows,[{id:"route-000000000002",status:"CANCELLED"},{id:"route-000000000003",status:"ACTIVE"}]);db.close();
 });

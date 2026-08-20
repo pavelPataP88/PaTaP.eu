@@ -5,7 +5,7 @@
       "id": "map",
       "label": "Карта",
       "view": "map",
-      "entry": "./map/index.js?v=20260820-navigation1",
+      "entry": "./map/index.js?v=20260820-navigation3",
       "enabled": true,
       "dependsOn": []
     },
@@ -18,7 +18,7 @@
     {
       "id": "navigation",
       "label": "Навигация",
-      "entry": "./navigation/index.js?v=20260820-navigation2",
+      "entry": "./navigation/index.js?v=20260820-navigation4",
       "enabled": true,
       "requiresProfile": true,
       "dependsOn": ["map"]

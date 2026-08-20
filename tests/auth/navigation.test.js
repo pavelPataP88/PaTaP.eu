@@ -17,11 +17,11 @@ class Client{
   async csrf(){return this.request("/api/csrf");}
 }
 function unique(prefix){return `${prefix}_${++seq}_${String(runId).slice(-6)}`.toLowerCase().replace(/[^a-z0-9_-]/g,"_").slice(0,32);}
-async function createDriver(label="nav"){
+async function createDriver(label="nav",driverType="TIR"){
   const client=new Client(),username=unique(`nav_${label}`),nickname=`Nav_${label}_${seq}_${String(runId).slice(-4)}`.slice(0,32);
   await client.csrf();
   let r=await client.request("/api/register",{method:"POST",body:{username,email:`${username}@patap.test`,password:"navigation-test-123",confirmPassword:"navigation-test-123"}});assert.equal(r.response.status,201);
-  r=await client.request("/api/driver/profile",{method:"PUT",body:{nickname,driverType:"TIR",countryCode:"PL",vehicle:"Test TIR"}});assert.ok([200,201].includes(r.response.status));
+  r=await client.request("/api/driver/profile",{method:"PUT",body:{nickname,driverType,countryCode:"PL",vehicle:`Test ${driverType}`}});assert.ok([200,201].includes(r.response.status));
   return {client,nickname};
 }
 async function setLocation(driver,latitude,longitude){let r=await driver.client.request("/api/driver/gps",{method:"PUT",body:{enabled:true}});assert.equal(r.response.status,200);r=await driver.client.request("/api/driver/location",{method:"PUT",body:{latitude,longitude,accuracy:7,heading:70,speed:18}});assert.equal(r.response.status,200);}
@@ -66,11 +66,26 @@ test("Navigation route ownership, selection and reroute preserve the original st
 
   const alternative=primaryRoute.alternatives[1];r=await primary.client.request(`/api/driver/navigation/routes/${primaryRoute.id}/select`,{method:"POST",body:{alternativeId:alternative.id}});assert.equal(r.response.status,200);assert.equal(r.data.route.selectedAlternativeId,alternative.id);
 
-  await setLocation(primary,ORIGIN.latitude+0.01,ORIGIN.longitude+0.01);await resetProvider();
+  await resetProvider();
   r=await primary.client.request(`/api/driver/navigation/routes/${primaryRoute.id}/refresh`,{method:"POST",body:{}});assert.equal(r.response.status,200);primaryRoute=r.data.route;assert.equal(primaryRoute.vehicleSnapshot.widthM,2.55);assert.equal(primaryRoute.vehicleSnapshot.heightM,4);assert.equal(primaryRoute.vehicleSnapshot.grossWeightT,40);assert.equal(primaryRoute.vehicleSnapshot.axleCount,5);assert.equal(primaryRoute.routeGuard.strictVehicleProfile,true);
-  const requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"truck");assert.equal(requests[0].costing_options.truck.width,2.55);assert.equal(requests[0].costing_options.truck.height,4);assert.equal(requests[0].costing_options.truck.weight,40);assert.equal(requests[0].costing_options.truck.axle_count,5);
+  const requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"truck");assert.equal(requests[0].costing_options.truck.width,2.55);assert.equal(requests[0].costing_options.truck.height,4);assert.equal(requests[0].costing_options.truck.weight,40);assert.equal(requests[0].costing_options.truck.axle_count,5);assert.equal(Object.hasOwn(requests[0],"date_time"),false);
+
+  const db=new DatabaseSync(process.env.PATAP_DB_PATH),owner=Number(db.prepare("SELECT user_id FROM navigation_routes WHERE id=?").get(primaryRoute.id).user_id);db.prepare("UPDATE driver_locations SET updated_at=? WHERE user_id=?").run("2020-01-01T00:00:00.000Z",owner);db.close();await resetProvider();r=await primary.client.request(`/api/driver/navigation/routes/${primaryRoute.id}/refresh`,{method:"POST",body:{}});assert.equal(r.response.status,409);assert.equal(r.data.error,"navigation_origin_required");assert.equal((await providerRequests()).length,0);
+  await resetProvider();r=await primary.client.request(`/api/driver/navigation/routes/${primaryRoute.id}/refresh`,{method:"POST",body:{origin:{...ORIGIN,label:"Manual origin"}}});assert.equal(r.response.status,200);primaryRoute=r.data.route;const manualRequests=await providerRequests();assert.equal(manualRequests.length,1);assert.equal(manualRequests[0].locations[0].lat,ORIGIN.latitude);assert.equal(manualRequests[0].locations[0].lon,ORIGIN.longitude);const restoreDb=new DatabaseSync(process.env.PATAP_DB_PATH);restoreDb.prepare("UPDATE driver_locations SET updated_at=? WHERE user_id=?").run(new Date().toISOString(),owner);restoreDb.close();
 
   r=await primary.client.request(`/api/driver/navigation/routes/${primaryRoute.id}/finish`,{method:"POST",body:{state:"COMPLETED"}});assert.equal(r.response.status,200);assert.equal(r.data.route.status,"COMPLETED");
+});
+
+test("Navigation applies entered VAN dimensions and fails closed when VAN hazardous-goods constraints cannot be enforced",async()=>{
+  const van=await createDriver("van","DELIVERY");await setLocation(van,ORIGIN.latitude+.02,ORIGIN.longitude+.02);let r=await van.client.request("/api/driver/navigation/profile");assert.equal(r.response.status,200);assert.equal(r.data.profile.vehicleClass,"VAN");
+  r=await van.client.request("/api/driver/navigation/routes",{method:"POST",body:{destination:DESTINATION,strategy:"FASTEST_LEGAL"}});assert.equal(r.response.status,409);assert.equal(r.data.error,"navigation_vehicle_profile_incomplete");
+  r=await van.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{lengthM:6.4,widthM:2.1,heightM:2.8,grossWeightT:3.5,maxSpeedKph:110,preferredStrategy:"FASTEST_LEGAL"}});assert.equal(r.response.status,200);
+  await resetProvider();r=await van.client.request("/api/driver/navigation/routes",{method:"POST",body:{destination:DESTINATION,strategy:"FASTEST_LEGAL",alternatives:2}});assert.equal(r.response.status,201);assert.equal(r.data.route.routeGuard.strictVehicleProfile,true);let requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"auto");assert.equal(requests[0].costing_options.auto.height,2.8);assert.equal(requests[0].costing_options.auto.width,2.1);assert.equal(requests[0].costing_options.auto.length,6.4);assert.equal(requests[0].costing_options.auto.weight,3.5);
+  r=await van.client.request("/api/driver/navigation/profile",{method:"PATCH",body:{hazardousGoods:true}});assert.equal(r.response.status,200);await resetProvider();r=await van.client.request("/api/driver/navigation/routes",{method:"POST",body:{destination:DESTINATION,strategy:"FASTEST_LEGAL"}});assert.equal(r.response.status,422);assert.equal(r.data.error,"navigation_hard_constraints_unenforced");assert.ok(r.data.guard.warnings.includes("hazmat_not_provider_enforced_for_vehicle_class"));requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"auto");
+});
+
+test("Navigation uses the provider taxi mode for TAXI without borrowing truck-only constraints",async()=>{
+  const taxi=await createDriver("taxi","TAXI");await setLocation(taxi,ORIGIN.latitude+.03,ORIGIN.longitude+.03);let r=await taxi.client.request("/api/driver/navigation/profile");assert.equal(r.response.status,200);assert.equal(r.data.profile.vehicleClass,"TAXI");assert.equal(r.data.profile.preferredStrategy,"FASTEST_LEGAL");await resetProvider();r=await taxi.client.request("/api/driver/navigation/routes",{method:"POST",body:{destination:DESTINATION,strategy:"FASTEST_LEGAL",alternatives:2}});assert.equal(r.response.status,201);assert.equal(r.data.route.routeGuard.strictVehicleProfile,true);const requests=await providerRequests();assert.equal(requests.length,1);assert.equal(requests[0].costing,"taxi");assert.equal(Object.hasOwn(requests[0].costing_options.taxi,"hazmat"),false);assert.equal(Object.hasOwn(requests[0].costing_options.taxi,"axle_count"),false);
 });
 
 test("Navigation blocks an ADR tunnel profile that the router cannot enforce and does not fall back",async()=>{

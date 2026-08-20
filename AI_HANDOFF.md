@@ -1,3 +1,101 @@
+[2026-08-20 Europe/Warsaw] FROM: CHATGPT
+BLOCK: NAVIGATION_ENGINE_V1
+TASK_ID: NAVIGATION-20260820-004
+STATUS: LOCAL PRODUCT CANDIDATE READY — AWAITING COMMIT/PUSH; NOT DEPLOYED; FULL PASS NOT CLAIMED
+
+SOURCE_BRANCH: chatgpt/navigation-engine-v1
+SOURCE_BASE: codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692
+EARLIER_PRODUCT_COMMIT: 8e0afa67483d6627f818ff0aadd02213c2a46139
+PUBLISHED_HEAD_BEFORE_FINALIZATION: fdcfcfd8eb0ab7e22a1442e3ee2a389cb293625b
+FINAL_PRODUCT_COMMIT: PENDING_EXPLICIT_COMMIT_AND_PUSH_AUTHORIZATION
+
+Эта запись заменяет NAVIGATION-20260820-003 как текущий handoff. Работа больше не является только исправлением тестов.
+
+Что ChatGPT завершил в локальном кандидате:
+- динамический ETA от текущего времени и оставшегося маршрута;
+- реальную отрисовку пройденной части маршрута на MapLibre;
+- удаление уже пройденных Road Reports и Parking из активного списка;
+- Plan B только из фактических стоянок впереди;
+- явные cached/offline/degraded состояния без обещания offline rerouting;
+- автоматический reroute только при свежем GPS, наличии сети, устойчивом отклонении и cooldown;
+- серверный refresh только от явного старта или GPS не старше 60 секунд, без скрытого возврата к старому началу маршрута;
+- ручную точку старта и выбор старта на карте;
+- обязательные размеры/вес для TRUCK и VAN;
+- строгую сверку реально переданных provider constraints;
+- Valhalla costing: TRUCK=truck, TAXI=taxi, VAN/CAR/OTHER=auto;
+- fail-closed для неподдерживаемых ADR, hazmat categories, emission и опасного груза вне truck costing;
+- полный редактор профиля машины и честную capability mapMatching=false;
+- пять точечных test corrections, найденных предыдущими прогонами Codex, без изменения GPS rate protection.
+
+Фактически запущено после продуктовых правок:
+- Navigation unit/static subset — PASS 14/14;
+- полный Driver modules — PASS 76/76;
+- auth/integration — PASS 40/40;
+- radio-live — PASS 1/1;
+- config — PASS 4/4;
+- node --check изменённых JS/MJS — PASS;
+- build — PASS;
+- workspace verify — PASS;
+- PlatformOS runtime — PASS.
+
+Не заявляется:
+- client и browser остановились до запуска приложения: отсутствует Playwright Chromium;
+- aggregate verify не является полным PASS из-за заблокированного client component;
+- реальный NAV_ROUTER_URL, реальный TRUCK/VAN/TAXI маршрут, живой UI, backup/restart/deploy не выполнялись;
+- Git commit и push ещё не выполнялись.
+
+Следующий шаг строго операционный:
+1. После команды владельца ChatGPT создаёт commit из точных Navigation paths.
+2. После отдельного разрешения ChatGPT push-ит branch и записывает точный SHA.
+3. Codex забирает этот SHA, ничего не перепроектирует, и выполняет полный laptop/browser/provider gate.
+4. Без полного автоматического PASS и reviewed real router Navigation на рабочий сайт не ставить. При отсутствии router — BLOCKED_PROVIDER.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CHATGPT
+BLOCK: NAVIGATION_ENGINE_V1
+TASK_ID: NAVIGATION-20260820-003
+STATUS: READY_FOR_COMMIT — NOT DEPLOYED
+
+SOURCE_BRANCH: chatgpt/navigation-engine-v1
+SOURCE_BASE: codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692
+PRODUCT_CODE_TESTS: 8e0afa67483d6627f818ff0aadd02213c2a46139
+PUBLISHED_HEAD_BEFORE_FIX: fdcfcfd8eb0ab7e22a1442e3ee2a389cb293625b
+FINAL_CORRECTION_COMMIT: PENDING_EXPLICIT_COMMIT_AND_PUSH_AUTHORIZATION
+
+Что исправлено в локальном worktree:
+- перенесён уже принятый Codex GPS sequencing fix: удалена только повторная запись GPS в новом Navigation reroute test; серверный лимит 1 обновление / 12 секунд не менялся;
+- `DatabaseSync` rows перед deep equality преобразуются в обычные `{id,status}`;
+- противоречивый широкий regex `fallback/car` заменён точной структурной проверкой `carFallbackForTruck:false`; русское объяснение запрета car fallback сохранено;
+- в старых Parking и People тестах обновлено только ожидание cache key реестра модулей на `20260820-navigation-v1`.
+
+Границы diff:
+- изменены только пять test-файлов и документы handoff/task;
+- Navigation production code, Route Guard, TRUCK/VAN/TAXI профили, ADR fail-closed, GPS rate limiting, Caddy, `main`, SQLite и runtime/private data не изменены.
+
+Фактически запущено в этом Linux workspace:
+- `npm ci` с отдельным writable cache — завершён;
+- `node --check` для всех изменённых JS/MJS кандидата и correction — завершён;
+- `npm run test:auth` — 38/38;
+- `npm run test:radio-live` — 1/1;
+- `npm run test:driver-modules` — 76/76;
+- `npm run test:config` — 4/4;
+- `npm run build` — завершён;
+- `node scripts/verify.js` — завершён;
+- `node scripts/test-platformos-runtime.js` — завершён.
+
+Не пройдено и не заявляется PASS:
+- `npm run test:client` и `npm run test:browser` не дошли до product assertions: в контейнере отсутствует Playwright Chromium;
+- попытка установить Chromium в `/tmp` пять раз получила от сетевого шлюза пустой/обрезанный архив;
+- агрегированный `npm run verify` не заявляется PASS, хотя доступные небраузерные компоненты запущены отдельно;
+- реальный `NAV_ROUTER_URL`, реальный TRUCK route smoke, production apply, SQLite backup/restart и живой Navigation UI не выполнялись.
+
+Следующий шаг:
+1. После отдельного разрешения владельца создать commit только из подтверждённых путей и отдельно получить разрешение на push.
+2. Записать точный опубликованный SHA.
+3. Codex на рабочем ноутбуке повторяет полный обязательный набор, включая client/verify/browser.
+4. Только после полного набора проверять реальный router gate. Если reviewed provider отсутствует — `BLOCKED_PROVIDER`, сайт не менять.
+
+---
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: EVENT_CENTER_V1
 TASK_ID: EVENT-CENTER-20260820-DEPLOY-001

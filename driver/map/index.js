@@ -73,9 +73,11 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   let nearbyDrivers = [];
   let initialGpsFocused = false;
   let navigationGeometry = [];
+  let navigationProgress = 0;
   const nearbyMarkers = new Map();
   const radiusSourceId = "driver-search-radius";
   const navigationSourceId = "driver-navigation-route";
+  const navigationProgressSourceId = "driver-navigation-progress";
 
   function radiusPolygon(location, radius) {
     const points = [];
@@ -117,6 +119,16 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     return points;
   }
 
+  function navigationProgressGeometry() {
+    if (navigationGeometry.length < 2 || navigationProgress <= 0) return [];
+    if (navigationProgress >= 1) return navigationGeometry.slice();
+    const radians=(value)=>value*Math.PI/180,haversine=(a,b)=>{const dLat=radians(b[1]-a[1]),dLon=radians(b[0]-a[0]),x=Math.sin(dLat/2)**2+Math.cos(radians(a[1]))*Math.cos(radians(b[1]))*Math.sin(dLon/2)**2;return 6371.0088*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));};
+    const lengths=[];let total=0;for(let i=1;i<navigationGeometry.length;i++){const length=haversine(navigationGeometry[i-1],navigationGeometry[i]);lengths.push(length);total+=length;}if(total<=0)return[];
+    const target=total*navigationProgress,out=[navigationGeometry[0]];let covered=0;
+    for(let i=1;i<navigationGeometry.length;i++){const length=lengths[i-1];if(covered+length<target){out.push(navigationGeometry[i]);covered+=length;continue;}const ratio=length>0?Math.max(0,Math.min(1,(target-covered)/length)):0,a=navigationGeometry[i-1],b=navigationGeometry[i];out.push([a[0]+(b[0]-a[0])*ratio,a[1]+(b[1]-a[1])*ratio]);break;}
+    return out.length>=2?out:[];
+  }
+
   function renderNavigationRoute() {
     if (!map || !mapLoaded || !map.addSource) return;
     const data = navigationGeometry.length ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: navigationGeometry } } : { type: "FeatureCollection", features: [] };
@@ -127,6 +139,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
       map.addLayer?.({ id: "driver-navigation-route-casing", type: "line", source: navigationSourceId, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#10231e", "line-opacity": 0.8, "line-width": 8 } });
       map.addLayer?.({ id: "driver-navigation-route-line", type: "line", source: navigationSourceId, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#2f8cff", "line-opacity": 0.95, "line-width": 5 } });
     }
+    const progressGeometry=navigationProgressGeometry(),progressData=progressGeometry.length?{type:"Feature",properties:{progress:navigationProgress},geometry:{type:"LineString",coordinates:progressGeometry}}:{type:"FeatureCollection",features:[]};const progressSource=map.getSource?.(navigationProgressSourceId);if(progressSource)progressSource.setData(progressData);else{map.addSource(navigationProgressSourceId,{type:"geojson",data:progressData});map.addLayer?.({id:"driver-navigation-progress-line",type:"line",source:navigationProgressSourceId,layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":"#68e0ad","line-opacity":.98,"line-width":5.5}});}
   }
 
   function fitRoute() {
@@ -144,6 +157,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
     if (!geometry.length) return false;
     if (!(await init())) return false;
     navigationGeometry=geometry;
+    navigationProgress=0;
     renderNavigationRoute();
     if (fit) fitRoute();
     return true;
@@ -151,8 +165,12 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
 
   function clearRoute() {
     navigationGeometry=[];
+    navigationProgress=0;
     if (map && mapLoaded) map.getSource?.(navigationSourceId)?.setData({type:"FeatureCollection",features:[]});
+    if (map && mapLoaded) map.getSource?.(navigationProgressSourceId)?.setData({type:"FeatureCollection",features:[]});
   }
+
+  function setRouteProgress(progress) {const next=Number(progress);if(!Number.isFinite(next))return false;navigationProgress=Math.max(0,Math.min(1,next));if(map&&mapLoaded)renderNavigationRoute();return true;}
 
   async function pickPoint() {
     if (!(await init()) || !map?.once) throw new Error("map_point_selection_unavailable");
@@ -269,7 +287,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   function setProfileReady(value) { profileReady = Boolean(value); }
   function getOwnLocation() { return ownLocation ? { ...ownLocation } : null; }
 
-  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, showParkingPlace, clearParkingPlace, showRoute, clearRoute, fitRoute, pickPoint, getOwnLocation, refreshRoadReports() { return roadReports?.refresh?.(); }, setProfileReady, getMapExperienceState() { return experience?.getState?.() || null; }, getFocusedParking() { return focusedParking; } };
+  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, showParkingPlace, clearParkingPlace, showRoute, clearRoute, setRouteProgress, fitRoute, pickPoint, getOwnLocation, refreshRoadReports() { return roadReports?.refresh?.(); }, setProfileReady, getMapExperienceState() { return experience?.getState?.() || null; }, getFocusedParking() { return focusedParking; } };
 }
 
 export function createDriverModule(context) {

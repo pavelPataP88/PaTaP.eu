@@ -25,7 +25,7 @@ function testDb(){const db=new DatabaseSync(":memory:");db.exec(`PRAGMA foreign_
 
 test("Parking module is registered after Map and dynamically mounts a full functional old-shell view",()=>{
   const module=registry.modules.find(m=>m.id==="parking");assert.ok(module);assert.equal(module.label,"Паркинги");assert.equal(module.requiresProfile,true);assert.deepEqual(module.dependsOn,["map"]);assert.match(module.entry,/parking\/index\.js/);
-  assert.match(app,/module-registry\.json\?v=20260819-parking-v1/);assert.match(app,/navigation\.js\?v=20260819-parking1/);
+  assert.match(app,/module-registry\.json\?v=20260820-navigation-v2/);assert.match(app,/navigation\.js\?v=20260819-parking1/);
   assert.match(consoleSource,/data-driver-view|dataset\.driverView/);assert.match(consoleSource,/Паркинги/);assert.match(consoleSource,/Parking Network V1/);assert.match(consoleSource,/EU Bronze/);assert.match(consoleSource,/Можно бронировать/);assert.match(consoleSource,/@media\(max-width:620px\)/);
   assert.match(navigation,/const views = \(\) => Array\.from/);
 });

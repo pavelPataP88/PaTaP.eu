@@ -20,7 +20,7 @@ test("People Console exposes driver-focused filters and responsive UI", () => {
   for (const label of ["Люди","Контакты","Избранные","Доверенные","Рядом","Запросы","Сообщества","Блокировки"]) assert.match(uiSource, new RegExp(label));
   assert.match(uiSource, /@media\(max-width:720px\)/);
   assert.match(registrySource, /"label": "Люди"/);
-  assert.match(appSource, /module-registry\.json\?v=20260819-parking-v1/);
+  assert.match(appSource, /module-registry\.json\?v=20260820-navigation-v2/);
 });
 
 test("People client wires real directory privacy nearby and community APIs", () => {

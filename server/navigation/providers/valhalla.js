@@ -118,7 +118,7 @@ function normalizeResponse(data){
 
 function createValhallaProvider({baseUrl=process.env.NAV_ROUTER_URL,timeoutMs=process.env.NAV_ROUTER_TIMEOUT_MS,fetchImpl=globalThis.fetch}={}){
   const url=cleanBaseUrl(baseUrl);const timeout=clamp(Number(timeoutMs)||DEFAULT_TIMEOUT_MS,1000,60_000);
-  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:true,hgvAccess:true,designatedTruckRoutes:true,emissionZones:false,hazmatCategories:false}};}
+  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:false,adrTunnelCode:false,axleCount:true,hgvAccess:true,designatedTruckRoutes:true,emissionZones:false,hazmatCategories:false}};}
   async function route(input){
     if(!url||typeof fetchImpl!=="function"){const error=new Error("navigation_provider_unavailable");error.status=503;throw error;}
     const payload=requestPayload(input);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);

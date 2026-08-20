@@ -7,6 +7,8 @@ const {sampleGeometry,closestGeometryPoint,corridorItems}=require("./geometry");
 
 const ROUTE_TTL_MS=7*24*60*60_000;
 const ROAD_CORRIDOR_KM=2.5;
+const NAV_GPS_MAX_AGE_MS=60_000;
+const STRICT_VEHICLE_CLASSES=new Set(["TRUCK","VAN"]);
 function text(value,max=160){return String(value??"").normalize("NFKC").replace(/\s+/g," ").trim().slice(0,max);}
 function point(value){const latitude=Number(value?.latitude??value?.lat),longitude=Number(value?.longitude??value?.lon);if(!Number.isFinite(latitude)||latitude<-90||latitude>90||!Number.isFinite(longitude)||longitude<-180||longitude>180)return null;return {latitude,longitude,label:text(value?.label,160)};}
 function json(value,fallback){try{return JSON.parse(value);}catch{return fallback;}}
@@ -26,17 +28,18 @@ function createNavigationService({db,provider,geocoder=null,roadReports=null,now
   function status(){const router=providerStatus(),geo=geocoderStatus();return {router,geocoder:geo,traffic:{configured:Boolean(router.capabilities?.traffic),source:router.capabilities?.traffic?router.name:null},tolls:{configured:Boolean(router.capabilities?.tolls),source:router.capabilities?.tolls?router.name:null},offline:{activeRouteCache:true,offlineRerouting:false},truth:{carFallbackForTruck:false,fakeTraffic:false,fakeTolls:false,publicNominatimHardcoded:false}};}
 
   function requireCompleteVehicle(vehicle){
-    if(vehicle.vehicleClass!=="TRUCK")return;
+    if(!STRICT_VEHICLE_CLASSES.has(vehicle.vehicleClass))return;
     const missing=[];for(const [key,label] of [["heightM","heightM"],["widthM","widthM"],["lengthM","lengthM"],["grossWeightT","grossWeightT"]])if(vehicle[key]===null||vehicle[key]===undefined)missing.push(label);
     if(missing.length)throw routeError("navigation_vehicle_profile_incomplete",409,{missing});
   }
   function requireEnforcedHardConstraints(vehicle,guard){
-    if(vehicle?.vehicleClass!=="TRUCK"||guard?.strictVehicleProfile)return;
+    const configuredHard=STRICT_VEHICLE_CLASSES.has(vehicle?.vehicleClass)||Boolean(vehicle?.hazardousGoods)||(vehicle?.adrTunnelCode&&vehicle.adrTunnelCode!=="NONE")||(Array.isArray(vehicle?.hazmatCategories)&&vehicle.hazmatCategories.length>0)||Boolean(vehicle?.emissionClass)||vehicle?.axleLoadT!=null||vehicle?.axleCount!=null;
+    if(!configuredHard||guard?.strictVehicleProfile)return;
     throw routeError("navigation_hard_constraints_unenforced",422,{guard});
   }
   function freshOrigin(userId,now=nowIso()){
     const profile=db.prepare("SELECT gps_enabled FROM driver_profiles WHERE user_id=?").get(Number(userId));if(!profile?.gps_enabled)return null;
-    const row=db.prepare("SELECT latitude,longitude,updated_at FROM driver_locations WHERE user_id=?").get(Number(userId));if(!row)return null;const age=Date.parse(now)-Date.parse(row.updated_at);if(!Number.isFinite(age)||age>5*60_000)return null;return point(row);
+    const row=db.prepare("SELECT latitude,longitude,updated_at FROM driver_locations WHERE user_id=?").get(Number(userId));if(!row)return null;const age=Date.parse(now)-Date.parse(row.updated_at);if(!Number.isFinite(age)||age<0||age>NAV_GPS_MAX_AGE_MS)return null;return point(row);
   }
   function normalizeInput(userId,input,vehicle){
     const origin=point(input?.origin)||freshOrigin(userId);const destination=point(input?.destination);if(!origin)throw routeError("navigation_origin_required",409);if(!destination)throw routeError("navigation_destination_required",400);
@@ -103,7 +106,7 @@ function createNavigationService({db,provider,geocoder=null,roadReports=null,now
     const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const alternatives=json(row.alternatives_json,[]);if(!alternatives.some((a)=>a.id===alternativeId))return {error:"navigation_alternative_not_found",status:404};db.prepare("UPDATE navigation_routes SET selected_alternative_id=?,updated_at=? WHERE id=? AND user_id=?").run(String(alternativeId),now,row.id,Number(userId));return {route:publicRoute(ownedRow(userId,row.id))};
   }
   async function refresh(userId,routeId,input={},now=nowIso()){
-    const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const previous=publicRoute(row),vehicle=previous.vehicleSnapshot;requireCompleteVehicle(vehicle);const normalized={...previous.request};if(input.origin){const next=point(input.origin);if(!next)return {error:"navigation_origin_required",status:400};normalized.origin=next;}else normalized.origin=freshOrigin(userId,now)||normalized.origin;
+    const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const previous=publicRoute(row),vehicle=previous.vehicleSnapshot;requireCompleteVehicle(vehicle);const normalized={...previous.request};let nextOrigin=null;if(input.origin){nextOrigin=point(input.origin);if(!nextOrigin)return {error:"navigation_origin_required",status:400};}else nextOrigin=freshOrigin(userId,now);if(!nextOrigin)return {error:"navigation_origin_required",status:409};normalized.origin=nextOrigin;normalized.departureAt=null;
     const providerResult=await provider.route({...normalized,vehicle,language:"ru-RU"});const alternatives=applyDifficulty(decorateTimes(providerResult.alternatives,normalized.departureAt)),guard=createRouteGuard({providerStatus:providerStatus(),vehicle,providerResult});requireEnforcedHardConstraints(vehicle,guard);const enrichment={};for(const alternative of alternatives)enrichment[alternative.id]=enrich(userId,alternative,normalized);const selected=chooseSelectedAlternative(normalized.strategy,alternatives,enrichment,normalized);if(!selected)return {error:"navigation_provider_invalid_response",status:502};db.prepare("UPDATE navigation_routes SET status='ACTIVE',provider=?,provider_version=?,request_json=?,alternatives_json=?,selected_alternative_id=?,route_guard_json=?,enrichment_json=?,updated_at=?,expires_at=? WHERE id=? AND user_id=?").run(providerResult.provider,providerResult.providerVersion||"",JSON.stringify(normalized),JSON.stringify(alternatives),selected,JSON.stringify(guard),JSON.stringify(enrichment),now,addMs(now,ROUTE_TTL_MS),row.id,Number(userId));return {route:publicRoute(ownedRow(userId,row.id))};
   }
   function finish(userId,routeId,state="COMPLETED",now=nowIso()){const row=ownedRow(userId,routeId);if(!row)return {error:"navigation_route_not_found",status:404};const status=state==="CANCELLED"?"CANCELLED":"COMPLETED";db.prepare("UPDATE navigation_routes SET status=?,updated_at=? WHERE id=? AND user_id=?").run(status,now,row.id,Number(userId));return {route:publicRoute(db.prepare("SELECT * FROM navigation_routes WHERE id=? AND user_id=?").get(row.id,Number(userId)))};}
@@ -111,4 +114,4 @@ function createNavigationService({db,provider,geocoder=null,roadReports=null,now
   return {status,profiles,search,calculate,get,select,refresh,finish};
 }
 
-module.exports={createNavigationService,ROUTE_TTL_MS,ROAD_CORRIDOR_KM};
+module.exports={createNavigationService,ROUTE_TTL_MS,ROAD_CORRIDOR_KM,NAV_GPS_MAX_AGE_MS};

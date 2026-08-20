@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {createRequire} from "node:module";
 import {saveActiveRoute,loadActiveRoute,clearActiveRoute,activeRouteCacheKey,ACTIVE_ROUTE_CACHE_KEY} from "../../driver/navigation/route-cache.mjs";
-import {projectGuidance,isMoving} from "../../driver/navigation/guidance.mjs";
+import {projectGuidance,isMoving,isFreshLocation,routeItemMetrics} from "../../driver/navigation/guidance.mjs";
 
 const require=createRequire(import.meta.url);
 const {requestPayload,createValhallaProvider}=require("../../server/navigation/providers/valhalla.js");
@@ -24,7 +24,7 @@ const routeInput={origin:{latitude:50.26,longitude:19.02},destination:{latitude:
 test("Navigation is a Map-owned global layer and bottom navigation stays exactly six views",()=>{
   const module=registry.modules.find(item=>item.id==="navigation");assert.ok(module);assert.equal(module.view,undefined);assert.equal(module.enabled,true);assert.equal(module.requiresProfile,true);assert.deepEqual(module.dependsOn,["map"]);
   assert.equal(registry.modules.filter(item=>item.enabled&&item.view).length,6);
-  assert.match(appSource,/module-registry\.json\?v=20260820-navigation-v1/);
+  assert.match(appSource,/module-registry\.json\?v=20260820-navigation-v2/);
   assert.match(panelSource,/navigation-launch/);assert.match(panelSource,/Маршрут/);assert.match(panelSource,/data-moving/);assert.match(panelSource,/@media\(max-width:700px\)/);
 });
 
@@ -40,8 +40,8 @@ test("Unconfigured routing provider is an honest unavailable state, never a synt
   const provider=createValhallaProvider({baseUrl:"",fetchImpl:async()=>{assert.fail("fetch must not run when provider is unconfigured");}});const status=provider.status();assert.equal(status.configured,false);assert.equal(status.capabilities.truck,true);assert.equal(status.capabilities.axleCount,true);assert.equal(status.capabilities.hgvAccess,true);await assert.rejects(()=>provider.route(routeInput),error=>error?.message==="navigation_provider_unavailable"&&error?.status===503);
 });
 
-test("Route Guard is strict only when every configured hard truck constraint is actually expressible",()=>{
-  const providerStatus={name:"VALHALLA",capabilities:{truck:true,hgvAccess:true,axleCount:true,adrTunnelCode:false,hazmatCategories:false,emissionZones:false,traffic:false,tolls:false}};
+test("Route Guard is strict only when every configured hard vehicle constraint is actually expressible",()=>{
+  const providerStatus={name:"VALHALLA",capabilities:{truck:true,physicalDimensions:true,hgvAccess:true,axleCount:true,adrTunnelCode:false,hazmatCategories:false,emissionZones:false,traffic:false,tolls:false}};
   const strictVehicle={...vehicle,adrTunnelCode:"NONE",hazmatCategories:[],emissionClass:""};
   const providerResult={provider:"VALHALLA",requestMeta:{costing:"truck",costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:true}},rawWarnings:[]};
   const guard=createRouteGuard({providerStatus,vehicle:strictVehicle,providerResult});assert.equal(guard.strictVehicleProfile,true);assert.ok(guard.unknowns.includes("live_traffic_unavailable"));assert.ok(guard.unknowns.includes("toll_cost_unavailable"));assert.equal(guard.unknowns.includes("axle_count_not_provider_enforced"),false);assert.equal(guard.warnings.includes("adr_tunnel_code_not_provider_enforced"),false);
@@ -50,6 +50,8 @@ test("Route Guard is strict only when every configured hard truck constraint is 
   const brokenHazmat=createRouteGuard({providerStatus,vehicle:strictVehicle,providerResult:{...providerResult,requestMeta:{costing:"truck",costingOptions:{height:4,width:2.55,length:16.5,weight:40,axle_load:11.5,axle_count:5,hazmat:false}}}});assert.equal(brokenHazmat.strictVehicleProfile,false);assert.ok(brokenHazmat.warnings.includes("hazmat_not_sent_to_provider"));
   const carFallback=createRouteGuard({providerStatus,vehicle:strictVehicle,providerResult:{...providerResult,requestMeta:{costing:"auto",costingOptions:{...providerResult.requestMeta.costingOptions}}}});assert.equal(carFallback.strictVehicleProfile,false);assert.ok(carFallback.warnings.includes("truck_costing_not_used"));
   const emissionBlocked=createRouteGuard({providerStatus,vehicle:{...strictVehicle,emissionClass:"EURO6"},providerResult});assert.equal(emissionBlocked.strictVehicleProfile,false);assert.ok(emissionBlocked.warnings.includes("emission_class_not_provider_enforced"));
+  const van={...strictVehicle,vehicleClass:"VAN",hazardousGoods:false,axleLoadT:null,axleCount:null},vanResult={provider:"VALHALLA",requestMeta:{costing:"auto",costingOptions:{height:4,width:2.55,length:16.5,weight:40}},rawWarnings:[]};const strictVan=createRouteGuard({providerStatus,vehicle:van,providerResult:vanResult});assert.equal(strictVan.strictVehicleProfile,true);
+  const unsafeVan=createRouteGuard({providerStatus,vehicle:{...van,hazardousGoods:true},providerResult:vanResult});assert.equal(unsafeVan.strictVehicleProfile,false);assert.ok(unsafeVan.warnings.includes("hazmat_not_provider_enforced_for_vehicle_class"));
 });
 
 test("Active-route cache is bounded, strips unrelated data and is isolated per signed-in driver",()=>{
@@ -59,14 +61,15 @@ test("Active-route cache is bounded, strips unrelated data and is isolated per s
 
 test("Guidance projects remaining route, next maneuver and explicit off-route state",()=>{
   const alternative={distanceKm:30,durationSec:1800,geometry:[[19,50],[19.1,50.1],[19.2,50.2]],maneuvers:[{index:0,type:"1",instruction:"Прямо",beginShapeIndex:0,endShapeIndex:1},{index:1,type:"10",instruction:"Направо",beginShapeIndex:1,endShapeIndex:2}]};
-  const onRoute=projectGuidance(alternative,{latitude:50.1,longitude:19.1,speed:12});assert.ok(onRoute);assert.equal(onRoute.offRoute,false);assert.ok(onRoute.progress>0&&onRoute.progress<1);assert.ok(onRoute.remainingKm>0);assert.ok(onRoute.nextManeuver);assert.equal(isMoving({speed:12}),true);assert.equal(isMoving({speed:1}),false);
+  const now=Date.parse("2026-08-20T12:00:00.000Z"),onRoute=projectGuidance(alternative,{latitude:50.1,longitude:19.1,speed:12,timestamp:now},{now});assert.ok(onRoute);assert.equal(onRoute.offRoute,false);assert.ok(onRoute.progress>0&&onRoute.progress<1);assert.ok(onRoute.remainingKm>0);assert.ok(onRoute.nextManeuver);assert.equal(onRoute.eta,new Date(now+onRoute.remainingSec*1000).toISOString());assert.equal(isMoving({speed:12}),true);assert.equal(isMoving({speed:1}),false);assert.equal(isFreshLocation({timestamp:now},{now}),true);assert.equal(isFreshLocation({timestamp:now-31_000},{now}),false);
+  assert.equal(routeItemMetrics(onRoute.progress-.01,onRoute),null);const ahead=routeItemMetrics(Math.min(1,onRoute.progress+.1),onRoute);assert.ok(ahead);assert.ok(ahead.distanceAheadKm>=0);assert.ok(ahead.etaMinutes>=0);
   const offRoute=projectGuidance(alternative,{latitude:51,longitude:20,speed:0});assert.equal(offRoute.offRoute,true);assert.ok(offRoute.distanceFromRouteKm>0.12);
 });
 
 test("Map exposes one route source with draw, clear, fit and map-point selection seams",()=>{
-  assert.match(mapSource,/driver-navigation-route/);assert.match(mapSource,/function showRoute/);assert.match(mapSource,/function clearRoute/);assert.match(mapSource,/function fitRoute/);assert.match(mapSource,/function pickPoint/);assert.match(mapSource,/function getOwnLocation/);assert.match(mapSource,/LineString/);assert.doesNotMatch(mapSource,/new window\.maplibregl\.Map[\s\S]*new window\.maplibregl\.Map/);
+  assert.match(mapSource,/driver-navigation-route/);assert.match(mapSource,/driver-navigation-progress/);assert.match(mapSource,/function showRoute/);assert.match(mapSource,/function clearRoute/);assert.match(mapSource,/function setRouteProgress/);assert.match(mapSource,/function fitRoute/);assert.match(mapSource,/function pickPoint/);assert.match(mapSource,/function getOwnLocation/);assert.match(mapSource,/LineString/);assert.doesNotMatch(mapSource,/new window\.maplibregl\.Map[\s\S]*new window\.maplibregl\.Map/);
 });
 
 test("Navigation UI does not hard-code public Nominatim, fake traffic/tolls or automatic car fallback",()=>{
-  const all=`${navigationSource}\n${panelSource}\n${serviceSource}`;assert.doesNotMatch(all,/nominatim\.openstreetmap\.org/i);assert.doesNotMatch(all,/fallback[^\n]{0,80}car|car[^\n]{0,80}fallback/i);assert.match(navigationSource,/не будет подменять его приблизительным маршрутом/);assert.match(navigationSource,/Маршрут легкового автомобиля автоматически не подставляется/);assert.match(panelSource,/Трафик:.*источник не подключён/);assert.match(panelSource,/Стоимость платных дорог:.*источник не подключён/);assert.match(serviceSource,/navigation_hard_constraints_unenforced/);
+  const all=`${navigationSource}\n${panelSource}\n${serviceSource}`;assert.doesNotMatch(all,/nominatim\.openstreetmap\.org/i);assert.match(serviceSource,/carFallbackForTruck:false/);assert.match(navigationSource,/не будет подменять его приблизительным маршрутом/);assert.match(navigationSource,/Маршрут легкового автомобиля автоматически не подставляется/);assert.match(panelSource,/Трафик:.*источник не подключён/);assert.match(panelSource,/Стоимость платных дорог:.*источник не подключён/);assert.match(panelSource,/Точка старта/);assert.match(panelSource,/Для TRUCK и VAN/);assert.match(panelSource,/Показан сохранённый маршрут/);assert.match(serviceSource,/navigation_hard_constraints_unenforced/);
 });

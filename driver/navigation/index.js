@@ -1,7 +1,7 @@
-import {createNavigationPanel} from "./panel.mjs?v=20260820-nav1";
-import {saveActiveRoute,loadActiveRoute,clearActiveRoute} from "./route-cache.mjs?v=20260820-nav3";
-import {projectGuidance,isMoving} from "./guidance.mjs?v=20260820-nav2";
-import {installDestinationSearch} from "./destination-search.mjs?v=20260820-nav1";
+import {createNavigationPanel} from "./panel.mjs?v=20260820-nav4";
+import {saveActiveRoute,loadActiveRoute,clearActiveRoute} from "./route-cache.mjs?v=20260820-nav4";
+import {projectGuidance,isMoving,isFreshLocation,routeItemMetrics} from "./guidance.mjs?v=20260820-nav4";
+import {installDestinationSearch} from "./destination-search.mjs?v=20260820-nav4";
 
 const AUTO_REROUTE_HOLD_MS=8_000;
 const AUTO_REROUTE_COOLDOWN_MS=60_000;
@@ -9,7 +9,7 @@ const AUTO_REROUTE_DISTANCE_KM=0.15;
 
 function routeErrorText(error){
   const code=String(error?.message||"");
-  if(code==="navigation_vehicle_profile_incomplete")return "Заполните высоту, ширину, длину и полный вес машины. Без этого грузовой маршрут не строится.";
+  if(code==="navigation_vehicle_profile_incomplete")return "Заполните высоту, ширину, длину и полный вес TRUCK/VAN. Без этого PaTaP не строит маршрут с ограничениями машины.";
   if(code==="navigation_hard_constraints_unenforced")return "Маршрутизатор не умеет применить одно из обязательных ограничений этой машины. PaTaP не разрешает использовать такой маршрут для ведения.";
   if(code==="navigation_provider_unavailable")return "Маршрутизатор сейчас недоступен. PaTaP не будет подменять его приблизительным маршрутом.";
   if(code==="navigation_provider_timeout")return "Маршрутизатор не ответил вовремя. Повторите расчёт.";
@@ -29,15 +29,16 @@ export function createDriverModule(context){
   let offRouteSince=0;
   let lastAutoRerouteAt=0;
   let rerouteInFlight=false;
+  let gpsStale=false;
+  let lastGuidanceModel=null;
 
   const mapController=()=>context.getModule?.("map")?.controller;
   const openMap=async()=>{const map=context.getModule?.("map");await map?.activate?.();document.querySelector('[data-driver-target="map"]')?.click();return mapController();};
+  async function pickRoutePoint(kind){const map=await openMap();panel.setStateText(`Коснитесь точки ${kind} на карте…`);try{const point=await map?.pickPoint?.();panel.openPanel("planner");panel.setStateText(point?"Точка выбрана":"Точка не выбрана");return point;}catch{context.showError?.("Не удалось выбрать точку на карте.");return null;}}
 
   const panel=createNavigationPanel({
-    async onPickDestination(){
-      const map=await openMap();panel.setStateText("Коснитесь точки назначения на карте…");
-      try{const point=await map?.pickPoint?.();panel.openPanel("planner");if(point){panel.setStateText("Точка выбрана");return point;}panel.setStateText("Точка не выбрана");return null;}catch{context.showError?.("Не удалось выбрать точку на карте.");return null;}
-    },
+    async onPickOrigin(){return pickRoutePoint("старта");},
+    async onPickDestination(){return pickRoutePoint("назначения");},
     async onCalculate(request){return calculate(request);},
     async onSaveProfile(payload){return saveProfile(payload);},
     async onSelectAlternative(id){return selectAlternative(id);},
@@ -52,7 +53,7 @@ export function createDriverModule(context){
   function stopGuidanceLoop(){if(guidanceTimer!==null){window.clearInterval(guidanceTimer);guidanceTimer=null;}}
   function selectedAlternative(route=currentRoute){return route?.selectedAlternative||route?.alternatives?.find((a)=>a.id===route?.selectedAlternativeId)||route?.alternatives?.[0]||null;}
   function selectedEnrichment(route=currentRoute){return route?.enrichment?.[route?.selectedAlternativeId]||route?.enrichment||{};}
-  function clearRuntimeState({preserveOwner=false}={}){startupToken++;profileReady=false;guidanceActive=false;offRouteSince=0;lastAutoRerouteAt=0;rerouteInFlight=false;stopGuidanceLoop();currentRoute=null;clearActiveRoute(cacheOwner);if(!preserveOwner)cacheOwner="";destinationSearch.reset();panel.reset();mapController()?.clearRoute?.();}
+  function clearRuntimeState({preserveOwner=false}={}){startupToken++;profileReady=false;guidanceActive=false;offRouteSince=0;lastAutoRerouteAt=0;rerouteInFlight=false;gpsStale=false;lastGuidanceModel=null;stopGuidanceLoop();currentRoute=null;clearActiveRoute(cacheOwner);if(!preserveOwner)cacheOwner="";destinationSearch.reset();panel.reset();mapController()?.clearRoute?.();}
 
   async function loadStatusAndProfile(){
     if(!profileReady)return;const token=++startupToken;
@@ -64,57 +65,68 @@ export function createDriverModule(context){
 
   async function restoreActiveRoute(){
     const cached=loadActiveRoute(cacheOwner);if(!cached)return;
-    currentRoute=cached;panel.renderRoute(cached);await openMap();await mapController()?.showRoute?.(cached);
-    try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(cached.id)}`);if(data.route){currentRoute=data.route;saveActiveRoute(currentRoute,cacheOwner);panel.renderRoute(currentRoute);await mapController()?.showRoute?.(currentRoute);}}
-    catch(error){if(error?.status===401||error?.status===404){clearActiveRoute(cacheOwner);currentRoute=null;mapController()?.clearRoute?.();panel.reset();panel.setStateText("Сохранённый маршрут больше недоступен");}else panel.setStateText("Показан сохранённый маршрут · сервер временно недоступен");}
+    currentRoute=cached;panel.renderRoute(cached);panel.setConnectionState(globalThis.navigator?.onLine===false?"offline":"cached");await openMap();await mapController()?.showRoute?.(cached);
+    try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(cached.id)}`);if(data.route){currentRoute=data.route;saveActiveRoute(currentRoute,cacheOwner);panel.renderRoute(currentRoute);panel.setConnectionState("online");await mapController()?.showRoute?.(currentRoute);}}
+    catch(error){if(error?.status===401||error?.status===404){clearActiveRoute(cacheOwner);currentRoute=null;mapController()?.clearRoute?.();panel.reset();panel.setStateText("Сохранённый маршрут больше недоступен");}else{panel.setConnectionState(globalThis.navigator?.onLine===false?"offline":"cached");panel.setStateText("Показан сохранённый маршрут");}}
   }
 
   async function saveProfile(payload){
-    try{const data=await context.api("/api/driver/navigation/profile",{method:"PATCH",body:payload});panel.setProfile(data.profile);panel.setStateText("Профиль машины сохранён");return data.profile;}
+    try{const data=await context.api("/api/driver/navigation/profile",{method:"PATCH",body:payload});panel.setProfile(data.profile);panel.setConnectionState("online");panel.setStateText("Профиль машины сохранён");return data.profile;}
     catch(error){if(error?.status===401)context.onAuthLost?.();context.showError?.("Проверьте размеры, вес и параметры машины.");return null;}
   }
 
   async function calculate(request){
     panel.setBusy("Рассчитываем строгий маршрут…");
     try{
-      const data=await context.api("/api/driver/navigation/routes",{method:"POST",body:request});currentRoute=data.route;guidanceActive=false;offRouteSince=0;stopGuidanceLoop();clearActiveRoute(cacheOwner);panel.renderRoute(currentRoute);await openMap();await mapController()?.showRoute?.(currentRoute);panel.setStateText(`${currentRoute.provider} · ${currentRoute.alternatives?.length||1} вариант(а)`);return currentRoute;
-    }catch(error){if(error?.status===401)return context.onAuthLost?.();panel.setStateText("Маршрут не построен");context.showError?.(routeErrorText(error));return null;}
+      const data=await context.api("/api/driver/navigation/routes",{method:"POST",body:request});currentRoute=data.route;guidanceActive=false;offRouteSince=0;stopGuidanceLoop();clearActiveRoute(cacheOwner);panel.renderRoute(currentRoute);panel.setConnectionState("online");await openMap();await mapController()?.showRoute?.(currentRoute);panel.setStateText(`${currentRoute.provider} · ${currentRoute.alternatives?.length||1} вариант(а)`);return currentRoute;
+    }catch(error){if(error?.status===401)return context.onAuthLost?.();if(currentRoute)panel.setConnectionState(globalThis.navigator?.onLine===false?"offline":"degraded");panel.setStateText("Маршрут не построен");context.showError?.(routeErrorText(error));return null;}
   }
 
   async function selectAlternative(alternativeId){
-    if(!currentRoute)return null;try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(currentRoute.id)}/select`,{method:"POST",body:{alternativeId}});currentRoute=data.route;panel.renderRoute(currentRoute);await mapController()?.showRoute?.(currentRoute);if(guidanceActive)saveActiveRoute(currentRoute,cacheOwner);return currentRoute;}catch(error){if(error?.status===401)context.onAuthLost?.();else context.showError?.("Не удалось выбрать вариант маршрута.");return null;}
+    if(!currentRoute)return null;try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(currentRoute.id)}/select`,{method:"POST",body:{alternativeId}});currentRoute=data.route;panel.renderRoute(currentRoute);panel.setConnectionState("online");await mapController()?.showRoute?.(currentRoute);if(guidanceActive)saveActiveRoute(currentRoute,cacheOwner);return currentRoute;}catch(error){if(error?.status===401)context.onAuthLost?.();else{panel.setConnectionState(globalThis.navigator?.onLine===false?"offline":"degraded");context.showError?.("Не удалось выбрать вариант маршрута.");}return null;}
   }
 
   function updateGuidance(){
     if(!guidanceActive||!currentRoute)return;const map=mapController(),location=map?.getOwnLocation?.(),alternative=selectedAlternative();const moving=isMoving(location);panel.setMoving(moving);if(!location||!alternative)return;
-    const model=projectGuidance(alternative,location);if(!model)return;panel.renderGuidance(model);map?.setRouteProgress?.(model.progress);
+    const model=projectGuidance(alternative,location);if(!model)return;lastGuidanceModel=model;panel.renderGuidance(model);map?.setRouteProgress?.(model.progress);
+    if(!isFreshLocation(location)){offRouteSince=0;if(!gpsStale)panel.setStateText("GPS-позиция устарела · автоперестроение приостановлено");gpsStale=true;return;}if(gpsStale){gpsStale=false;panel.setStateText("GPS-позиция восстановлена");}
+    if(globalThis.navigator?.onLine===false){offRouteSince=0;panel.setConnectionState("offline");return;}
     const now=Date.now(),sustained=model.offRoute&&moving&&model.distanceFromRouteKm>=AUTO_REROUTE_DISTANCE_KM;
     if(!sustained){offRouteSince=0;return;}if(!offRouteSince)offRouteSince=now;
     if(now-offRouteSince>=AUTO_REROUTE_HOLD_MS&&now-lastAutoRerouteAt>=AUTO_REROUTE_COOLDOWN_MS&&!rerouteInFlight)reroute({automatic:true}).catch(()=>{});
   }
 
   async function startGuidance(){
-    if(!currentRoute)return;guidanceActive=true;offRouteSince=0;saveActiveRoute(currentRoute,cacheOwner);await openMap();await mapController()?.showRoute?.(currentRoute,{fit:false});mapController()?.recenterOwn?.();panel.startGuidance(currentRoute);stopGuidanceLoop();guidanceTimer=window.setInterval(updateGuidance,1000);updateGuidance();
+    if(!currentRoute)return;guidanceActive=true;offRouteSince=0;gpsStale=false;lastGuidanceModel=null;saveActiveRoute(currentRoute,cacheOwner);await openMap();await mapController()?.showRoute?.(currentRoute,{fit:false});mapController()?.recenterOwn?.();panel.startGuidance(currentRoute);stopGuidanceLoop();guidanceTimer=window.setInterval(updateGuidance,1000);updateGuidance();
   }
 
   async function reroute({automatic=false}={}){
-    if(!currentRoute||rerouteInFlight)return null;rerouteInFlight=true;if(automatic)panel.setStateText("Вы ушли с маршрута · перестраиваем…");else panel.setStateText("Перестраиваем строгий маршрут…");const location=mapController()?.getOwnLocation?.();
-    try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(currentRoute.id)}/refresh`,{method:"POST",body:location?{origin:{latitude:location.latitude,longitude:location.longitude,label:"Текущая позиция"}}:{}});if(data.error)throw Object.assign(new Error(data.error),{status:data.status});currentRoute=data.route;saveActiveRoute(currentRoute,cacheOwner);await mapController()?.showRoute?.(currentRoute,{fit:false});mapController()?.setRouteProgress?.(0);panel.startGuidance(currentRoute);panel.setStateText(automatic?"Маршрут автоматически перестроен":"Маршрут перестроен");offRouteSince=0;if(automatic)lastAutoRerouteAt=Date.now();updateGuidance();return currentRoute;}
-    catch(error){if(error?.status===401)return context.onAuthLost?.();context.showError?.(routeErrorText(error));panel.setStateText(automatic?"Автоперестроение не удалось · ведение по старому маршруту":"Не удалось перестроить маршрут");if(automatic)lastAutoRerouteAt=Date.now();return null;}
+    if(!currentRoute||rerouteInFlight)return null;const candidate=mapController()?.getOwnLocation?.(),location=isFreshLocation(candidate)?candidate:null;if(automatic&&(!location||globalThis.navigator?.onLine===false)){offRouteSince=0;return null;}rerouteInFlight=true;if(automatic)panel.setStateText("Вы ушли с маршрута · перестраиваем…");else panel.setStateText("Перестраиваем строгий маршрут…");
+    try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(currentRoute.id)}/refresh`,{method:"POST",body:location?{origin:{latitude:location.latitude,longitude:location.longitude,label:"Текущая позиция"}}:{}});if(data.error)throw Object.assign(new Error(data.error),{status:data.status});currentRoute=data.route;lastGuidanceModel=null;saveActiveRoute(currentRoute,cacheOwner);panel.setConnectionState("online");await mapController()?.showRoute?.(currentRoute,{fit:false});mapController()?.setRouteProgress?.(0);panel.startGuidance(currentRoute);panel.setStateText(automatic?"Маршрут автоматически перестроен":"Маршрут перестроен");offRouteSince=0;gpsStale=false;if(automatic)lastAutoRerouteAt=Date.now();updateGuidance();return currentRoute;}
+    catch(error){if(error?.status===401)return context.onAuthLost?.();context.showError?.(routeErrorText(error));panel.setConnectionState(globalThis.navigator?.onLine===false?"offline":"degraded");panel.setStateText(automatic?"Автоперестроение не удалось · ведение по старому маршруту":"Не удалось перестроить маршрут");if(automatic)lastAutoRerouteAt=Date.now();return null;}
     finally{rerouteInFlight=false;}
+  }
+
+  async function revalidateCurrentRoute(){
+    if(!profileReady)return;if(!currentRoute?.id){await loadStatusAndProfile();return;}
+    try{const data=await context.api(`/api/driver/navigation/routes/${encodeURIComponent(currentRoute.id)}`);if(!data.route)return;currentRoute=data.route;saveActiveRoute(currentRoute,cacheOwner);panel.setConnectionState("online");if(guidanceActive)panel.startGuidance(currentRoute);else panel.renderRoute(currentRoute);await mapController()?.showRoute?.(currentRoute,{fit:false});if(guidanceActive)updateGuidance();}
+    catch(error){if(error?.status===401)return context.onAuthLost?.();if(error?.status===404){clearActiveRoute(cacheOwner);currentRoute=null;guidanceActive=false;stopGuidanceLoop();mapController()?.clearRoute?.();panel.reset();panel.setStateText("Маршрут больше недоступен");return;}panel.setConnectionState(globalThis.navigator?.onLine===false?"offline":"degraded");}
   }
 
   async function finish(){
     if(currentRoute?.id){try{await context.api(`/api/driver/navigation/routes/${encodeURIComponent(currentRoute.id)}/finish`,{method:"POST",body:{state:"COMPLETED"}});}catch(error){if(error?.status===401)context.onAuthLost?.();}}
-    guidanceActive=false;offRouteSince=0;stopGuidanceLoop();clearActiveRoute(cacheOwner);currentRoute=null;mapController()?.clearRoute?.();panel.reset();destinationSearch.reset();
+    guidanceActive=false;offRouteSince=0;lastGuidanceModel=null;stopGuidanceLoop();clearActiveRoute(cacheOwner);currentRoute=null;mapController()?.clearRoute?.();panel.reset();destinationSearch.reset();
   }
 
   async function openParking(place){
-    const enrichment=selectedEnrichment();let target=place;if(!target)target=enrichment?.parking?.planB?.[0]||enrichment?.parking?.recommendedStops?.[1]||enrichment?.parking?.recommendedStops?.[0];if(!target)return context.showError?.("Подходящего Plan B по текущим данным парковок нет.");await openMap();await mapController()?.showParkingPlace?.(target);panel.setStateText(`${target.name} · ${target.occupancy?.status||"UNKNOWN"}`);
+    const enrichment=selectedEnrichment();let target=place;if(!target){const candidates=[...(enrichment?.parking?.planB||[]),...(enrichment?.parking?.recommendedStops||[])],seen=new Set();target=candidates.find(item=>{if(seen.has(item.id))return false;seen.add(item.id);return !lastGuidanceModel||Boolean(routeItemMetrics(item.routeProgress,lastGuidanceModel));});}if(!target)return context.showError?.("Подходящего Plan B впереди по текущим данным парковок нет.");await openMap();await mapController()?.showParkingPlace?.(target);panel.setStateText(`${target.name} · ${target.occupancy?.status||"UNKNOWN"}`);
   }
 
   async function startSession(){await loadStatusAndProfile();await restoreActiveRoute();}
   function reset(){clearRuntimeState();}
+
+  window.addEventListener("offline",()=>{if(currentRoute)panel.setConnectionState("offline");});
+  window.addEventListener("online",()=>{if(currentRoute)panel.setConnectionState("cached","Связь восстановлена · проверяем актуальность маршрута…");revalidateCurrentRoute().catch(()=>{});});
 
   return {
     async activate(){await openMap();panel.openPanel(currentRoute?(guidanceActive?"guidance":"planner"):"planner");},

@@ -40,7 +40,7 @@ driver/navigation/
 - `showRoute(route, selectedAlternativeId?)`
 - `clearRoute()`
 - `fitRoute()`
-- `setRouteProgress(progress)` (V1 can be visual-only)
+- `setRouteProgress(progress)` renders the completed length of the selected geometry in a separate MapLibre source/layer
 - `getOwnLocation()` safe copy for planner default origin.
 
 Map remains owner of MapLibre instance/layers. Navigation does not create a second map.
@@ -102,7 +102,13 @@ provider.status() -> {
     maneuvers,
     traffic,
     tolls,
-    mapMatching
+    mapMatching,
+    physicalDimensions,
+    hgvAccess,
+    axleCount,
+    adrTunnelCode,
+    hazmatCategories,
+    emissionZones
   }
 }
 
@@ -126,7 +132,7 @@ Configuration:
 
 V1 request:
 - `/route` JSON POST;
-- `costing=truck` for TRUCK, otherwise auto-like supported mode;
+- `costing=truck` for TRUCK, `costing=taxi` for TAXI, and `costing=auto` for VAN/CAR/OTHER;
 - vehicle dimensions/weight/axle/hazmat costing options passed when supported;
 - waypoints preserved;
 - alternatives requested if supported/configured;
@@ -184,9 +190,12 @@ Route Guard returns:
 
 Initial confidence is intentionally conservative because a self-hosted open-data route does not prove every real-world restriction is mapped. A lack of warnings is not converted to 100% certainty.
 
-Hard invariant for TRUCK:
-- `strictVehicleProfile=true` only if required dimensions/weights supplied by the user were actually included in the provider request.
-- if a provider cannot express a configured hard constraint, add an explicit warning/unknown and lower confidence.
+Hard invariants:
+- TRUCK and VAN require height, width, length and gross weight before route calculation;
+- `strictVehicleProfile=true` only when the expected provider costing and every required configured dimension/weight were actually sent;
+- TRUCK axle/hazmat settings are verified against the exact provider request;
+- unsupported configured ADR tunnel, hazmat-category, emission-zone, axle or non-TRUCK hazardous-goods constraints fail closed with `navigation_hard_constraints_unenforced`;
+- raw uncertainty remains visible even when all expressible constraints were sent.
 
 ## Route request
 
@@ -206,7 +215,7 @@ Hard invariant for TRUCK:
 }
 ```
 
-V1 accepts coordinates directly. Address autocomplete is a separate provider seam and must not silently depend on public Nominatim.
+V1 accepts coordinates directly. Origin may be chosen manually/on the map; otherwise calculation uses fresh server GPS. Refresh requires an explicit valid origin or GPS no older than 60 seconds and never reuses the old route start silently. Address autocomplete is a separate provider seam and must not silently depend on public Nominatim.
 
 ## ParkingRouteAdvisor
 
@@ -237,9 +246,12 @@ Use current `roadReports.list()` snapshot:
 V1 web guidance is route-following, not a claim of certified navigation:
 - current GPS is projected approximately onto route;
 - compute remaining route fraction/distance;
+- recompute ETA from the current time plus remaining planned duration;
 - choose next maneuver using shape indexes;
+- render the completed route geometry and remove passed Parking/Road items with a small projection tolerance;
 - show off-route state when distance from route exceeds threshold;
-- offer `Перестроить` action which calls the real provider with current position and unchanged strict vehicle snapshot.
+- offer `Перестроить` action which calls the real provider with current position and unchanged strict vehicle snapshot;
+- automatic reroute requires fresh GPS, online state, sustained moving deviation and cooldown.
 
 Complex editing becomes disabled when GPS speed exceeds a configured motion threshold; essential controls remain.
 
@@ -252,7 +264,7 @@ Cache only the user's current normalized route and selected alternative in brows
 - bounded size;
 - expiry consistent with server route record.
 
-When API temporarily fails, cached active route can still be drawn and maneuvers displayed with a visible `offline/stale` state. It does not create a new route offline.
+When API temporarily fails, cached active route can still be drawn and maneuvers displayed with explicit `cached`, `offline` or `degraded` state. Offline mode never creates or refreshes a route and does not claim fresh Parking, Road, traffic or toll data.
 
 ## API
 

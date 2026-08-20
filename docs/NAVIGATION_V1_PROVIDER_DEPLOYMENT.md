@@ -73,6 +73,10 @@ For `TRUCK`, the current adapter sends and Route Guard verifies where configured
 - preference for designated HGV routes (`use_truck_route`);
 - toll/ferry/unpaved preferences.
 
+For `VAN`, PaTaP requires height, width, length and gross weight, sends them through Valhalla `auto` costing and verifies the exact request. For `TAXI`, the adapter uses Valhalla `taxi` costing and does not attach truck-only axle/hazmat fields. CAR/OTHER use `auto`.
+
+The current adapter declares `mapMatching=false`; it implements route calculation, alternatives and maneuvers, but no map-matching endpoint.
+
 PaTaP deliberately does **not** invent a numeric HGV penalty and call it a hard legal restriction. HGV access comes from the provider's truck costing and road graph. Route Guard checks the declared truck/HGV capability plus the exact hard vehicle fields actually sent.
 
 If PaTaP has a non-`NONE` ADR tunnel code, explicit hazardous-goods categories, or an emission-zone class that the active provider adapter cannot enforce, Route Guard rejects strict truck guidance rather than claiming those restrictions are covered. CO2 class is retained as known-but-not-used for toll calculation until a reviewed toll source exists.
@@ -100,13 +104,14 @@ Required sequence:
 1. Full repository regression suite PASS with the isolated fake router/geocoder.
 2. Configure a reviewed real `NAV_ROUTER_URL` outside GitHub.
 3. Confirm the route service graph actually covers the intended smoke-test corridor.
-4. Create a temporary Driver test account/profile with explicit truck dimensions.
-5. Run a real route smoke and verify the provider receives `truck`, dimensions, weight, axle/hazmat fields that are configured.
-6. Verify a deliberately impossible/over-restricted truck request fails closed and does not retry as car.
-7. Verify map route drawing, alternative selection, guidance and reroute with temporary data.
-8. If a geocoder is configured, verify search attribution/privacy and that `nominatim.openstreetmap.org` is not the configured production endpoint.
-9. Verify PaTaP Parking/Road enrichment only shows actual current PaTaP data; empty data remains empty.
-10. Only then restart/apply production and record exact provider/data scope in `AI_HANDOFF.md`.
+4. Create temporary TIR, VAN and TAXI Driver test profiles; TIR/VAN must contain explicit physical dimensions and gross weight.
+5. Run real route smokes and verify provider costing/options: TRUCK=truck, TAXI=taxi, VAN=auto with exact dimensions; verify truck-only axle/hazmat fields do not leak into TAXI.
+6. Verify deliberately impossible or unsupported hard restrictions fail closed and a failed truck request never retries as car.
+7. Verify map route drawing, alternative selection, completed-route progress, dynamic ETA, guidance and reroute with temporary data.
+8. Verify stale GPS blocks automatic/server refresh, manual origin works, and offline mode keeps only the sanitized saved route without claiming new data.
+9. If a geocoder is configured, verify search attribution/privacy and that `nominatim.openstreetmap.org` is not the configured production endpoint.
+10. Verify PaTaP Parking/Road enrichment only shows actual current PaTaP data, passed items disappear during guidance, and empty data remains empty.
+11. Only then restart/apply production and record exact provider/data scope in `AI_HANDOFF.md`.
 
 If no reviewed real router is available on the current machine, Codex may still accept the **code candidate** after all automated tests, but must record production Navigation as `BLOCKED_PROVIDER`/not enabled rather than pretending the fake test provider is a live navigation backend.
 
