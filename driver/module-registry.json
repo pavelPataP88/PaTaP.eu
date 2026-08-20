@@ -18,7 +18,7 @@
     {
       "id": "navigation",
       "label": "Навигация",
-      "entry": "./navigation/index.js?v=20260820-navigation1",
+      "entry": "./navigation/index.js?v=20260820-navigation2",
       "enabled": true,
       "requiresProfile": true,
       "dependsOn": ["map"]
