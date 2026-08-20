@@ -72,8 +72,10 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   let experience = null;
   let nearbyDrivers = [];
   let initialGpsFocused = false;
+  let navigationGeometry = [];
   const nearbyMarkers = new Map();
   const radiusSourceId = "driver-search-radius";
+  const navigationSourceId = "driver-navigation-route";
 
   function radiusPolygon(location, radius) {
     const points = [];
@@ -103,6 +105,61 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   }
 
   function clearRadiusOverlay() { if (map && mapLoaded) map.getSource?.(radiusSourceId)?.setData({ type: "FeatureCollection", features: [] }); }
+
+  function validNavigationGeometry(geometry) {
+    if (!Array.isArray(geometry) || geometry.length < 2 || geometry.length > 50000) return [];
+    const points = [];
+    for (const point of geometry) {
+      const longitude = Number(point?.[0]), latitude = Number(point?.[1]);
+      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) return [];
+      points.push([longitude, latitude]);
+    }
+    return points;
+  }
+
+  function renderNavigationRoute() {
+    if (!map || !mapLoaded || !map.addSource) return;
+    const data = navigationGeometry.length ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: navigationGeometry } } : { type: "FeatureCollection", features: [] };
+    const source = map.getSource?.(navigationSourceId);
+    if (source) source.setData(data);
+    else {
+      map.addSource(navigationSourceId, { type: "geojson", data });
+      map.addLayer?.({ id: "driver-navigation-route-casing", type: "line", source: navigationSourceId, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#10231e", "line-opacity": 0.8, "line-width": 8 } });
+      map.addLayer?.({ id: "driver-navigation-route-line", type: "line", source: navigationSourceId, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#2f8cff", "line-opacity": 0.95, "line-width": 5 } });
+    }
+  }
+
+  function fitRoute() {
+    if (!map || navigationGeometry.length < 2 || !map.fitBounds) return false;
+    let minLon=180,maxLon=-180,minLat=90,maxLat=-90;
+    for (const [lon,lat] of navigationGeometry) { minLon=Math.min(minLon,lon);maxLon=Math.max(maxLon,lon);minLat=Math.min(minLat,lat);maxLat=Math.max(maxLat,lat); }
+    map.fitBounds([[minLon,minLat],[maxLon,maxLat]],{padding:48,maxZoom:14,duration:450});
+    experience?.setFollowMode?.("FREE");
+    return true;
+  }
+
+  async function showRoute(route,{fit=true}={}) {
+    const alternative=route?.geometry?route:route?.selectedAlternative;
+    const geometry=validNavigationGeometry(alternative?.geometry);
+    if (!geometry.length) return false;
+    if (!(await init())) return false;
+    navigationGeometry=geometry;
+    renderNavigationRoute();
+    if (fit) fitRoute();
+    return true;
+  }
+
+  function clearRoute() {
+    navigationGeometry=[];
+    if (map && mapLoaded) map.getSource?.(navigationSourceId)?.setData({type:"FeatureCollection",features:[]});
+  }
+
+  async function pickPoint() {
+    if (!(await init()) || !map?.once) throw new Error("map_point_selection_unavailable");
+    experience?.setFollowMode?.("FREE");
+    const canvas=map.getCanvas?.();if(canvas)canvas.style.cursor="crosshair";
+    return new Promise((resolve)=>map.once("click",(event)=>{if(canvas)canvas.style.cursor="";const longitude=Number(event?.lngLat?.lng),latitude=Number(event?.lngLat?.lat);resolve(Number.isFinite(latitude)&&Number.isFinite(longitude)?{latitude,longitude}:null);}));
+  }
 
   function radiusZoom(location, radius) {
     const mapSize = map?.getContainer?.().getBoundingClientRect?.() || { width: 360, height: 360 };
@@ -184,7 +241,7 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
       map = new window.maplibregl.Map({ container: "driver-map", center: config.center, zoom: Math.max(INITIAL_MAP_ZOOM, configuredZoom), maxZoom: config.maxZoom, attributionControl: false, style: { version: 8, sources: { basemap: { type: "raster", tiles: config.tiles, tileSize: 256, maxzoom: config.maxZoom, attribution: config.attribution } }, layers: [{ id: "basemap", type: "raster", source: "basemap" }] } });
       map.addControl(new window.maplibregl.AttributionControl({ compact: false, customAttribution: config.attribution }));
       map.addControl(createLocationControl(), "top-right");
-      if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); experience?.setOwnLocation(ownLocation); }); else mapLoaded = true;
+      if (map.on) map.on("load", () => { mapLoaded = true; updateRadiusOverlay(); renderNavigationRoute(); experience?.setOwnLocation(ownLocation); }); else { mapLoaded = true; renderNavigationRoute(); }
       if (globalThis.ResizeObserver) { resizeObserver = new ResizeObserver(() => map?.resize()); resizeObserver.observe(document.querySelector("#driver-map")); }
       const mapElement = document.querySelector("#driver-map");
       experience = createMapExperience({ map, mapElement, getOwnLocation: () => ownLocation ? { ...ownLocation } : null, onLayerChange: handleLayerChange, onAutoRadius: applyAutoRadius });
@@ -210,11 +267,12 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   function showNearby(drivers) { nearbyDrivers = Array.isArray(drivers) ? drivers.slice() : []; experience?.setDrivers(nearbyDrivers); renderNearbyMarkers(); }
   function clearNearby() { nearbyDrivers = []; experience?.setDrivers([]); removeNearbyMarkers(); }
   function setProfileReady(value) { profileReady = Boolean(value); }
+  function getOwnLocation() { return ownLocation ? { ...ownLocation } : null; }
 
-  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, showParkingPlace, clearParkingPlace, refreshRoadReports() { return roadReports?.refresh?.(); }, setProfileReady, getMapExperienceState() { return experience?.getState?.() || null; }, getFocusedParking() { return focusedParking; } };
+  return { init, resize() { if (map) map.resize(); }, isReady() { return Boolean(map); }, showOwn, setRadius, recenterOwn, clearOwn, showNearby, clearNearby, showParkingPlace, clearParkingPlace, showRoute, clearRoute, fitRoute, pickPoint, getOwnLocation, refreshRoadReports() { return roadReports?.refresh?.(); }, setProfileReady, getMapExperienceState() { return experience?.getState?.() || null; }, getFocusedParking() { return focusedParking; } };
 }
 
 export function createDriverModule(context) {
   const controller = createMapController({ api: context.api, onAuthLost: context.onAuthLost, showError: context.showError, setState(text, state) { context.getModule("gps")?.controller?.setState(text, state); }, onDriverCard(nickname) { return context.openDriverCard?.(nickname); } });
-  return { controller, async activate() { await controller.init(); await controller.refreshRoadReports(); window.setTimeout(() => controller.resize(), 0); }, setSession({ profile }) { controller.setProfileReady(Boolean(profile)); }, setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); }, reset() { controller.setProfileReady(false); controller.clearParkingPlace(); } };
+  return { controller, async activate() { await controller.init(); await controller.refreshRoadReports(); window.setTimeout(() => controller.resize(), 0); }, setSession({ profile }) { controller.setProfileReady(Boolean(profile)); }, setProfileReady(profile) { controller.setProfileReady(Boolean(profile)); }, reset() { controller.setProfileReady(false); controller.clearParkingPlace(); controller.clearRoute(); } };
 }
