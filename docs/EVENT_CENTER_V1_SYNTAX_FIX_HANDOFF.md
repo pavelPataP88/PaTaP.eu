@@ -5,7 +5,8 @@ Status: READY_FOR_CODEX_REVIEW — NOT DEPLOYED BY CHATGPT
 
 Branch: `chatgpt/event-center-v1-syntax-fix-01`
 Code commit: `0432fb74fc4717d805c97c99c19163a29e51a829`
-Base: current `codex/local-workspace-snapshot`
+Fix base: `codex/local-workspace-snapshot @ a07c960818688ab3eca864751b9135ff6cf12f24`
+Original Event Center candidate base: `codex/local-workspace-snapshot @ 60e939aa8c9d72ecf78d39d6c5c371b8c8cd8d96`
 Original Event Center candidate reviewed by Codex: `chatgpt/event-center-v1 @ ef697536f02d6e8d6a65ef88e4b18728be2fd397`
 
 ## Exact correction
