@@ -40,11 +40,12 @@ function truckOptions(vehicle,strategy){
   if(finite(vehicle.axleLoadT)!==null)out.axle_load=Number(vehicle.axleLoadT);
   if(finite(vehicle.axleCount)!==null)out.axle_count=Number(vehicle.axleCount);
   if(vehicle.hazardousGoods)out.hazmat=true;
+  out.hgv_no_access_penalty=43200;
   if(strategy==="PRACTICAL_TRUCK"||strategy==="PARKING_AWARE"){
-    out.use_highways=0.92;out.use_tracks=0.05;out.use_living_streets=0.08;out.maneuver_penalty=8;
+    out.use_highways=0.92;out.use_tracks=0.05;out.use_living_streets=0.08;out.use_truck_route=0.85;out.maneuver_penalty=8;
   } else if(strategy==="EASY_TRUCK") {
-    out.use_highways=1;out.use_tracks=0;out.use_living_streets=0;out.maneuver_penalty=15;
-  } else out.use_highways=1;
+    out.use_highways=1;out.use_tracks=0;out.use_living_streets=0;out.use_truck_route=1;out.maneuver_penalty=15;
+  } else {out.use_highways=1;out.use_truck_route=0.65;}
   return out;
 }
 function autoOptions(vehicle,strategy){
@@ -116,7 +117,7 @@ function normalizeResponse(data){
 
 function createValhallaProvider({baseUrl=process.env.NAV_ROUTER_URL,timeoutMs=process.env.NAV_ROUTER_TIMEOUT_MS,fetchImpl=globalThis.fetch}={}){
   const url=cleanBaseUrl(baseUrl);const timeout=clamp(Number(timeoutMs)||DEFAULT_TIMEOUT_MS,1000,60_000);
-  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:true}};}
+  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:true,hgvAccess:true,designatedTruckRoutes:true}};}
   async function route(input){
     if(!url||typeof fetchImpl!=="function"){const error=new Error("navigation_provider_unavailable");error.status=503;throw error;}
     const payload=requestPayload(input);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
