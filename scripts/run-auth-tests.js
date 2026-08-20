@@ -1,8 +1,10 @@
 const path = require("path");
 const { spawn } = require("child_process");
 const { createIsolatedAuth, stopChild } = require("../tests/helpers/isolated-auth");
+const { startFakeValhalla } = require("../tests/helpers/fake-valhalla");
 
 let environment;
+let fakeNavigationProvider;
 let testProcess;
 let cleaning = false;
 const timeout = setTimeout(() => {
@@ -15,6 +17,7 @@ async function cleanup() {
   cleaning = true;
   await stopChild(testProcess);
   if (environment) await environment.cleanup();
+  if (fakeNavigationProvider) await fakeNavigationProvider.close();
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
@@ -24,6 +27,10 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 (async () => {
   let exitCode = 1;
   try {
+    fakeNavigationProvider = await startFakeValhalla();
+    process.env.NAV_ROUTER_URL = fakeNavigationProvider.baseUrl;
+    process.env.NAV_ROUTER_TIMEOUT_MS = "1000";
+    process.env.PATAP_NAV_TEST_BASE_URL = fakeNavigationProvider.baseUrl;
     environment = await createIsolatedAuth();
     testProcess = spawn(process.execPath, [
       "--test-concurrency=1",
@@ -34,6 +41,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
       path.join("tests", "auth", "people-communities.test.js"),
       path.join("tests", "auth", "parking-network.test.js"),
       path.join("tests", "auth", "event-center.test.js"),
+      path.join("tests", "auth", "navigation.test.js"),
       path.join("tests", "auth", "radio-reliability.test.js"),
       path.join("tests", "auth", "radio-console.test.js"),
       path.join("tests", "auth", "radio-moderation.test.js"),
@@ -56,4 +64,3 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   }
   process.exitCode = exitCode;
 })();
-
