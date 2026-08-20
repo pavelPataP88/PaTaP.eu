@@ -19,10 +19,10 @@ function decodePolyline6(encoded) {
   return coordinates;
 }
 
-function costingFor(vehicleClass){return vehicleClass==="TRUCK"?"truck":"auto";}
+function costingFor(vehicleClass){if(vehicleClass==="TRUCK")return "truck";if(vehicleClass==="TAXI")return "taxi";return "auto";}
 function physicalOptions(vehicle){
   const out={};
-  for(const [field,key] of [["heightM","height"],["widthM","width"],["lengthM","length"],["grossWeightT","weight"],["axleLoadT","axle_load"]]){
+  for(const [field,key] of [["heightM","height"],["widthM","width"],["lengthM","length"],["grossWeightT","weight"],["axleLoadT","axle_load"],["axleCount","axle_count"]]){
     const value=finite(vehicle[field]);if(value!==null)out[key]=value;
   }
   return out;
@@ -106,12 +106,15 @@ function normalizeResponse(data){
   for(const item of Array.isArray(data?.alternates)?data.alternates:[])trips.push(item?.trip||item);
   const alternatives=trips.map((trip,index)=>normalizeTrip(trip,index)).filter(Boolean).slice(0,3);
   if(!alternatives.length){const error=new Error("navigation_provider_invalid_response");error.status=502;throw error;}
-  return {provider:"VALHALLA",providerVersion:String(data?.version||data?.trip?.version||"").slice(0,80),alternatives,rawWarnings:Array.isArray(data?.warnings)?data.warnings:[]};
+  const rawWarnings=[];
+  for(const warning of Array.isArray(data?.warnings)?data.warnings:[])rawWarnings.push(warning);
+  for(const trip of trips)for(const warning of Array.isArray(trip?.warnings)?trip.warnings:[])rawWarnings.push(warning);
+  return {provider:"VALHALLA",providerVersion:String(data?.version||data?.trip?.version||"").slice(0,80),alternatives,rawWarnings};
 }
 
 function createValhallaProvider({baseUrl=process.env.NAV_ROUTER_URL,timeoutMs=process.env.NAV_ROUTER_TIMEOUT_MS,fetchImpl=globalThis.fetch}={}){
   const url=cleanBaseUrl(baseUrl);const timeout=clamp(Number(timeoutMs)||DEFAULT_TIMEOUT_MS,1000,60_000);
-  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:false}};}
+  function status(){return {name:"VALHALLA",configured:Boolean(url),capabilities:{truck:true,physicalDimensions:true,alternatives:true,maneuvers:true,traffic:false,tolls:false,mapMatching:true,adrTunnelCode:false,axleCount:true}};}
   async function route(input){
     if(!url||typeof fetchImpl!=="function"){const error=new Error("navigation_provider_unavailable");error.status=503;throw error;}
     const payload=requestPayload(input);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
