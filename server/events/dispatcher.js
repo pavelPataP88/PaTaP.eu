@@ -4,11 +4,12 @@ function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={
   const nick=(userId)=>db.prepare("SELECT nickname FROM driver_profiles WHERE user_id=?").get(Number(userId))?.nickname||null;
   const OUTBOX_RETENTION_MS=7*24*60*60*1000;
   const CLEANUP_INTERVAL_MS=60*60*1000;
+  const PARKING_EVENT_MAX_AGE_MS=3*60*60*1000;
 
   function processRow(row){
     if(row.event_kind==="CHAT_MESSAGE"){
       const messageId=Number(row.source_ref);const message=db.prepare("SELECT id,room_id FROM chat_messages WHERE id=?").get(messageId);
-      if(message)events.consumeChatEvent({type:"chat.message.committed",roomId:Number(message.room_id),message:{id:messageId}});return;
+      if(message){const poll=Boolean(db.prepare("SELECT 1 FROM chat_polls WHERE message_id=?").get(messageId));const attachments=Number(db.prepare("SELECT COUNT(*) n FROM chat_message_attachments WHERE message_id=?").get(messageId).n||0);events.consumeChatEvent({type:"chat.message.committed",roomId:Number(message.room_id),message:{id:messageId,poll:poll?{}:null,attachments:attachments?Array.from({length:attachments},()=>({})):[]}});}return;
     }
     if(row.event_kind==="RELATIONSHIP"){
       const [requesterId,targetId]=ids(row.source_ref);const relation=db.prepare("SELECT status FROM driver_relationships WHERE requester_id=? AND target_id=?").get(requesterId,targetId);
@@ -34,8 +35,10 @@ function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={
       if(transmission)events.radioCommitted(Number(transmission.sender_id),{id:Number(transmission.id),channelId:Number(transmission.channel_id)});return;
     }
     if(row.event_kind==="PARKING_OCCUPANCY"){
-      const observation=db.prepare("SELECT id,place_id,user_id,status FROM parking_occupancy_observations WHERE id=?").get(Number(row.source_ref));if(!observation)return;
-      const previous=db.prepare("SELECT status FROM parking_occupancy_observations WHERE place_id=? AND id<? ORDER BY id DESC LIMIT 1").get(observation.place_id,observation.id);
+      const observation=db.prepare("SELECT id,place_id,user_id,status,source_type,observed_at,expires_at FROM parking_occupancy_observations WHERE id=?").get(Number(row.source_ref));if(!observation)return;
+      const now=Date.parse(nowIso()),observed=Date.parse(observation.observed_at||""),expires=Date.parse(observation.expires_at||"");
+      if(!Number.isFinite(observed)||!Number.isFinite(now)||now-observed>PARKING_EVENT_MAX_AGE_MS||(Number.isFinite(expires)&&expires<=now))return;
+      const previous=db.prepare("SELECT status FROM parking_occupancy_observations WHERE place_id=? AND id<? AND observed_at<=? ORDER BY observed_at DESC,id DESC LIMIT 1").get(observation.place_id,observation.id,observation.observed_at);
       events.parkingChanged(observation.user_id===null?null:Number(observation.user_id),Number(observation.place_id),previous?.status||"UNKNOWN",observation.status);return;
     }
   }
