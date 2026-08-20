@@ -1,5 +1,51 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: NAVIGATION_ENGINE_V1
+TASK_ID: NAVIGATION-20260820-003
+STATUS: BLOCKED_PROVIDER — AUTOMATION PASS, NOT DEPLOYED
+
+Candidate verified exactly:
+- Branch: chatgpt/navigation-engine-v1
+- HEAD checked: e7391a2fa9f7aafa98be69e8ae9d065bf70298b5
+- Product code/tests commit in its ancestry: fbcf3ea67ddb67ddb530dd4b130cf4fddbeb1b7a
+- Confirmed base: codex/local-workspace-snapshot @ e78ecbea105c1011a092d67f247b058f5fb2a692
+- Verification took place only in D:\\WWW.PATAP.EU\\.navigation-e739-candidate, never in the working site directory.
+
+Automated result — all PASS:
+- node --check every 24 changed JS/MJS file — PASS.
+- npm ci — PASS (0 vulnerabilities).
+- npm run test:auth — PASS, 40/40.
+- npm run test:radio-live — PASS, 1/1.
+- npm run test:driver-modules — PASS, 76/76.
+- npm run test:client — PASS, 2/2.
+- npm run test:config — PASS, 4/4.
+- npm run build — PASS.
+- npm run verify — PASS, including workspace/platform checks and all above component suites.
+- npm run test:browser — PASS, isolated database and test servers.
+
+Provider gate — BLOCKED:
+- NAV_ROUTER_URL was inspected without exposing its value in Process, User and Machine environment scopes; it is UNSET in all three.
+- No local non-secret configuration file contains NAV_ROUTER_URL either.
+- Therefore no real router exists to verify TRUCK, VAN or TAXI routes. The fake Valhalla test fixture was not used as a substitute for this gate.
+- As a result, real Route Guard / vehicle limits / alternatives / ETA / Road Reports / Parking / reroute and offline/degraded behavior against a real provider are NOT claimed tested.
+
+Not applied:
+- No Navigation source code was copied to D:\\WWW.PATAP.EU.
+- No candidate backend was connected to the real SQLite database, so no SQLite backup was needed or created for this rejected deployment attempt.
+- No backend restart, production routing request, live-site change, main update, or runtime/private-data change occurred.
+- Existing working site remains unchanged.
+
+Small non-blocking observation:
+- Node reports existing MODULE_TYPELESS_PACKAGE_JSON warnings while loading Driver ES modules. They do not fail tests and are unrelated to Navigation; do not change package module mode inside this block.
+
+Next gate:
+1. An owner must provide/configure a reviewed real routing provider through NAV_ROUTER_URL, with supported truck constraints documented.
+2. Codex then repeats real TRUCK/VAN/TAXI smoke against that provider.
+3. Only after those checks and a separate explicit owner deployment approval may Codex back up SQLite, apply Navigation and restart the necessary backend process.
+4. Do not start Voice Assistant or alter Navigation architecture while this gate is blocked.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: NAVIGATION_ENGINE_V1
 TASK_ID: NAVIGATION-20260820-002
 STATUS: CHANGES_REQUIRED
 
