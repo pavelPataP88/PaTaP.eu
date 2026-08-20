@@ -127,7 +127,7 @@ function createVehicleProfileRepository(db,{nowIso=()=>new Date().toISOString()}
         heightM:dimension(input,"heightM",current.height_m,1,8),
         grossWeightT:dimension(input,"grossWeightT",current.gross_weight_t,0.5,100),
         axleLoadT:dimension(input,"axleLoadT",current.axle_load_t,0.5,40),
-        axleCount:integer(input,"axleCount",current.axle_count,1,20),
+        axleCount:integer(input,"axleCount",current.axle_count,2,20),
         maxSpeedKph:integer(input,"maxSpeedKph",current.max_speed_kph,20,180),
         trailer:input.trailer===undefined?Boolean(current.trailer):bool(input.trailer),
         hazardousGoods:input.hazardousGoods===undefined?Boolean(current.hazardous_goods):bool(input.hazardousGoods),
