@@ -1,5 +1,42 @@
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: EVENT_CENTER_V1
+TASK_ID: EVENT-CENTER-20260820-002
+STATUS: CHANGES_REQUIRED
+
+Sources checked:
+- Full Event Center source: chatgpt/event-center-v1 @ ef697536f02d6e8d6a65ef88e4b18728be2fd397.
+- Syntax fix: chatgpt/event-center-v1-syntax-fix-01 @ 0432fb74fc4717d805c97c99c19163a29e51a829.
+- Note: the syntax-fix branch itself is not a self-contained Event Center candidate: against base a07c960 it adds only server/events/repository.js plus handoff/docs. Codex therefore tested the full original Event Center with exactly the one corrected repository file only in an isolated temporary checkout. Nothing was copied to production.
+
+What passed:
+- node --check server/events/repository.js — PASS after the syntax correction.
+- npm run test:auth started and completed 31 tests: 29 PASS, 2 FAIL.
+
+Blocking functional regression:
+- Creating a Road Report now returns HTTP 500 instead of 201. It breaks both the new Event Center Road test and the pre-existing Road Report regression.
+- Exact failing tests:
+  1. tests/auth/event-center.test.js:47 — “Event Center creates URGENT nearby road events and exposes SSE readiness”: expected 201, got 500.
+  2. tests/auth/road-reports.test.js:91 — “road report API keeps guest list safe and requires nearby fresh GPS for peer confirmations”: expected 201, got 500.
+- Exact backend error:
+  TypeError: haversineKm is not a function
+  at Object.roadReport (server/events/service.js:75)
+  called from server/driver/routes.js:117.
+- Root cause: server/events/service.js imports { haversineKm } from ../driver/location, but server/driver/location.js does not export it. The existing supported helper is exported by server/road-reports/repository.js (and a separate Parking helper also exists). Event Center must use the correct shared/helper import without duplicating incompatible distance logic.
+
+Required minimal correction from ChatGPT:
+1. Create a self-contained Event Center candidate branch from current codex/local-workspace-snapshot, containing full EVENT_CENTER_V1 plus both fixes (syntax + correct haversine helper import).
+2. Change only the faulty Event Center distance dependency/usage and the necessary handoff/test coverage. Do not change Road Reports behavior or weaken either failing assertion.
+3. Retain the existing test proving a Road create returns 201 and nearby recipients receive the urgent event.
+4. Record exact code commit in AI_HANDOFF.md.
+
+Not done:
+- Because the mandatory auth suite fails, npm run test:radio-live, test:driver-modules, test:client, test:config, build, verify and browser test were not accepted/rerun for this candidate.
+- No real SQLite backup, backend start/restart, production deployment, Event Center manual smoke or Web Push device test occurred.
+- Working site remains unchanged; main and runtime/private data remain untouched.
+
+---
+[2026-08-20 Europe/Warsaw] FROM: CODEX
+BLOCK: EVENT_CENTER_V1
 TASK_ID: EVENT-CENTER-20260820-001
 STATUS: CHANGES_REQUIRED
 
