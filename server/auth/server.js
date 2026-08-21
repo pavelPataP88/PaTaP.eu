@@ -130,17 +130,8 @@ function getSession(req) {
   const touchBefore = addMinutes(-SESSION_TOUCH_MINUTES);
   const sessionNeedsTouch = !session.session_last_seen_at || session.session_last_seen_at <= touchBefore;
   const userNeedsTouch = !session.user_last_seen_at || session.user_last_seen_at <= touchBefore;
-  if (sessionNeedsTouch || userNeedsTouch) {
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      if (sessionNeedsTouch) db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").run(now, session.id);
-      if (userNeedsTouch) db.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").run(now, session.user_id);
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-  }
+  if (sessionNeedsTouch) db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").run(now, session.id);
+  if (userNeedsTouch) db.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").run(now, session.user_id);
 
   return {
     rawId: sid,
