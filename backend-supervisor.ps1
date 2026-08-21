@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendScript = Join-Path $root "server\auth\server.js"
+$runtimeCheckScript = Join-Path $root "scripts\check-node-runtime.js"
 $logsDirectory = Join-Path $root "var\logs"
 $runDirectory = Join-Path $root "var\run"
 $supervisorPidFile = Join-Path $runDirectory "patap-auth-supervisor.pid"
@@ -10,7 +11,6 @@ $supervisorLog = Join-Path $logsDirectory "patap-auth-supervisor.log"
 $stdoutLog = Join-Path $logsDirectory "patap-auth-backend.log"
 $stderrLog = Join-Path $logsDirectory "patap-auth-backend.err.log"
 $maximumArchivedLogs = 20
-$supportedNodeMajor = 24
 
 New-Item -ItemType Directory -Path $logsDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
@@ -43,23 +43,22 @@ function Archive-Log([string]$path) {
 }
 
 function Test-SupportedNodeRuntime {
+  if (-not (Test-Path -LiteralPath $runtimeCheckScript)) {
+    Write-SupervisorLog "Node runtime check script not found: $runtimeCheckScript"
+    return $false
+  }
   try {
-    $rawVersion = (& node.exe -p "process.versions.node" 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($rawVersion)) {
-      Write-SupervisorLog "Node runtime check failed: node.exe returned no version."
+    $output = @(& node.exe $runtimeCheckScript 2>&1)
+    $exitCode = $LASTEXITCODE
+    foreach ($line in $output) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$line)) {
+        Write-SupervisorLog "Runtime check: $line"
+      }
+    }
+    if ($exitCode -ne 0) {
+      Write-SupervisorLog "Unsupported Node.js runtime. Supervisor will not start a restart loop."
       return $false
     }
-    $version = $rawVersion.Trim()
-    if ($version -notmatch '^(\d+)\.') {
-      Write-SupervisorLog "Node runtime check failed: cannot parse version '$version'."
-      return $false
-    }
-    $major = [int]$Matches[1]
-    if ($major -ne $supportedNodeMajor) {
-      Write-SupervisorLog "Unsupported Node.js runtime $version. PaTaP requires Node.js $supportedNodeMajor.x LTS. Supervisor will not start a restart loop."
-      return $false
-    }
-    Write-SupervisorLog "Node runtime check passed: $version."
     return $true
   } catch {
     Write-SupervisorLog "Node runtime check failed: $($_.Exception.Message)"
