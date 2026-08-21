@@ -1,44 +1,52 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { roadReportDistanceKm, validateRoadReportPoint } from "../../driver/map/road-reports-overlay.mjs";
+import { clusterRoadReports, reportFreshness } from "../../driver/map/road-reports-panel.mjs";
 
-const source = await readFile(new URL("../../driver/map/road-reports-overlay.mjs", import.meta.url), "utf8");
+const panelSource = await readFile(new URL("../../driver/map/road-reports-panel.mjs", import.meta.url), "utf8");
 const mapSource = await readFile(new URL("../../driver/map/index.js", import.meta.url), "utf8");
 
-test("road report controls are map overlay and creation waits for a map click", () => {
-  assert.match(source, /mapElement\.append\(overlay\)/);
-  assert.match(source, /overlay\.style\.position = "absolute"/);
-  assert.match(source, /toggle\.textContent = "\+ событие"/);
-  assert.match(source, /map\.on\?\.\("click", handleMapClick\)/);
-  assert.match(source, /createAt\(\{ longitude: lng, latitude: lat \}\)/);
-  assert.doesNotMatch(source, /latitude:\s*ownLocation\.latitude[\s\S]*longitude:\s*ownLocation\.longitude/);
+test("road report controls remain a map overlay but creation is GPS-first rather than map-click positioning", () => {
+  assert.match(panelSource, /mapElement\.append\(overlay\)/);
+  assert.match(panelSource, /position: "absolute"/);
+  assert.match(panelSource, /makeButton\("\+ событие"/);
+  assert.match(panelSource, /getOwnLocation\?\.\(\)/);
+  assert.match(panelSource, /latitude: location\.latitude/);
+  assert.match(panelSource, /longitude: location\.longitude/);
+  assert.doesNotMatch(panelSource, /event\.lngLat|handleMapClick|createAt\(/,
+    "road report creation must not regress to arbitrary map-click coordinates");
 });
 
-test("point validation blocks distant clicks and GPS-marker overlap", () => {
-  const own = { latitude: 50.2649, longitude: 19.0238 };
-  const close = { latitude: 50.2660, longitude: 19.0250 };
-  const overlap = { latitude: 50.26491, longitude: 19.02381 };
-  const far = { latitude: 50.31, longitude: 19.08 };
+test("map presentation still clusters distant reports and fades them as TTL runs down", () => {
+  const reports = [
+    { id: 1, latitude: 50.2649, longitude: 19.0238 },
+    { id: 2, latitude: 50.2650, longitude: 19.0240 }
+  ];
+  const clustered = clusterRoadReports(reports, 7);
+  assert.equal(clustered.length, 1);
+  assert.equal(clustered[0].kind, "cluster");
+  assert.equal(clustered[0].count, 2);
 
-  assert.ok(roadReportDistanceKm(own, close) > 0.02);
-  assert.equal(validateRoadReportPoint(own, close).ok, true);
-  assert.deepEqual(validateRoadReportPoint(own, overlap).error, "overlaps_own_marker");
-  assert.deepEqual(validateRoadReportPoint(own, far).error, "too_far");
+  const createdAt = "2026-08-21T10:00:00.000Z";
+  const expiresAt = "2026-08-21T11:00:00.000Z";
+  const fresh = reportFreshness({ createdAt, expiresAt }, Date.parse("2026-08-21T10:10:00.000Z"));
+  const old = reportFreshness({ createdAt, expiresAt }, Date.parse("2026-08-21T10:55:00.000Z"));
+  assert.ok(fresh.opacity > old.opacity);
+  assert.equal(old.phase, "old");
 });
 
-test("successful POST paints the returned marker immediately and marker is visually distinct", () => {
-  assert.match(source, /const data = await api\("\/api\/driver\/road-reports", \{ method: "POST", body \}\)/);
-  assert.match(source, /if \(data\.report\) upsertMarker\(data\.report\)/);
-  assert.match(source, /element\.className = `road-report-marker/);
-  assert.match(source, /element\.style\.minWidth = "42px"/);
-  assert.match(source, /element\.style\.background = report\.type === "ROADWORK" \? "#ff7a00" : "#ffb000"/);
+test("successful POST paints the returned marker immediately and keeps it distinct from own GPS", () => {
+  assert.match(panelSource, /const data = await api\("\/api\/driver\/road-reports"/);
+  assert.match(panelSource, /if \(data\.report\) upsertReport\(data\.report\)/);
+  assert.match(panelSource, /element\.className = "road-report-marker"/);
+  assert.match(panelSource, /minWidth: "42px"/);
+  assert.match(panelSource, /background: "#ffb454"/);
+  assert.match(panelSource, /offset: \[0, -30\]/);
   assert.match(mapSource, /new window\.maplibregl\.Marker\(\{ color: "#2f8cff" \}\)/);
 });
 
-test("authenticated map keeps MapLibre lazy and road reports overlay has no asset loader", () => {
+test("authenticated map keeps MapLibre lazy and mounts the current road report panel without its own asset loader", () => {
   assert.match(mapSource, /await ensureMapLibre\(\)/);
-  assert.match(mapSource, /createRoadReportsOverlay\(/);
-  assert.doesNotMatch(source, /ensureMapLibre|maplibre-gl\.js|maplibre-gl\.css/);
+  assert.match(mapSource, /createRoadReportPanel\(/);
+  assert.doesNotMatch(panelSource, /ensureMapLibre|maplibre-gl\.js|maplibre-gl\.css/);
 });
-
