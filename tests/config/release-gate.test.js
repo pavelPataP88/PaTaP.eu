@@ -35,6 +35,8 @@ test("public availability remains visible as a separate non-blocking signal", ()
   assert.match(workflow, /node scripts\/run-public-smoke\.js/);
   assert.match(publicSmoke, /https:\/\/patap\.eu/);
   assert.match(publicSmoke, /https:\/\/driver\.patap\.eu/);
-  assert.match(publicSmoke, /PUBLIC_SMOKE PASS/);
-  assert.match(publicSmoke, /PUBLIC_SMOKE FAIL/);
+  assert.match(publicSmoke, /PUBLIC_SMOKE/);
+  assert.match(publicSmoke, /"PASS"/);
+  assert.match(publicSmoke, /"FAIL"/);
+  assert.match(publicSmoke, /PUBLIC_SMOKE SUMMARY/);
 });
