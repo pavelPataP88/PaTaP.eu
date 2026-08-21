@@ -3,7 +3,7 @@ const VALID_CATEGORIES=new Set(['CHAT','PEOPLE','COMMUNITY','RADIO','ROAD','PARK
 
 function cleanText(value,max){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max);}
 function pushItem(event){
-  if(!event.data)return null;
+  if(!event.data)return {eventId:0,priority:'NORMAL',category:'SYSTEM',title:'PaTaP Driver',body:'Новое событие в Driver'};
   let data;try{data=event.data.json();}catch{return null;}
   const eventId=Number(data?.eventId);if(!Number.isSafeInteger(eventId)||eventId<=0)return null;
   const priority=VALID_PRIORITIES.has(String(data?.priority||'').toUpperCase())?String(data.priority).toUpperCase():'NORMAL';
@@ -20,12 +20,12 @@ self.addEventListener('push',event=>{
     try{
       await self.registration.showNotification(item.title,{
         body:item.body,
-        tag:`patap-event-${item.eventId}`,
+        tag:item.eventId?`patap-event-${item.eventId}`:'patap-event-legacy',
         renotify:item.priority==='URGENT',
         requireInteraction:item.priority==='URGENT',
         silent:item.priority==='NORMAL'||item.priority==='SILENT',
         icon:'/favicon.svg',
-        data:{eventId:item.eventId,url:`/?event=${encodeURIComponent(item.eventId)}`}
+        data:{eventId:item.eventId,url:item.eventId?`/?event=${encodeURIComponent(item.eventId)}`:'/'}
       });
     }catch{}
   })());
