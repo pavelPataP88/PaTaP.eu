@@ -9,7 +9,7 @@
   "scripts": {
     "runtime:check": "node scripts/check-node-runtime.js",
     "build": "node scripts/build.js",
-    "auth:start": "node server/auth/server.js",
+    "auth:start": "npm run runtime:check && node server/auth/server.js",
     "auth:bootstrap-owner": "node server/auth/bootstrap-owner.js",
     "auth:backup": "node server/auth/backup-db.js",
     "auth:restore": "node server/auth/restore-db.js",
