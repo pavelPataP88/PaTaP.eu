@@ -30,6 +30,7 @@ const PORT = Number(process.env.PATAP_AUTH_PORT || 8091);
 const MAX_BODY = 64 * 1024;
 const SESSION_COOKIE = "patap_session";
 const CSRF_COOKIE = "patap_csrf";
+const SESSION_TOUCH_MINUTES = 1;
 const PATAP_COOKIE_DOMAIN = "patap.eu";
 const PATAP_PUBLIC_HOSTS = new Set(["patap.eu", "www.patap.eu", "driver.patap.eu"]);
 const ALLOWED_CSRF_ORIGINS = new Set([
@@ -114,16 +115,24 @@ function getSession(req) {
   const cookies = parseCookies(req);
   const sid = cookies[SESSION_COOKIE];
   if (!sid) return null;
+  const now = nowIso();
   const session = db.prepare(`
-    SELECT sessions.*, users.username, users.email, users.role, users.disabled, users.created_at AS user_created_at,
-           users.last_login_at, users.last_seen_at
+    SELECT sessions.*,
+           sessions.last_seen_at AS session_last_seen_at,
+           users.username, users.email, users.role, users.disabled, users.created_at AS user_created_at,
+           users.last_login_at, users.last_seen_at AS user_last_seen_at
     FROM sessions
     JOIN users ON users.id = sessions.user_id
     WHERE sessions.id = ? AND sessions.revoked_at IS NULL AND sessions.expires_at > ?
-  `).get(hashToken(sid), nowIso());
+  `).get(hashToken(sid), now);
   if (!session || session.disabled) return null;
-  db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").run(nowIso(), session.id);
-  db.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").run(nowIso(), session.user_id);
+
+  const touchBefore = addMinutes(-SESSION_TOUCH_MINUTES);
+  const sessionNeedsTouch = !session.session_last_seen_at || session.session_last_seen_at <= touchBefore;
+  const userNeedsTouch = !session.user_last_seen_at || session.user_last_seen_at <= touchBefore;
+  if (sessionNeedsTouch) db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").run(now, session.id);
+  if (userNeedsTouch) db.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").run(now, session.user_id);
+
   return {
     rawId: sid,
     csrfToken: session.csrf_token,
@@ -135,7 +144,7 @@ function getSession(req) {
       disabled: session.disabled,
       created_at: session.user_created_at,
       last_login_at: session.last_login_at,
-      last_seen_at: session.last_seen_at
+      last_seen_at: userNeedsTouch ? now : session.user_last_seen_at
     }
   };
 }
