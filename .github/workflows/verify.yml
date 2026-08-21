@@ -2,19 +2,49 @@ name: Verify
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'chatgpt/**'
+      - 'codex/**'
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  release-gate:
+    name: release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run verify
-      - run: npm run test:browser
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Release context
+        shell: bash
+        run: |
+          echo "commit=$(git rev-parse HEAD)"
+          echo "node=$(node --version)"
+          echo "npm=$(npm --version)"
+      - name: Deterministic release verification
+        run: npm run verify:release
+
+  public-smoke:
+    name: public-smoke-nonblocking
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check current public endpoints
+        run: node scripts/run-public-smoke.js
