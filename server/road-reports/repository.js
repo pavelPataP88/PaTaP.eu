@@ -181,74 +181,6 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
   };
 }
 
-// Legacy in-memory store kept for isolated pure-logic callers. Production Driver
-// routes use createRoadReportRepository() so road state survives backend restart.
-function createRoadReportStore({ now = () => Date.now() } = {}) {
-  const reports = new Map();
-  let nextId = 1;
-
-  function prune() {
-    const current = now();
-    for (const [id, report] of reports) {
-      if (report.closedAt || report.expiresAt <= current) reports.delete(id);
-    }
-  }
-
-  function publicReport(report) {
-    return {
-      id: report.id,
-      type: report.type,
-      lane: report.lane,
-      latitude: report.latitude,
-      longitude: report.longitude,
-      createdAt: new Date(report.createdAt).toISOString(),
-      expiresAt: new Date(report.expiresAt).toISOString(),
-      confirmations: {
-        active: [...report.votes.values()].filter((value) => value === "ACTIVE").length,
-        gone: [...report.votes.values()].filter((value) => value === "GONE").length
-      }
-    };
-  }
-
-  return {
-    create(authorId, input) {
-      const normalized = normalizeInput(input);
-      if (!normalized) return null;
-      prune();
-      const current = now();
-      const ttlMs = REPORT_TYPES[normalized.type].ttlMinutes * 60 * 1000;
-      const report = { id: nextId++, authorId, ...normalized, createdAt: current, expiresAt: current + ttlMs, closedAt: null, votes: new Map() };
-      reports.set(report.id, report);
-      return publicReport(report);
-    },
-    list() { prune(); return [...reports.values()].sort((left, right) => right.id - left.id).map(publicReport); },
-    getInternal(reportId) {
-      prune();
-      const report = reports.get(reportId);
-      return report ? { id: report.id, authorId: report.authorId, latitude: report.latitude, longitude: report.longitude } : null;
-    },
-    confirm(userId, reportId, status) {
-      if (!CONFIRMATIONS.has(status)) return { error: "invalid_road_report_confirmation" };
-      prune();
-      const report = reports.get(reportId);
-      if (!report) return { error: "road_report_not_found" };
-      report.votes.set(userId, status);
-      if (status === "GONE") {
-        const gone = [...report.votes.values()].filter((value) => value === "GONE").length;
-        if (userId === report.authorId || gone >= 2) {
-          report.closedAt = now();
-          reports.delete(report.id);
-          return { closed: true, report: publicReport(report) };
-        }
-      } else {
-        report.expiresAt = now() + REPORT_TYPES[report.type].ttlMinutes * 60 * 1000;
-      }
-      return { closed: false, report: publicReport(report) };
-    },
-    size() { prune(); return reports.size; }
-  };
-}
-
 module.exports = {
   REPORT_TYPES,
   REPORT_LANES,
@@ -257,6 +189,5 @@ module.exports = {
   ROAD_REPORT_RETENTION_DAYS,
   haversineKm,
   normalizeInput,
-  createRoadReportRepository,
-  createRoadReportStore
+  createRoadReportRepository
 };
