@@ -109,7 +109,6 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
 
     list() {
       const now = nowIso();
-      prune(now);
       return db.prepare(`
         SELECT r.*,
           COALESCE(SUM(CASE WHEN v.status = 'ACTIVE' THEN 1 ELSE 0 END), 0) AS active_confirmations,
@@ -124,7 +123,6 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
 
     getInternal(reportId) {
       const now = nowIso();
-      prune(now);
       const report = activeRow(reportId, now);
       return report ? {
         id: Number(report.id),
@@ -176,7 +174,6 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
 
     size() {
       const now = nowIso();
-      prune(now);
       return Number(db.prepare("SELECT COUNT(*) AS n FROM road_reports WHERE closed_at IS NULL AND expires_at > ?").get(now).n || 0);
     },
 
