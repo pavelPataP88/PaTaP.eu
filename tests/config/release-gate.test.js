@@ -1,0 +1,40 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = path.resolve(__dirname, "../..");
+const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "verify.yml"), "utf8");
+const browser = fs.readFileSync(path.join(root, "scripts", "run-browser-test.js"), "utf8");
+const publicSmoke = fs.readFileSync(path.join(root, "scripts", "run-public-smoke.js"), "utf8");
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+
+test("candidate branches and pull requests receive a deterministic release gate", () => {
+  assert.match(workflow, /- main/);
+  assert.match(workflow, /chatgpt\/\*\*/);
+  assert.match(workflow, /codex\/\*\*/);
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /npm run verify:release/);
+  assert.match(workflow, /cancel-in-progress:\s*true/);
+  assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*read/);
+  assert.doesNotMatch(workflow, /\b(deploy|scp|rsync|cloudflared tunnel run|Start-Process|restart-service)\b/i);
+});
+
+test("release verification runs isolated browser scenarios without depending on public internet", () => {
+  assert.equal(pkg.scripts["test:browser:local"], "node scripts/run-browser-test.js --local-only");
+  assert.equal(pkg.scripts["verify:release"], "npm run verify && npm run test:browser:local");
+  assert.match(browser, /process\.argv\.includes\("--local-only"\)/);
+  assert.match(browser, /if \(!localOnly\)[\s\S]*https:\/\/patap\.eu/);
+  assert.match(browser, /Public patap\.eu smoke skipped; running deterministic local browser scenarios only/);
+});
+
+test("public availability remains visible as a separate non-blocking signal", () => {
+  assert.equal(pkg.scripts["test:public-smoke"], "node scripts/run-public-smoke.js");
+  assert.match(workflow, /public-smoke-nonblocking/);
+  assert.match(workflow, /continue-on-error:\s*true/);
+  assert.match(workflow, /node scripts\/run-public-smoke\.js/);
+  assert.match(publicSmoke, /https:\/\/patap\.eu/);
+  assert.match(publicSmoke, /https:\/\/driver\.patap\.eu/);
+  assert.match(publicSmoke, /PUBLIC_SMOKE PASS/);
+  assert.match(publicSmoke, /PUBLIC_SMOKE FAIL/);
+});
