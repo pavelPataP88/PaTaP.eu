@@ -1,12 +1,14 @@
-const PRIORITY_ORDER=Object.freeze({URGENT:3,IMPORTANT:2,NORMAL:1,SILENT:0});
+const VALID_PRIORITIES=new Set(['URGENT','IMPORTANT','NORMAL','SILENT']);
+const VALID_CATEGORIES=new Set(['CHAT','PEOPLE','COMMUNITY','RADIO','ROAD','PARKING','SYSTEM']);
 
-async function latestEvent(){
-  const response=await fetch('/api/driver/events/overview',{credentials:'include',cache:'no-store',headers:{Accept:'application/json'}});
-  if(!response.ok)return null;
-  const data=await response.json();
-  const events=(data.events||[]).filter(event=>!event.read&&!event.archived&&!event.snoozed);
-  events.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt)||((PRIORITY_ORDER[b.priority]||0)-(PRIORITY_ORDER[a.priority]||0))||b.id-a.id);
-  return events.length?{event:events[0],preferences:data.preferences||{}}:null;
+function cleanText(value,max){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max);}
+function pushItem(event){
+  if(!event.data)return null;
+  let data;try{data=event.data.json();}catch{return null;}
+  const eventId=Number(data?.eventId);if(!Number.isSafeInteger(eventId)||eventId<=0)return null;
+  const priority=VALID_PRIORITIES.has(String(data?.priority||'').toUpperCase())?String(data.priority).toUpperCase():'NORMAL';
+  const category=VALID_CATEGORIES.has(String(data?.category||'').toUpperCase())?String(data.category).toUpperCase():'SYSTEM';
+  return {eventId,priority,category,title:cleanText(data?.title,160)||'PaTaP Driver',body:cleanText(data?.body,240)||'Новое событие в Driver'};
 }
 
 self.addEventListener('install',()=>self.skipWaiting());
@@ -14,20 +16,16 @@ self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 
 self.addEventListener('push',event=>{
   event.waitUntil((async()=>{
+    const item=pushItem(event);if(!item)return;
     try{
-      const current=await latestEvent();
-      if(!current)return;
-      const item=current.event;
-      const showPreview=current.preferences.showPreviews!==false;
-      const body=showPreview&&item.preview?item.preview:`${item.category} · ${item.priority}`;
       await self.registration.showNotification(item.title,{
-        body,
-        tag:`patap-event-${item.id}`,
+        body:item.body,
+        tag:`patap-event-${item.eventId}`,
         renotify:item.priority==='URGENT',
         requireInteraction:item.priority==='URGENT',
         silent:item.priority==='NORMAL'||item.priority==='SILENT',
         icon:'/favicon.svg',
-        data:{eventId:item.id,route:item.route||null,url:`/?event=${encodeURIComponent(item.id)}`}
+        data:{eventId:item.eventId,url:`/?event=${encodeURIComponent(item.eventId)}`}
       });
     }catch{}
   })());
@@ -47,5 +45,3 @@ self.addEventListener('notificationclick',event=>{
     await self.clients.openWindow(eventId?`/?event=${encodeURIComponent(eventId)}`:'/');
   })());
 });
-
-
