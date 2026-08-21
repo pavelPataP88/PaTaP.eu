@@ -1,6 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createRoadReportStore } = require("../../server/road-reports/repository");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
+const { createRoadReportRepository } = require("../../server/road-reports/repository");
 
 const runId = process.env.PATAP_TEST_RUN_ID;
 const baseUrl = process.env.PATAP_AUTH_BASE_URL;
@@ -72,20 +76,62 @@ async function enableLocation(client, latitude = 50.2649, longitude = 19.0238) {
   assert.equal(result.response.status, 200);
 }
 
-test("road report store expires reports and needs distinct peers to close", () => {
+test("road report repository survives database reopen, preserves votes, expires and never reuses ids", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "patap-road-reports-"));
+  const databasePath = path.join(directory, "road-reports.sqlite");
   let clock = Date.parse("2026-08-18T12:00:00.000Z");
-  const store = createRoadReportStore({ now: () => clock });
-  const report = store.create(10, { type: "OBSTACLE", lane: null, latitude: 50, longitude: 19 });
-  assert.ok(report);
-  assert.equal("authorId" in report, false);
-  assert.equal(store.confirm(20, report.id, "GONE").closed, false);
-  assert.equal(store.confirm(20, report.id, "GONE").closed, false);
-  assert.equal(store.confirm(21, report.id, "GONE").closed, true);
-  assert.equal(store.list().length, 0);
-  const expiring = store.create(10, { type: "OBSTACLE", lane: null, latitude: 50, longitude: 19 });
-  assert.ok(expiring);
-  clock += 46 * 60 * 1000;
-  assert.equal(store.list().length, 0);
+  const nowIso = () => new Date(clock).toISOString();
+  let db;
+  try {
+    db = new DatabaseSync(databasePath);
+    db.exec("PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users(id) VALUES(10),(20),(21);");
+    let reports = createRoadReportRepository(db, { nowIso });
+    const report = reports.create(10, { type: "OBSTACLE", lane: null, latitude: 50, longitude: 19 });
+    assert.ok(report);
+    assert.equal("authorId" in report, false);
+    assert.equal(reports.confirm(20, report.id, "GONE").closed, false);
+    db.close();
+    db = null;
+
+    db = new DatabaseSync(databasePath);
+    db.exec("PRAGMA foreign_keys = ON");
+    reports = createRoadReportRepository(db, { nowIso });
+    const restored = reports.list().find((item) => item.id === report.id);
+    assert.ok(restored);
+    assert.equal(restored.confirmations.gone, 1);
+    assert.equal(reports.confirm(20, report.id, "GONE").closed, false);
+    const closed = reports.confirm(21, report.id, "GONE");
+    assert.equal(closed.closed, true);
+    assert.equal(closed.report.confirmations.gone, 2);
+    assert.equal(reports.list().length, 0);
+
+    const next = reports.create(10, { type: "OBSTACLE", lane: null, latitude: 50, longitude: 19 });
+    assert.ok(next.id > report.id);
+    clock += 46 * 60 * 1000;
+    assert.equal(reports.list().length, 0);
+  } finally {
+    try { db?.close(); } catch {}
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("road report ACTIVE confirmation persists and extends TTL", () => {
+  const db = new DatabaseSync(":memory:");
+  let clock = Date.parse("2026-08-18T12:00:00.000Z");
+  const nowIso = () => new Date(clock).toISOString();
+  try {
+    db.exec("PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users(id) VALUES(10),(20);");
+    const reports = createRoadReportRepository(db, { nowIso });
+    const report = reports.create(10, { type: "OBSTACLE", lane: null, latitude: 50, longitude: 19 });
+    const firstExpiry = Date.parse(report.expiresAt);
+    clock += 30 * 60 * 1000;
+    const result = reports.confirm(20, report.id, "ACTIVE");
+    assert.equal(result.closed, false);
+    assert.equal(result.report.confirmations.active, 1);
+    assert.ok(Date.parse(result.report.expiresAt) > firstExpiry);
+  } finally {
+    db.close();
+  }
 });
 
 test("road report API keeps guest list safe and requires nearby fresh GPS for peer confirmations", async () => {
