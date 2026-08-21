@@ -29,6 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
       "--test-concurrency=1",
       "--test",
       path.join("tests", "auth", "api.test.js"),
+      path.join("tests", "auth", "session-touch.test.js"),
       path.join("tests", "auth", "chat-reactions.test.js"),
       path.join("tests", "auth", "chat-console.test.js"),
       path.join("tests", "auth", "people-communities.test.js"),
@@ -56,4 +57,3 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   }
   process.exitCode = exitCode;
 })();
-
