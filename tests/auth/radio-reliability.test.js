@@ -161,8 +161,8 @@ test("radio retention cleanup deletes only expired committed audio in bounded id
   const second = new Client();
   const firstNick = `RadioRetentionA_${runId}`;
   const secondNick = `RadioRetentionB_${runId}`;
-  await createDriver(first, "ret_a", firstNick);
-  await createDriver(second, "ret_b", secondNick);
+  await createDriver(first, "c", firstNick);
+  await createDriver(second, "d", secondNick);
 
   let result = await first.request(`/api/driver/drivers/${encodeURIComponent(secondNick)}/contact`, { method: "POST", body: {} });
   assert.equal(result.response.status, 200);
