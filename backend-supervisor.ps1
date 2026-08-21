@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendScript = Join-Path $root "server\auth\server.js"
+$runtimeCheckScript = Join-Path $root "scripts\check-node-runtime.js"
 $logsDirectory = Join-Path $root "var\logs"
 $runDirectory = Join-Path $root "var\run"
 $supervisorPidFile = Join-Path $runDirectory "patap-auth-supervisor.pid"
@@ -41,8 +42,38 @@ function Archive-Log([string]$path) {
     Remove-Item -Force
 }
 
+function Test-SupportedNodeRuntime {
+  if (-not (Test-Path -LiteralPath $runtimeCheckScript)) {
+    Write-SupervisorLog "Node runtime check script not found: $runtimeCheckScript"
+    return $false
+  }
+  try {
+    $output = @(& node.exe $runtimeCheckScript 2>&1)
+    $exitCode = $LASTEXITCODE
+    foreach ($line in $output) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$line)) {
+        Write-SupervisorLog "Runtime check: $line"
+      }
+    }
+    if ($exitCode -ne 0) {
+      Write-SupervisorLog "Unsupported Node.js runtime. Supervisor will not start a restart loop."
+      return $false
+    }
+    return $true
+  } catch {
+    Write-SupervisorLog "Node runtime check failed: $($_.Exception.Message)"
+    return $false
+  }
+}
+
+if (-not (Test-SupportedNodeRuntime)) {
+  Remove-Item -LiteralPath $supervisorPidFile -Force -ErrorAction SilentlyContinue
+  exit 1
+}
+
 if (-not (Test-Path -LiteralPath $backendScript)) {
   Write-SupervisorLog "Backend script not found: $backendScript"
+  Remove-Item -LiteralPath $supervisorPidFile -Force -ErrorAction SilentlyContinue
   exit 1
 }
 

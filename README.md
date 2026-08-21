@@ -7,6 +7,19 @@
 
 Проект работает на этом компьютере из папки `D:\WWW.PATAP.EU`. Внешний HTTPS-доступ обеспечивает Cloudflare Tunnel; открывать входящие порты на роутере не требуется.
 
+## Runtime
+
+Поддерживаемая среда проекта — **Node.js 24.x LTS**. Та же major-версия закреплена в GitHub Actions, `package.json`, `.nvmrc` и `.node-version`.
+
+Перед первой сборкой или запуском backend проверьте среду:
+
+```powershell
+node --version
+npm run runtime:check
+```
+
+`runtime:check` должен завершиться `PASS`. Backend supervisor также проверяет Node до запуска и не входит в бесконечный restart-loop при неподдерживаемой major-версии.
+
 ## Быстрый запуск
 
 Откройте PowerShell в папке проекта и выполните:
@@ -70,7 +83,7 @@ npm run build
 npm run verify
 ```
 
-`npm run verify` проверяет сборку, ограничения на публикацию файлов, PlatformOS и тесты API/клиента. Для отдельного браузерного smoke-test используется `npm run test:browser`.
+`npm run verify` проверяет поддерживаемый Node runtime, сборку, ограничения на публикацию файлов, PlatformOS и тесты API/клиента. Для отдельного браузерного smoke-test используется `npm run test:browser`.
 
 ## Структура проекта
 
