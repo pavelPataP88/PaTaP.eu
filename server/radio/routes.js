@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { createRadioRepository } = require("./repository");
 const { createRadioLiveHttp } = require("./live-http");
+const { createRadioRetentionCleaner, startRadioRetentionCleanup } = require("./retention");
 
 const AUDIO_TYPES = new Set(["audio/webm", "audio/ogg", "audio/mp4"]);
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
@@ -18,6 +19,7 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
   const storageDir = path.join(dataDir, "radio");
   const eventClients = new Set();
   const live = createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso, readBinaryBody });
+  startRadioRetentionCleanup({ cleaner: createRadioRetentionCleaner({ db, storageDir, nowIso }) });
 
   function sendRadioEvent(res, payload) {
     try {
