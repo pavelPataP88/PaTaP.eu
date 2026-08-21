@@ -1,4 +1,5 @@
 const { createPeoplePrivacy } = require("../people/privacy");
+const { LOCATION_PRECISION, discloseLocation } = require("../people/location-disclosure");
 
 const DRIVER_RADII_KM = new Set([5, 25, 50, 100]);
 
@@ -67,22 +68,30 @@ function createLocationRepository(db, { addMinutes, nowIso = () => new Date().to
                OR (b.blocker_id = l.user_id AND b.blocked_id = ?)
           )
       `).all(userId, addMinutes(-1), userId, userId);
-      return rows.filter((row) => privacy.canSeeNearby(userId, Number(row.user_id)))
-        .map((row) => ({
+
+      return rows.map((row) => {
+        const precision = privacy.nearbyPrecision(userId, Number(row.user_id));
+        if (precision === LOCATION_PRECISION.NONE) return null;
+        const actualDistanceKm = haversineKm(origin.latitude, origin.longitude, row.latitude, row.longitude);
+        if (actualDistanceKm > radius) return null;
+        const disclosed = discloseLocation({ latitude: row.latitude, longitude: row.longitude, accuracy: row.accuracy_m }, precision);
+        if (!disclosed) return null;
+        return {
           nickname: row.nickname,
           driverType: row.driver_type,
           vehicle: privacy.canSeeVehicle(userId, Number(row.user_id)) ? row.vehicle : null,
           countryCode: row.country_code,
-          latitude: row.latitude,
-          longitude: row.longitude,
-          accuracy: row.accuracy_m,
+          latitude: disclosed.latitude,
+          longitude: disclosed.longitude,
+          accuracy: disclosed.accuracy,
           updatedAt: row.updated_at,
-          distanceKm: haversineKm(origin.latitude, origin.longitude, row.latitude, row.longitude)
-        })).filter((driver) => driver.distanceKm <= radius)
+          distanceKm: haversineKm(origin.latitude, origin.longitude, disclosed.latitude, disclosed.longitude)
+        };
+      }).filter(Boolean)
         .sort((left, right) => left.distanceKm - right.distanceKm)
         .map((driver) => ({ ...driver, distanceKm: Number(driver.distanceKm.toFixed(3)) }));
     }
   };
 }
 
-module.exports = { DRIVER_RADII_KM, validLocation, createLocationRepository };
+module.exports = { DRIVER_RADII_KM, validLocation, haversineKm, createLocationRepository };
