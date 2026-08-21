@@ -84,7 +84,6 @@ function createLocationRepository(db, { addMinutes, nowIso = () => new Date().to
           latitude: disclosed.latitude,
           longitude: disclosed.longitude,
           accuracy: disclosed.accuracy,
-          locationPrecision: disclosed.locationPrecision,
           updatedAt: row.updated_at,
           distanceKm: haversineKm(origin.latitude, origin.longitude, disclosed.latitude, disclosed.longitude)
         };
