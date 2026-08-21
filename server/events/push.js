@@ -14,9 +14,10 @@ function allowedPushHost(hostname,extraHosts=[]){const host=String(hostname||"")
 function validatePushEndpoint(endpoint,{extraHosts=configuredHosts()}={}){
   try{const url=new URL(endpoint);if(url.protocol!=="https:"||url.username||url.password||(url.port&&url.port!=="443"))return false;return allowedPushHost(url.hostname,extraHosts);}catch{return false;}
 }
+function subscriptionKeys(input){return {p256dh:input?.keys?.p256dh||input?.p256dh||"",auth:input?.keys?.auth||input?.auth||""};}
 function decodeBase64Url(value){try{return Buffer.from(String(value||""),"base64url");}catch{return null;}}
 function validatePushSubscription(input){
-  const p256dh=decodeBase64Url(input?.keys?.p256dh),auth=decodeBase64Url(input?.keys?.auth);
+  const keys=subscriptionKeys(input),p256dh=decodeBase64Url(keys.p256dh),auth=decodeBase64Url(keys.auth);
   return Boolean(p256dh&&p256dh.length===65&&p256dh[0]===4&&auth&&auth.length===16);
 }
 function cleanText(value,max){return String(value??"").normalize("NFKC").replace(/\s+/g," ").trim().slice(0,max);}
@@ -59,8 +60,8 @@ function createPushSender({dataDir,repo,subject="mailto:admin@patap.eu",sendNoti
     if(!validateEndpoint(subscription?.endpoint))return {ok:false,revoke:true,status:0,error:"unsupported_push_endpoint"};
     if(!validatePushSubscription(subscription))return {ok:false,revoke:true,status:0,error:"invalid_push_subscription"};
     keys ||= ensureVapidKeys(dataDir);
-    const priority=normalizePriority(event?.priority),payload=eventPushPayload(event,{showPreviews});
-    const pushSubscription={endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh||subscription.keys?.p256dh,auth:subscription.auth||subscription.keys?.auth}};
+    const priority=normalizePriority(event?.priority),payload=eventPushPayload(event,{showPreviews}),storedKeys=subscriptionKeys(subscription);
+    const pushSubscription={endpoint:subscription.endpoint,keys:{p256dh:storedKeys.p256dh,auth:storedKeys.auth}};
     const options={vapidDetails:vapidDetails(keys,subject),TTL:ttlFor(priority),urgency:urgencyFor(priority),contentEncoding:"aes128gcm",topic:`evt-${Number(event.id)}`.slice(0,32),timeout:10000};
     try{
       const response=await sendNotificationImpl(pushSubscription,payload,options);const status=Number(response?.statusCode||201);
