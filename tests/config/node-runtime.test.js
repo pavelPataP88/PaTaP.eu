@@ -39,11 +39,13 @@ test("repository metadata, CI and verification agree on Node 24", () => {
   assert.deepEqual([...new Set(nodePins)], [24]);
 });
 
-test("Windows supervisor fails once instead of restart-looping on a wrong Node major", () => {
-  assert.match(supervisor, /\$supportedNodeMajor\s*=\s*24/);
+test("Windows supervisor uses the same runtime check and fails once instead of restart-looping", () => {
+  assert.match(supervisor, /scripts\\check-node-runtime\.js/);
   assert.match(supervisor, /Test-SupportedNodeRuntime/);
+  assert.match(supervisor, /& node\.exe \$runtimeCheckScript/);
   assert.match(supervisor, /Supervisor will not start a restart loop/);
   assert.match(supervisor, /if \(-not \(Test-SupportedNodeRuntime\)\)[\s\S]*exit 1/);
+  assert.doesNotMatch(supervisor, /\$supportedNodeMajor\s*=/);
 });
 
 test("the runtime executing this mandatory suite is Node 24", () => {
