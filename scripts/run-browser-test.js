@@ -4,6 +4,8 @@ const http = require("http");
 const assert = require("node:assert/strict");
 const { createIsolatedAuth, getFreePort } = require("../tests/helpers/isolated-auth");
 
+const localOnly = process.argv.includes("--local-only");
+
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -126,8 +128,12 @@ async function fillLogin(page, identifier, password) {
       if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
     });
 
-    const publicResponse = await page.goto("https://patap.eu", { waitUntil: "domcontentloaded", timeout: 30000 });
-    assert.ok(publicResponse && publicResponse.ok(), "Public page did not open successfully");
+    if (!localOnly) {
+      const publicResponse = await page.goto("https://patap.eu", { waitUntil: "domcontentloaded", timeout: 30000 });
+      assert.ok(publicResponse && publicResponse.ok(), "Public page did not open successfully");
+    } else {
+      console.log("Public patap.eu smoke skipped; running deterministic local browser scenarios only.");
+    }
 
     const localUrl = `http://127.0.0.1:${webPort}`;
     await page.goto(localUrl, { waitUntil: "networkidle" });
