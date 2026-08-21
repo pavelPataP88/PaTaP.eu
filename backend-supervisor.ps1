@@ -10,6 +10,7 @@ $supervisorLog = Join-Path $logsDirectory "patap-auth-supervisor.log"
 $stdoutLog = Join-Path $logsDirectory "patap-auth-backend.log"
 $stderrLog = Join-Path $logsDirectory "patap-auth-backend.err.log"
 $maximumArchivedLogs = 20
+$supportedNodeMajor = 24
 
 New-Item -ItemType Directory -Path $logsDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
@@ -41,8 +42,39 @@ function Archive-Log([string]$path) {
     Remove-Item -Force
 }
 
+function Test-SupportedNodeRuntime {
+  try {
+    $rawVersion = (& node.exe -p "process.versions.node" 2>$null | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($rawVersion)) {
+      Write-SupervisorLog "Node runtime check failed: node.exe returned no version."
+      return $false
+    }
+    $version = $rawVersion.Trim()
+    if ($version -notmatch '^(\d+)\.') {
+      Write-SupervisorLog "Node runtime check failed: cannot parse version '$version'."
+      return $false
+    }
+    $major = [int]$Matches[1]
+    if ($major -ne $supportedNodeMajor) {
+      Write-SupervisorLog "Unsupported Node.js runtime $version. PaTaP requires Node.js $supportedNodeMajor.x LTS. Supervisor will not start a restart loop."
+      return $false
+    }
+    Write-SupervisorLog "Node runtime check passed: $version."
+    return $true
+  } catch {
+    Write-SupervisorLog "Node runtime check failed: $($_.Exception.Message)"
+    return $false
+  }
+}
+
+if (-not (Test-SupportedNodeRuntime)) {
+  Remove-Item -LiteralPath $supervisorPidFile -Force -ErrorAction SilentlyContinue
+  exit 1
+}
+
 if (-not (Test-Path -LiteralPath $backendScript)) {
   Write-SupervisorLog "Backend script not found: $backendScript"
+  Remove-Item -LiteralPath $supervisorPidFile -Force -ErrorAction SilentlyContinue
   exit 1
 }
 
