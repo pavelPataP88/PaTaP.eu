@@ -46,6 +46,7 @@ function createEventRoutes({events,push,json,requireSession,requireCsrf,checkRat
     if(req.method==="POST"&&url.pathname==="/api/driver/events/push-subscriptions"){
       const session=mutation(req,res,"push-subscribe",20,10);if(!session)return true;
       if(!push.validateEndpoint(body?.endpoint))return respond(res,400,{error:"unsupported_push_endpoint"});
+      if(!push.validateSubscription(body))return respond(res,400,{error:"invalid_push_subscription"});
       return result(res,events.repo.upsertPushSubscription(session.user.id,body,req.headers["user-agent"]||"",nowIso()),201);
     }
     if(req.method==="DELETE"&&url.pathname==="/api/driver/events/push-subscriptions"){
@@ -56,5 +57,3 @@ function createEventRoutes({events,push,json,requireSession,requireCsrf,checkRat
 }
 
 module.exports={createEventRoutes};
-
-
