@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-
 const DEFAULT_TARGETS = ["https://patap.eu", "https://driver.patap.eu"];
 const targets = String(process.env.PATAP_PUBLIC_SMOKE_URLS || "")
   .split(/[;,\s]+/)
@@ -20,19 +18,23 @@ async function check(url) {
       headers: { "User-Agent": "PaTaP-Public-Smoke/1" },
       signal: controller.signal
     });
-    assert.ok(response.status >= 200 && response.status < 400, `${url} returned HTTP ${response.status}`);
-    console.log(`PUBLIC_SMOKE PASS ${url} -> ${response.status} ${response.url}`);
+    if (response.status < 200 || response.status >= 400) throw new Error(`${url} returned HTTP ${response.status}`);
+    return { ok: true, url, detail: `${response.status} ${response.url}` };
+  } catch (error) {
+    return { ok: false, url, detail: error?.name === "AbortError" ? `timeout after ${timeoutMs}ms` : String(error?.message || error) };
   } finally {
     clearTimeout(timeout);
   }
 }
 
 (async () => {
-  try {
-    for (const url of urls) await check(url);
-    console.log(`PUBLIC_SMOKE PASS ${urls.length}/${urls.length}`);
-  } catch (error) {
-    console.error(`PUBLIC_SMOKE FAIL ${error?.message || error}`);
-    process.exitCode = 1;
+  const results = [];
+  for (const url of urls) results.push(await check(url));
+  for (const result of results) {
+    const stream = result.ok ? console.log : console.error;
+    stream(`PUBLIC_SMOKE ${result.ok ? "PASS" : "FAIL"} ${result.url} -> ${result.detail}`);
   }
+  const passed = results.filter((result) => result.ok).length;
+  console.log(`PUBLIC_SMOKE SUMMARY ${passed}/${results.length} passed`);
+  if (passed !== results.length) process.exitCode = 1;
 })();
