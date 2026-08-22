@@ -82,6 +82,43 @@ function testCurrentProject() {
   assert.strictEqual(disabledOpen.ok, false);
 }
 
+function testPlatformOsScopeFreeze() {
+  const registryPath = path.join(root, "system", "registry.json");
+  const transportManifestPath = path.join(root, "modules", "transport", "manifest.json");
+  const transportReadmePath = path.join(root, "modules", "transport", "README.md");
+  const scopeDocPath = path.join(root, "docs", "PLATFORMOS_SCOPE_FREEZE_V1.md");
+
+  const projectRegistry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+  const transport = projectRegistry.modules.find((item) => item.id === "transport");
+  const manifest = JSON.parse(fs.readFileSync(transportManifestPath, "utf8"));
+  const transportReadme = fs.readFileSync(transportReadmePath, "utf8");
+  const scopeDoc = fs.readFileSync(scopeDocPath, "utf8");
+
+  assert.strictEqual(projectRegistry.activeRuntime, "legacy-root-site");
+  assert.ok(transport, "PlatformOS registry must keep the transport architecture entry");
+  assert.strictEqual(transport.status, "architecture-only");
+  assert.strictEqual(transport.enabled, false);
+  assert.strictEqual(transport.path, "modules/transport");
+  assert.match(transport.description, /not the Driver runtime/i);
+
+  assert.strictEqual(manifest.id, "transport");
+  assert.strictEqual(manifest.status, "architecture-only");
+  assert.match(manifest.description, /not the current Driver runtime/i);
+  assert.match(manifest.description, /per-domain strangler/i);
+
+  assert.match(transportReadme, /PLATFORMOS_TRANSPORT_ARCHITECTURE_ONLY/);
+  assert.match(transportReadme, /not the runtime implementation of Driver Patap/i);
+  assert.match(transportReadme, /`driver\/`/);
+  assert.match(transportReadme, /`server\/`/);
+  assert.match(transportReadme, /Do \*\*not\*\* copy or reimplement current Map/i);
+  assert.match(transportReadme, /EXPLICIT_PER_DOMAIN_STRANGLER_ONLY/);
+
+  assert.match(scopeDoc, /activeRuntime = legacy-root-site/);
+  assert.match(scopeDoc, /modules\/transport\.enabled = false/);
+  assert.match(scopeDoc, /Do not duplicate active Driver fixes or features into `modules\/transport`/);
+  assert.match(scopeDoc, /EXPLICIT_PER_DOMAIN_STRANGLER_ONLY/);
+}
+
 function testMissingModuleContinues() {
   resetFixture();
   createModule("good");
@@ -147,6 +184,7 @@ function testDisabledModuleHandling() {
 }
 
 testCurrentProject();
+testPlatformOsScopeFreeze();
 testMissingModuleContinues();
 testBrokenManifestContinues();
 testDuplicateRegistryStopsCleanly();
