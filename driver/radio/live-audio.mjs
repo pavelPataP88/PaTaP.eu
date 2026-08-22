@@ -1,3 +1,5 @@
+import { createRadioCaptureGraph } from "./capture-graph.mjs?v=20260822-aud024-1";
+
 const TARGET_SAMPLE_RATE = 16_000;
 const LIVE_CHUNK_SAMPLES = 4_000; // ~250 ms at 16 kHz.
 const LIVE_UPLOAD_TIMEOUT_MS = 4_000;
@@ -105,7 +107,7 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
         await context.close().catch(() => {});
         return false;
       }
-      if (context.state !== "running" || typeof context.createScriptProcessor !== "function") {
+      if (context.state !== "running") {
         await context.close().catch(() => {});
         return false;
       }
@@ -113,14 +115,6 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
       await context?.close?.().catch(() => {});
       return false;
     }
-
-    const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(2048, 1, 1);
-    const silentGain = context.createGain();
-    silentGain.gain.value = 0;
-    source.connect(processor);
-    processor.connect(silentGain);
-    silentGain.connect(context.destination);
 
     const downsampler = createPcmDownsampler(context.sampleRate, TARGET_SAMPLE_RATE);
     let samples = [];
@@ -177,25 +171,38 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
       }
     }
 
+    function acceptInput(input) {
+      if (captureStopped || cancelled || transportFailed || !input?.length) return;
+      const converted = downsampler.push(input);
+      for (const value of converted) samples.push(value);
+      drainFullChunks();
+    }
+
+    let captureGraph;
+    try {
+      captureGraph = await createRadioCaptureGraph({ context, stream, onSamples: acceptInput });
+    } catch {
+      captureGraph = null;
+    }
+    if (!captureGraph || generation !== broadcastGeneration) {
+      captureGraph?.stop?.();
+      await context.close().catch(() => {});
+      return false;
+    }
+
     const gateTimer = setTimeout(() => {
       if (!captureStopped) releaseGate();
     }, LIVE_GATE_MS);
 
-    processor.onaudioprocess = (event) => {
-      if (captureStopped || cancelled || transportFailed) return;
-      const input = event.inputBuffer?.getChannelData?.(0);
-      if (!input?.length) return;
-      const converted = downsampler.push(input);
-      for (const value of converted) samples.push(value);
-      drainFullChunks();
-    };
-
     broadcaster = {
-      context, source, processor, silentGain,
+      context,
+      captureGraph,
+      captureMode: captureGraph.mode,
       async stop({ flush = true } = {}) {
         if (captureStopped) return;
         clearTimeout(gateTimer);
-        processor.onaudioprocess = null;
+        captureStopped = true;
+        captureGraph.stop();
         if (flush && !transportFailed) {
           releaseGate();
           if (samples.length) queueNetworkChunk(Int16Array.from(samples));
@@ -204,10 +211,6 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
           pendingChunks = [];
         }
         samples = [];
-        captureStopped = true;
-        try { source.disconnect(); } catch {}
-        try { processor.disconnect(); } catch {}
-        try { silentGain.disconnect(); } catch {}
         await context.close().catch(() => {});
         await Promise.race([
           sendChain.catch(() => {}),
@@ -301,7 +304,8 @@ export function createRadioLiveAudio({ uploadBinary, canListenToChannel = () => 
     handleIncoming,
     hasHeard,
     closeListening,
-    isListeningUnlocked() { return listenContext?.state === "running"; }
+    isListeningUnlocked() { return listenContext?.state === "running"; },
+    captureMode() { return broadcaster?.captureMode || null; }
   };
 }
 
