@@ -936,3 +936,38 @@ SOURCE: codex/local-workspace-snapshot @ c978aa8f790893e719b838f4965c86db5b2b210
 ## COMPLETED THREADS
 
 Пока нет.
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUDIT_INTEGRATION_V1
+TASK_ID: RELEASE-PR19-20260822-001
+STATUS: BLOCKED — REQUIRED DRIVER E2E FAILURE, NOT DEPLOYED
+
+Exact candidate checked:
+- PR #19 / branch chatgpt/audit-integration-v1.
+- Exact SHA: fd11a193a18d6485a4ade2ab2cb93a083b646041.
+- Isolated checkout only: D:\\WWW.PATAP.EU\\.release-fd11-candidate.
+- Production workspace inspection: D:\\WWW.PATAP.EU has a .git directory without a usable HEAD, so branch/commit/status cannot be truthfully reported. No files in it were changed.
+- Windows Node runtime: v24.16.0; candidate policy is >=24 <25 — PASS.
+
+What passed:
+- npm ci — PASS after a Windows access retry; 45 packages audited, 0 vulnerabilities.
+- npm run runtime:check — PASS (Node v24.16.0).
+- npm run verify — PASS internally: auth 47/47; radio-live 1/1; Driver 14 files / 74/74; client 2/2; config 30/30.
+
+Blocking exact command and failure:
+- Command: npm.cmd run verify:release.
+- Failing required stage: npm run test:driver-e2e.
+- File: scripts/run-driver-e2e.js:216-220, function enableGps().
+- Exact cause: locator('[data-map-experience="layers"]') resolves to two visible elements, so Playwright strict mode refuses to choose one. The failure occurs at line 219 while waiting for the GPS-layer control.
+- Consequently the required two-user E2E is not PASS and the final local browser stage in verify:release was not reached. This is a release gate failure, even though the smaller browser suite was not allowed to be treated as a substitute.
+
+Not done due to the gate:
+- npm run production:preflight was not run.
+- No SQLite or VAPID handling, no verified backup, no DR export/restore drill, no maintenance, no process control, no candidate copy to production, no backend/Caddy/cloudflared restart, no public check, no Driver live smoke, and no snapshot update.
+- main, Navigation, secrets, runtime/private data and the live site remain unchanged.
+
+Required minimal fix from ChatGPT:
+1. Fix the duplicate/ambiguous Map layers control in the exact Driver E2E flow, or make the test identify the intended unique, visible control without masking a genuine duplicate UI regression.
+2. Preserve the two-user GPS scenario and strict-mode safety; do not use .first() or broadly weaken locator assertions unless the DOM itself is proven to intentionally contain an inaccessible duplicate and the test verifies that fact.
+3. Provide a new exact candidate SHA based on the current release candidate. Codex will rerun the entire release protocol from npm ci through preflight.
+
+---
