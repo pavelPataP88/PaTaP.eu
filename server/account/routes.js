@@ -1,4 +1,5 @@
-const { DATA_DIR, verifyPassword } = require("../auth/db");
+const { DATA_DIR } = require("../auth/db");
+const { verifyPassword } = require("../auth/password");
 const { ensureAccountSchema } = require("./schema");
 const { exportAccountData, deleteAccountData } = require("./lifecycle");
 const { reconcileDeletionQuarantine } = require("./quarantine-recovery");
@@ -63,7 +64,10 @@ function createAccountRoutes(options) {
         return true;
       }
       const user = options.db.prepare("SELECT password_hash FROM users WHERE id=?").get(session.user.id);
-      if (!user || !verifyPassword(String(body?.password || ""), user.password_hash)) {
+      const passwordHash = user?.password_hash || null;
+      const passwordValid = passwordHash ? await verifyPassword(String(body?.password || ""), passwordHash) : false;
+      const currentUser = options.db.prepare("SELECT password_hash FROM users WHERE id=?").get(session.user.id);
+      if (!passwordValid || !currentUser || currentUser.password_hash !== passwordHash) {
         options.audit(req, "account_delete_denied", { userId: session.user.id, success: false, details: { reason: "password" } });
         options.json(res, 403, { error: "invalid_credentials" });
         return true;
