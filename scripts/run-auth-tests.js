@@ -24,7 +24,14 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 (async () => {
   let exitCode = 1;
   try {
-    environment = await createIsolatedAuth();
+    const previousRecheck = process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS;
+    process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS = previousRecheck || "250";
+    try {
+      environment = await createIsolatedAuth();
+    } finally {
+      if (previousRecheck === undefined) delete process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS;
+      else process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS = previousRecheck;
+    }
     testProcess = spawn(process.execPath, [
       "--test-concurrency=1",
       "--test",
@@ -43,6 +50,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
       path.join("tests", "auth", "parking-network.test.js"),
       path.join("tests", "auth", "event-outbox-deadletter.test.js"),
       path.join("tests", "auth", "event-center.test.js"),
+      path.join("tests", "auth", "event-stream-session.test.js"),
       path.join("tests", "auth", "radio-reliability.test.js"),
       path.join("tests", "auth", "radio-console.test.js"),
       path.join("tests", "auth", "radio-moderation.test.js"),
