@@ -20,6 +20,16 @@ test("candidate branches and pull requests receive a deterministic release gate"
   assert.doesNotMatch(workflow, /\b(deploy|scp|rsync|cloudflared tunnel run|Start-Process|restart-service)\b/i);
 });
 
+test("CI action runtimes stay on the reviewed v7 majors", () => {
+  const checkoutUses = [...workflow.matchAll(/actions\/checkout@(v\d+)/g)].map((match) => match[1]);
+  const setupNodeUses = [...workflow.matchAll(/actions\/setup-node@(v\d+)/g)].map((match) => match[1]);
+  assert.ok(checkoutUses.length >= 2);
+  assert.ok(setupNodeUses.length >= 2);
+  assert.deepEqual([...new Set(checkoutUses)], ["v7"]);
+  assert.deepEqual([...new Set(setupNodeUses)], ["v7"]);
+  assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-6]\b/);
+});
+
 test("release verification runs isolated browser scenarios without depending on public internet", () => {
   assert.equal(pkg.scripts["test:browser:local"], "node scripts/run-browser-test.js --local-only");
   assert.equal(pkg.scripts["verify:release"], "npm run verify && npm run test:browser:local");
