@@ -35,7 +35,9 @@ test("Event schema is additive durable outbox projection for committed domain st
   for(const table of ["driver_events","driver_event_preferences","driver_event_category_preferences","driver_event_source_overrides","driver_event_outbox","driver_push_subscriptions"])assert.match(schema,new RegExp(table));
   for(const trigger of ["trg_event_chat_message_insert","trg_event_relationship_update","trg_event_community_invite_insert","trg_event_radio_committed","trg_event_parking_occupancy_insert"])assert.match(schema,new RegExp(trigger));
   assert.match(schema,/AFTER UPDATE OF state ON radio_transmissions WHEN NEW\.state='COMMITTED'/);
-  assert.doesNotMatch(schema,/DROP TABLE|ALTER TABLE/);
+  assert.doesNotMatch(schema,/DROP\s+(?:TABLE|INDEX|TRIGGER)|ALTER\s+TABLE[^\n;]*(?:DROP|RENAME)/i);
+  const alters=[...schema.matchAll(/ALTER\s+TABLE\s+driver_event_outbox\s+ADD\s+COLUMN\s+([a-z_]+)/gi)].map(match=>match[1].toLowerCase()).sort();
+  assert.deepEqual(alters,["failed_at","status"]);
   assert.match(service,/source_important_only/);assert.match(service,/driving_mode|roadReport/);
   assert.match(service,/require\("\.\.\/road-reports\/repository"\)/);assert.doesNotMatch(service,/require\("\.\.\/driver\/location"\)/);
 });
