@@ -3,7 +3,11 @@ const { createRoadReportRepository } = require("./repository");
 const ADMIN_ROLES = new Set(["Owner", "Administrator"]);
 
 function createRoadReportGuardRoutes(options) {
-  const reports = options.roadReports || createRoadReportRepository(options.db, { nowIso: options.nowIso });
+  let reports = options.roadReports || null;
+  const repository = () => {
+    if (!reports) reports = createRoadReportRepository(options.db, { nowIso: options.nowIso });
+    return reports;
+  };
 
   return async function handleRoadReportGuardRoute(req, res, url) {
     if (url.pathname === "/api/driver/admin/road-reports") {
@@ -18,14 +22,14 @@ function createRoadReportGuardRoutes(options) {
         options.json(res, 405, { error: "method_not_allowed" }, { Allow: "GET" });
         return true;
       }
-      options.json(res, 200, { roadReports: reports.adminStats() });
+      options.json(res, 200, { roadReports: repository().adminStats() });
       return true;
     }
 
     if (req.method !== "POST" || url.pathname !== "/api/driver/road-reports") return false;
     const session = options.requireSession(req, res);
     if (!session) return true;
-    const guard = reports.creationGuard(session.user.id);
+    const guard = repository().creationGuard(session.user.id);
     if (guard.allowed) return false;
 
     options.audit(req, "road_report_creation_restricted", {
