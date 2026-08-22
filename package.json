@@ -20,7 +20,7 @@
     "test:radio-live": "node scripts/run-radio-live-test.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
     "test:driver-modules": "node scripts/run-driver-tests.js",
-    "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js tests/config/production-preflight.test.js tests/config/supervisor-release-guard.test.js",
+    "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js tests/config/production-preflight.test.js tests/config/supervisor-release-guard.test.js tests/config/stack-process-detection.test.js",
     "test:browser": "node scripts/run-browser-test.js",
     "test:browser:local": "node scripts/run-browser-test.js --local-only",
     "test:public-smoke": "node scripts/run-public-smoke.js",
