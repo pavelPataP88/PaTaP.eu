@@ -180,6 +180,19 @@ function collectPageErrors(page, label, target) {
   });
 }
 
+async function quiescePagesForBackendRestart(pages) {
+  await Promise.all(pages.map((page) => page.goto("about:blank", { waitUntil: "load" })));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+async function restorePagesAfterBackendRestart(pages, localUrl) {
+  await Promise.all(pages.map(async (page) => {
+    await page.goto(localUrl, { waitUntil: "domcontentloaded" });
+    await page.locator("#profile-view").waitFor({ state: "visible" });
+    await page.locator('[data-driver-target="map"]').waitFor({ state: "visible" });
+  }));
+}
+
 async function registerDriver(page, localUrl, { username, email, password, nickname, driverType }) {
   await page.goto(localUrl, { waitUntil: "networkidle" });
   await page.locator("#guest-view").waitFor({ state: "visible" });
@@ -407,9 +420,17 @@ const timeout = setTimeout(() => {
     await pageB.locator("#login-view").waitFor({ state: "visible" });
     await loginDriver(pageB, b.username, b.password);
 
+    // This restart is deliberate maintenance inside the persistence test. Quiesce
+    // both real browser clients before stopping the backend so the test does not
+    // manufacture 502s by polling a process it intentionally shut down. The strict
+    // HTTP-5xx collector remains active before and after this maintenance window.
+    await quiescePagesForBackendRestart([pageA, pageB]);
     await stopChild(auth.child);
+    // Simulate a slower Windows restart so this lifecycle remains covered on Linux CI.
+    await new Promise((resolve) => setTimeout(resolve, 3500));
     replacementAuth = spawnAuth(auth.root, auth.env);
     await waitForHealth(auth.baseUrl, replacementAuth);
+    await restorePagesAfterBackendRestart([pageA, pageB], localUrl);
 
     result = await waitUntil("Road Report after backend restart", async () => {
       const listed = await browserApi(pageA, "/api/driver/road-reports");
