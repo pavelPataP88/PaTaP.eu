@@ -1,4 +1,35 @@
 [2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-021 AUTH_ASYNC_SCRYPT_V1
+TASK_ID: RELEASE-AUD021-20260822-001
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR #30 / branch `chatgpt/aud-021-auth-async-scrypt-v1`.
+- Source SHA: `8b3e39b9cacde87fbd6bcee5cf91df3e2d1a6ee8`.
+- Base confirmed: `codex/local-workspace-snapshot @ a75b19210f935610c259d88f54ed1525d62f3201`.
+
+Factual verification — PASS:
+- Windows Node v24.16.0; `npm ci`; `runtime:check`; `npm audit` 0 vulnerabilities.
+- `npm run verify:release` in an isolated exact checkout — PASS: auth 51/51 (including legacy password-hash compatibility and async KDF), Radio 1/1, Driver 74/74, client 2/2, config 37/37, two-user Driver E2E and isolated browser scenarios.
+- `npm run production:preflight` against the running production backend/database — PRODUCTION_PREFLIGHT READY.
+- Fresh encrypted off-host DR export and restore drill — PASS. No key material was printed or committed.
+
+Deployment — PASS:
+- Recoverable source backup created before maintenance.
+- Maintenance stopped only the matching PaTaP backend and supervisor.
+- Candidate source was copied non-destructively. SQLite, data, media, secrets, logs and runtime state were preserved; copy hash check passed.
+- Root `npm ci` and `npm run build` passed. Standard resume restored backend health.
+- `status-patap-stack.ps1` — HEALTHY. `npm run test:public-smoke` — PASS: patap.eu and driver.patap.eu both HTTP 200.
+
+Manual boundary:
+- No real user account, GPS, chat/radio content or account deletion was used by Codex after deployment. These are not claimed as a fresh manual field test.
+
+Safety:
+- Password minimum remains 6 characters; scrypt cost and legacy format remain compatible; auth schema remains 12.
+- main and Navigation were not changed. Navigation remains BLOCKED_PROVIDER.
+
+---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
 BLOCK: NEW_CHAT_ONBOARDING
 STATUS: CURRENT_CONTEXT_PUBLISHED
 

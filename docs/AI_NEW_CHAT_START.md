@@ -6,18 +6,20 @@
 
 - Рабочий сайт запущен на ноутбуке владельца. GitHub — безопасное инженерное зеркало, а не production-сервер.
 - Единственная актуальная ветка исходного кода: `codex/local-workspace-snapshot`.
-- Текущий snapshot: `9745b5145bce247d3cce6b3f9a67fbd983a0011c`.
+- Текущий snapshot — последний commit ветки `codex/local-workspace-snapshot`; не использовать старый SHA из переписки.
 - Этот snapshot создан Codex из реально работающей папки сайта после установки последнего релиза.
 - `main` не изменять. Новые ветки создавать только от текущего `codex/local-workspace-snapshot`.
 
 ## Что реально установлено
 
-Последний установленный блок: `COMMERCIAL_HARDENING_V1`.
+Последние установленные блоки: `COMMERCIAL_HARDENING_V1` и `AUD-021 AUTH_ASYNC_SCRYPT_V1`.
 
 - PR #28 / `chatgpt/commercial-hardening-v1-work` / код `0dbfb137758a0d2c8dc62866079002740e50a4e1`.
 - Добавлены безопасный экспорт данных пользователя и защищённое удаление аккаунта, обязательная проверка зависимостей, штатный Windows-автозапуск и постоянный health-watch.
 - Проверка на ноутбуке прошла: Node 24, `npm ci`, `runtime:check`, `verify:release`, production preflight, шифрованная внешняя резервная копия с restore drill, build и public smoke.
 - `https://patap.eu` и `https://driver.patap.eu` фактически открылись с HTTP 200 после установки.
+
+`AUD-021` переводит обработку паролей на асинхронный scrypt в HTTP-пути входа, регистрации, сброса и удаления аккаунта. Формат прежних password hashes, параметры scrypt, auth schema 12 и минимальный пароль 6 символов сохранены. Полный Windows release suite, preflight, DR restore drill и public smoke прошли.
 
 До этого уже были установлены и отражены в текущем snapshot: карта и Road Reports, Chat Console V2, Radio Console V2, People & Communities, Parking Network и Event Center. Их подробная история находится в `AI_HANDOFF.md` и тематических документах в `docs/`.
 
