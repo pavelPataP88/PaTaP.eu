@@ -29,6 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
       "--test-concurrency=1",
       "--test",
       path.join("tests", "auth", "migration-atomicity.test.js"),
+      path.join("tests", "auth", "password-async.test.js"),
       path.join("tests", "auth", "api.test.js"),
       path.join("tests", "auth", "account-lifecycle.test.js"),
       path.join("tests", "auth", "account-quarantine-recovery.test.js"),
