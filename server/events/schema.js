@@ -1,4 +1,23 @@
-const EVENT_SCHEMA_VERSION = 1;
+const EVENT_SCHEMA_VERSION = 2;
+
+function tableColumns(db, table) {
+  return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name));
+}
+
+function ensureOutboxLifecycleColumns(db) {
+  const columns = tableColumns(db, "driver_event_outbox");
+  if (!columns.has("status")) {
+    db.exec("ALTER TABLE driver_event_outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','PROCESSED','FAILED'))");
+  }
+  if (!columns.has("failed_at")) {
+    db.exec("ALTER TABLE driver_event_outbox ADD COLUMN failed_at TEXT");
+  }
+  db.prepare(`
+    UPDATE driver_event_outbox
+    SET status = CASE WHEN processed_at IS NULL THEN 'PENDING' ELSE 'PROCESSED' END
+    WHERE status IS NULL OR status NOT IN ('PENDING','PROCESSED','FAILED')
+  `).run();
+}
 
 function ensureEventSchema(db, now = new Date().toISOString()) {
   db.exec(`
@@ -77,9 +96,16 @@ function ensureEventSchema(db, now = new Date().toISOString()) {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       processed_at TEXT,
       attempts INTEGER NOT NULL DEFAULT 0,
-      last_error TEXT
+      last_error TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','PROCESSED','FAILED')),
+      failed_at TEXT
     );
+  `);
+  ensureOutboxLifecycleColumns(db);
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_driver_event_outbox_pending ON driver_event_outbox(processed_at,id);
+    CREATE INDEX IF NOT EXISTS idx_driver_event_outbox_status ON driver_event_outbox(status,id);
+    CREATE INDEX IF NOT EXISTS idx_driver_event_outbox_failed ON driver_event_outbox(status,failed_at,id);
 
     CREATE TABLE IF NOT EXISTS driver_push_subscriptions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,6 +170,4 @@ function ensureEventSchema(db, now = new Date().toISOString()) {
   else if (Number(current.version) < EVENT_SCHEMA_VERSION) db.prepare("UPDATE driver_event_schema_meta SET version=?,updated_at=? WHERE singleton=1").run(EVENT_SCHEMA_VERSION, now);
 }
 
-module.exports = { EVENT_SCHEMA_VERSION, ensureEventSchema };
-
-
+module.exports = { EVENT_SCHEMA_VERSION, ensureEventSchema, ensureOutboxLifecycleColumns };
