@@ -4,6 +4,13 @@ import { createDriverModule as createBaseMapModule } from "./index.js?v=20260819
 const PROVIDER_URL = "/map-provider.json?v=20260822-aud023-1";
 const configElement = document.querySelector("#driver-map-config");
 
+function providerNote(text) {
+  const note = document.querySelector(".map-attribution");
+  if (!note) return null;
+  note.replaceChildren(document.createTextNode(text));
+  return note;
+}
+
 function readBaseConfig() {
   if (!configElement) throw new Error("driver_map_config_missing");
   const parsed = JSON.parse(configElement.textContent || "{}");
@@ -14,25 +21,20 @@ function readBaseConfig() {
   delete parsed.tileSize;
   delete parsed.mapProvider;
   configElement.textContent = JSON.stringify(parsed);
+  providerNote("Источник фоновой карты загружается…");
   return parsed;
 }
 
 function updateProviderNote(provider) {
-  const note = document.querySelector(".map-attribution");
-  if (!note) return;
-  note.replaceChildren();
-  const label = document.createElement("span");
-  label.textContent = `Источник карты: ${provider.id}. Атрибуция указана на карте.`;
-  note.append(label);
-  if (provider.reportIssueUrl) {
-    note.append(document.createTextNode(" "));
-    const link = document.createElement("a");
-    link.href = provider.reportIssueUrl;
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    link.textContent = "Сообщить об ошибке карты";
-    note.append(link);
-  }
+  const note = providerNote(`Источник карты: ${provider.id}. Атрибуция указана на карте.`);
+  if (!note || !provider.reportIssueUrl) return;
+  note.append(document.createTextNode(" "));
+  const link = document.createElement("a");
+  link.href = provider.reportIssueUrl;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "Сообщить об ошибке карты";
+  note.append(link);
 }
 
 async function loadAndApplyProvider() {
@@ -49,7 +51,10 @@ async function loadAndApplyProvider() {
   return provider;
 }
 
-const providerReady = loadAndApplyProvider();
+const providerReady = loadAndApplyProvider().catch((error) => {
+  providerNote("Фоновая карта временно недоступна. Остальные разделы Driver продолжают работать.");
+  throw error;
+});
 
 export async function createDriverModule(context) {
   await providerReady;
