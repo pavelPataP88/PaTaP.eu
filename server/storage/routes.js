@@ -1,10 +1,13 @@
 const { DATA_DIR } = require("../auth/db");
 const { createMediaQuota } = require("./quota");
+const { createRoadReportGuardRoutes } = require("../road-reports/guard-routes");
 
 function createStorageRoutes(options) {
   const quota = options.mediaQuota || createMediaQuota({ db: options.db, dataDir: options.dataDir || DATA_DIR });
+  const handleRoadReportGuardRoute = createRoadReportGuardRoutes(options);
 
   return async function handleStorageRoute(req, res, url) {
+    if (await handleRoadReportGuardRoute(req, res, url)) return true;
     if (url.pathname !== "/api/driver/admin/storage") return false;
     const session = options.requireSession(req, res);
     if (!session) return true;
