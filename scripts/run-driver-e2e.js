@@ -239,6 +239,14 @@ async function searchAndOpen(page, nickname) {
   assert.equal((await page.locator("#driver-card-name").textContent())?.trim(), nickname);
 }
 
+async function closeDriverCard(page) {
+  const card = page.locator("#driver-card");
+  if (await card.isVisible()) {
+    await page.locator("#driver-card-close").click();
+    await card.waitFor({ state: "hidden" });
+  }
+}
+
 let auth;
 let replacementAuth = null;
 let web;
@@ -328,6 +336,7 @@ const timeout = setTimeout(() => {
     assert.ok(contact, "Accepted contact disappeared from nearby result");
     assert.ok(Number(contact.accuracy) >= 100, "Normal contact unexpectedly received precise GPS accuracy");
 
+    await closeDriverCard(pageA);
     await pageA.locator('[data-driver-target="map"]').click();
     await pageA.locator('[data-road-reports="start"]').click();
     await pageA.locator('[data-road-type="OBSTACLE"]').click();
