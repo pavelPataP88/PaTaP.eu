@@ -18,11 +18,12 @@
     "production:preflight": "npm run runtime:check && node scripts/production-preflight.js",
     "parking:import": "node scripts/import-parking.js",
     "parking:import-osm-country": "node scripts/import-osm-parking-country.js",
+    "security:audit": "npm audit --audit-level=high",
     "test:auth": "node scripts/run-auth-tests.js",
     "test:radio-live": "node scripts/run-radio-live-test.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
     "test:driver-modules": "node scripts/run-driver-tests.js",
-    "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js tests/config/production-preflight.test.js tests/config/supervisor-release-guard.test.js tests/config/stack-process-detection.test.js",
+    "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js tests/config/production-preflight.test.js tests/config/supervisor-release-guard.test.js tests/config/stack-process-detection.test.js tests/config/dependency-security-gate.test.js tests/config/autostart-hardening.test.js tests/config/health-watch.test.js",
     "test:browser": "node scripts/run-browser-test.js",
     "test:browser:local": "node scripts/run-browser-test.js --local-only",
     "test:driver-e2e": "node scripts/build.js && node scripts/run-driver-e2e.js",
@@ -30,7 +31,7 @@
     "audit:performance": "node scripts/audit-interface-performance.js",
     "test:platformos": "node scripts/test-platformos-runtime.js",
     "verify": "npm run runtime:check && node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config",
-    "verify:release": "npm run verify && npm run test:driver-e2e && npm run test:browser:local"
+    "verify:release": "npm run security:audit && npm run verify && npm run test:driver-e2e && npm run test:browser:local"
   },
   "devDependencies": {
     "playwright": "^1.61.1"

@@ -31,10 +31,10 @@ test("CI action runtimes stay on the reviewed v7 majors", () => {
   assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-6]\b/);
 });
 
-test("release verification requires Driver E2E plus isolated browser scenarios without public internet", () => {
+test("release verification requires security audit, Driver E2E plus isolated browser scenarios without public internet", () => {
   assert.equal(pkg.scripts["test:browser:local"], "node scripts/run-browser-test.js --local-only");
   assert.equal(pkg.scripts["test:driver-e2e"], "node scripts/build.js && node scripts/run-driver-e2e.js");
-  assert.equal(pkg.scripts["verify:release"], "npm run verify && npm run test:driver-e2e && npm run test:browser:local");
+  assert.equal(pkg.scripts["verify:release"], "npm run security:audit && npm run verify && npm run test:driver-e2e && npm run test:browser:local");
   assert.match(browser, /process\.argv\.includes\("--local-only"\)/);
   assert.match(browser, /if \(!localOnly\)[\s\S]*https:\/\/patap\.eu/);
   assert.match(browser, /Public patap\.eu smoke skipped; running deterministic local browser scenarios only/);
