@@ -1,6 +1,7 @@
 const { DATA_DIR, verifyPassword } = require("../auth/db");
 const { ensureAccountSchema } = require("./schema");
-const { exportAccountData, deleteAccountData, cleanupDeletionQuarantine } = require("./lifecycle");
+const { exportAccountData, deleteAccountData } = require("./lifecycle");
+const { reconcileDeletionQuarantine } = require("./quarantine-recovery");
 
 const SESSION_COOKIE = "patap_session";
 const CSRF_COOKIE = "patap_csrf";
@@ -21,22 +22,15 @@ function expireCookie(name, { domain = null, httpOnly = false, secure = false } 
 function clearAuthCookies(req, res) {
   const host = requestHost(req);
   const secure = String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https" || PUBLIC_HOSTS.has(host);
-  const cookies = [
-    expireCookie(SESSION_COOKIE, { httpOnly: true, secure }),
-    expireCookie(CSRF_COOKIE, { secure })
-  ];
-  if (PUBLIC_HOSTS.has(host)) {
-    cookies.push(
-      expireCookie(SESSION_COOKIE, { domain: "patap.eu", httpOnly: true, secure }),
-      expireCookie(CSRF_COOKIE, { domain: "patap.eu", secure })
-    );
-  }
+  const cookies = [expireCookie(SESSION_COOKIE, { httpOnly: true, secure }), expireCookie(CSRF_COOKIE, { secure })];
+  if (PUBLIC_HOSTS.has(host)) cookies.push(expireCookie(SESSION_COOKIE, { domain: "patap.eu", httpOnly: true, secure }), expireCookie(CSRF_COOKIE, { domain: "patap.eu", secure }));
   res.setHeader("Set-Cookie", cookies);
 }
 
 function createAccountRoutes(options) {
   ensureAccountSchema(options.db, options.nowIso());
-  cleanupDeletionQuarantine(DATA_DIR);
+  const recovery = reconcileDeletionQuarantine(options.db, DATA_DIR);
+  if (recovery.failed) console.error(`Account deletion quarantine recovery has ${recovery.failed} unresolved file(s).`);
 
   return async function handleAccountRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/account")) return false;
@@ -49,10 +43,7 @@ function createAccountRoutes(options) {
         return true;
       }
       const exported = exportAccountData(options.db, session.user.id, { nowIso: options.nowIso });
-      if (!exported) {
-        options.json(res, 404, { error: "account_not_found" });
-        return true;
-      }
+      if (!exported) { options.json(res, 404, { error: "account_not_found" }); return true; }
       options.audit(req, "account_exported", { userId: session.user.id, success: true });
       options.json(res, 200, { export: exported });
       return true;
@@ -87,16 +78,9 @@ function createAccountRoutes(options) {
         options.json(res, 500, { error: "account_delete_failed" });
         return true;
       }
-      if (result.error) {
-        options.json(res, result.status || 400, result);
-        return true;
-      }
+      if (result.error) { options.json(res, result.status || 400, result); return true; }
       clearAuthCookies(req, res);
-      options.json(res, 200, {
-        deleted: true,
-        deletedAt: result.deletedAt,
-        mediaCleanup: result.mediaCleanup
-      });
+      options.json(res, 200, { deleted: true, deletedAt: result.deletedAt, mediaCleanup: result.mediaCleanup });
       return true;
     }
 
