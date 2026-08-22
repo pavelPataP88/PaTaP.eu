@@ -30,6 +30,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
       "--test",
       path.join("tests", "auth", "migration-atomicity.test.js"),
       path.join("tests", "auth", "api.test.js"),
+      path.join("tests", "auth", "account-lifecycle.test.js"),
       path.join("tests", "auth", "disaster-recovery.test.js"),
       path.join("tests", "auth", "session-touch.test.js"),
       path.join("tests", "auth", "chat-reactions.test.js"),
