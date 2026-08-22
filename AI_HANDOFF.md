@@ -1263,3 +1263,41 @@ Safety:
 - No commercial provider was selected; no broad CSP, offline/bulk tile downloading, Navigation, `main`, password minimum (6), users or private/runtime data changed.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-024 RADIO_AUDIOWORKLET_V1
+TASK_ID: RELEASE-AUD024-20260822-001
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR #34 / branch `chatgpt/aud-024-radio-audioworklet-v1`.
+- Source SHA: `044e15c178a9c4d7a3d97cd43ce5aa1fa1c57ca3`.
+- Base confirmed: `codex/local-workspace-snapshot @ 6ea22faf1ede12b6342cc02bf55a3508db719d87`.
+
+Review and Windows verification — PASS:
+- Diff is limited to the Driver Radio capture path, static worklet, tests and documentation. No server policy/auth/channel change, runtime/private data or secrets were present.
+- `live-audio.mjs` has no direct `createScriptProcessor` call; the only call is the documented compatibility fallback in `capture-graph.mjs`. Build output contains both AudioWorklet modules.
+- Exact isolated `npm ci` and `npm run verify:release` — PASS: audit 0 vulnerabilities, auth 57/57, Radio 1/1, Driver 82/82 across 16 files, client 2/2, config 42/42, two-user Driver E2E and local browser scenarios. Dedicated worklet tests: 4/4 PASS.
+- Production preflight — `PRODUCTION_PREFLIGHT READY`. Fresh encrypted off-host DR export and restore drill — PASS.
+
+Deployment — PASS:
+- Recoverable source backup created before maintenance; only PaTaP backend/supervisor stopped.
+- Exact candidate source copied non-destructively; 316 candidate source hashes matched. SQLite, users, radio media, secrets, logs and runtime data were preserved.
+- Root `npm ci` and build passed. Backend resumed through the normal guarded script; stack is HEALTHY. Public smoke passed: patap.eu and driver.patap.eu both HTTP 200.
+- `https://driver.patap.eu/radio/live-capture-worklet.mjs` returns the expected static processor with HTTP 200. Public guest Driver opened without console errors.
+
+Not falsely claimed:
+- Guest mode has no Radio screen. Authenticated Windows microphone/PTT and two-phone live mic/speaker verification require an authorized test account and physical devices; they remain field validation for the owner.
+
+Safety:
+- Wire protocol, PTT 550 ms gate, server lease/policy, committed history, password minimum (6), `main` and Navigation were not changed.
+
+---
+
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-023 MAP_TILE_PROVIDER_V1
+STATUS: DEPLOYED
+- PR #33 exact source `4c8a224ffd0b5f6e89896406c91b38026ba0e5b4` was deployed and synchronized in snapshot `6ea22faf1ede12b6342cc02bf55a3508db719d87`.
+- Default OSM provider check, Caddy validation with default and isolated alternate configuration, full Windows release suite, preflight, DR restore drill, build, HEALTHY stack and public smoke all passed.
+- No commercial provider, broad CSP, Navigation, main or private/runtime data was changed.
+
+---

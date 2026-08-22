@@ -12,7 +12,7 @@
 
 ## Что реально установлено
 
-Последние установленные блоки: `AUD-023 MAP_TILE_PROVIDER_V1`, `COMMERCIAL_HARDENING_V1`, `AUD-021 AUTH_ASYNC_SCRYPT_V1`, `AUD-020 MEDIA_STORAGE_QUOTAS_V1` и `AUD-019 MACHINE_DISASTER_RECOVERY_V1`.
+Последние установленные блоки: `AUD-024 RADIO_AUDIOWORKLET_V1`, `AUD-023 MAP_TILE_PROVIDER_V1`, `COMMERCIAL_HARDENING_V1`, `AUD-021 AUTH_ASYNC_SCRYPT_V1`, `AUD-020 MEDIA_STORAGE_QUOTAS_V1` и `AUD-019 MACHINE_DISASTER_RECOVERY_V1`.
 
 - PR #28 / `chatgpt/commercial-hardening-v1-work` / код `0dbfb137758a0d2c8dc62866079002740e50a4e1`.
 - Добавлены безопасный экспорт данных пользователя и защищённое удаление аккаунта, обязательная проверка зависимостей, штатный Windows-автозапуск и постоянный health-watch.
@@ -26,6 +26,8 @@
 `AUD-019` добавляет зашифрованное полное восстановление после потери ноутбука: проверенная SQLite-копия, приватные файлы из `data/` и tunnel token сохраняются только во внешнем recovery-set, а не в GitHub. Реальный export, проверка всех encrypted objects, изолированное восстановление и защита от перезаписи прошли. Recovery key остаётся отдельно от backup drive.
 
 `AUD-023` выносит поставщика плиток карты в отдельный проверяемый документ `map-provider.json`. Сейчас поведение карты намеренно не изменено: остаётся текущий OSM Standard fallback и его корректная подпись. Для будущей замены поставщика не нужно переписывать Driver: оператор кладёт проверенный документ в выделенный каталог и указывает только точные разрешённые CSP-origin. Нельзя ставить `https:` или `*`, нельзя добавлять токены в URL. На Windows прошли полный release suite, проверка Caddy с обычной и изолированной альтернативной конфигурацией, preflight, DR restore drill, сборка, health и public smoke. Гостевой браузерный экран проверен без ошибок; настоящую GPS-карту с MapLibre владелец проверяет входом водителя на телефоне.
+
+`AUD-024` переводит современный захват живого голоса для рации на AudioWorklet. Транспорт, лимиты, серверная авторизация, правило удержания PTT 550 мс и сохранение передачи в историю не менялись. Для старых браузеров оставлен узкий ScriptProcessor fallback; если не работает ни один механизм, live-захват безопасно не стартует. На Windows прошли 4 новых worklet-теста, полный release suite, preflight, DR restore drill, сборка, health и public smoke. Новый worklet реально выдаётся с `driver.patap.eu` по HTTP 200. Реальная проверка микрофона/динамика двух телефонов остаётся полевой задачей владельца.
 
 До этого уже были установлены и отражены в текущем snapshot: карта и Road Reports, Chat Console V2, Radio Console V2, People & Communities, Parking Network и Event Center. Их подробная история находится в `AI_HANDOFF.md` и тематических документах в `docs/`.
 
