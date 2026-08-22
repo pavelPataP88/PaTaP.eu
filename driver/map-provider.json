@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "osm-standard-public-fallback",
+  "mode": "PUBLIC_OSM_FALLBACK",
+  "tiles": [
+    "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+  ],
+  "tileSize": 256,
+  "maxZoom": 19,
+  "attribution": "© OpenStreetMap contributors",
+  "reportIssueUrl": "https://www.openstreetmap.org/fixthemap"
+}

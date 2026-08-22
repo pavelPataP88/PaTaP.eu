@@ -1,80 +1,89 @@
-# AI_TASK — AUD-019 MACHINE_DISASTER_RECOVERY_V1
+# AI_TASK — AUD-023 MAP_TILE_PROVIDER_V1
 
-Status: `DEPLOYED` after exact Windows verification and a full isolated recovery drill.
+Status: `DEPLOYED` — installed and verified by Codex on 2026-08-22.
 
-Production source of truth before this block:
-`codex/local-workspace-snapshot @ faf56337ad060dec22649d81ce069218cff672f5`.
+Production source before this block:
+`codex/local-workspace-snapshot @ b8ec2d31d973e811271e0ca2ca3f1fea8d979284`.
+
+Exact deployed source: `4c8a224ffd0b5f6e89896406c91b38026ba0e5b4`.
+The next safe source-of-truth snapshot is recorded in `AI_HANDOFF.md` after this release.
 
 Working branch:
-`chatgpt/aud-019-machine-disaster-recovery-v1`.
+`chatgpt/aud-023-map-tile-provider-v1`.
 
-Use only the exact final head SHA recorded in the AUD-019 draft PR. Do not deploy an older intermediate commit.
-
-## Factual Codex result
-
-- Exact deployed SHA: `e01dd3c4ea9f29b9d54f138a8564c16330201243`.
-- Syntax/PowerShell parsing and isolated Windows `verify:release` — PASS: audit 0, auth 57/57 including machine recovery tests, Radio 1/1, Driver 74/74, client 2/2, config 40/40, two-user Driver E2E and browser scenarios.
-- Production preflight — READY. Normal encrypted DB DR export and restore drill — PASS.
-- One real off-host full recovery set was exported to F:; its encrypted full-object verification and SQLite integrity/foreign-key checks — PASS.
-- The set was restored into a clean isolated source checkout with a temporary tunnel-token path. 29/29 private files and the temporary token matched by hash; SQLite was restored; a second restore correctly refused overwrite.
-- The temporary recovery target and temporary token were removed after the drill. The live token, media and production data were not moved or deleted.
-- Guarded source apply, root build, backend resume, stack health and public smoke — PASS.
-- No new coding block is active. Do not run recovery again unless a new verified recovery set or a recovery test is explicitly needed.
+Use only the exact final PR head after GitHub Verify is green. Do not deploy an intermediate commit.
 
 ## Goal
 
-Close `AUD-019`: make the platform recoverable after total loss of the primary Windows laptop, not only after SQLite corruption.
+Close `AUD-023`: remove Driver's operational hard dependency on a tile URL and CSP origin baked into product code/config while preserving the current working map until the owner separately chooses a replacement provider.
+
+The current OSM Standard raster endpoint remains the default fallback in this block. No paid provider is selected and no offline/bulk tile download is added.
 
 ## Engineering contract
 
 Implemented:
 
-- keeps source code in the safe GitHub snapshot and private/runtime continuity in a separate encrypted off-host recovery set;
-- reuses the existing authenticated `PATAP-DR1` encryption envelope rather than creating a second crypto system;
-- exports an integrity-checked SQLite backup;
-- exports regular private files below `data/` while excluding live SQLite/WAL/SHM and redundant local DB backup copies;
-- therefore carries current Chat/Radio/Parking media, auth secret, VAPID/private Event material and other module-local private files when present;
-- exports the exact Cloudflare tunnel token from the current Windows `%LOCALAPPDATA%` location;
-- encrypts the logical-path index so the public manifest does not expose private file paths;
-- requires backend maintenance and an offline backend for normal production export;
-- automatically performs a complete encrypted-object restore drill and SQLite integrity/foreign-key verification before declaring a recovery set PASS;
-- restore requires literal `PATAP_MACHINE_RECOVERY_CONFIRM=RESTORE` and an explicit checked-out target root;
-- restore refuses to overwrite any existing private target file or tunnel token;
-- restore never starts Caddy, backend, tunnel or public traffic automatically;
-- Windows backup wrapper enters maintenance only when necessary and resumes only maintenance it entered;
-- adds executable export/verify/restore commands, regression tests and `docs/MACHINE_DISASTER_RECOVERY_V1.md`.
+- `driver/map-provider.json` is the default provider document;
+- Map module now loads through `driver/map/provider-bootstrap.mjs`;
+- embedded legacy tile settings are removed before provider loading, so a missing/invalid provider fails closed instead of silently continuing on a baked-in URL;
+- provider schema validates exact `{z}/{x}/{y}` templates, HTTPS or same-origin transport, tile size, zoom and mandatory attribution;
+- external URL credentials, HTTP, protocol-relative URLs and incomplete templates are rejected;
+- provider failure disables the Map dependency chain but does not take down independent Chat/Radio/People/Profile modules;
+- build ships the default provider document;
+- Caddy's Driver `connect-src` uses exact reviewed origins from `PATAP_MAP_CONNECT_SRC`, defaulting to the current OSM origin; broad `https:`/`*` is not introduced;
+- exact `/map-provider.json` can optionally be served from an operator-managed directory via `PATAP_MAP_CONFIG_ROOT`, without exposing arbitrary `data/` paths;
+- `npm run map:provider:check` validates the effective provider document and verifies every external tile origin is explicitly present in the CSP origin list;
+- provider/CSP check is mandatory inside `npm run verify`;
+- documentation: `docs/MAP_TILE_PROVIDER_V1.md`.
+
+Official policy basis checked 2026-08-22: OSM's current Tile Usage Policy recommends not hard-coding its tile URL, provides no SLA, may block problematic/heavy use, and prohibits bulk/offline tile downloading. This block keeps interactive viewport-only use and adds no prefetch/offline feature.
+
+## Default production behavior
+
+With no new environment variables:
+
+- `/map-provider.json` comes from the deployed Driver build;
+- provider is `osm-standard-public-fallback`;
+- tile origin remains `https://tile.openstreetmap.org`;
+- current attribution remains `© OpenStreetMap contributors`;
+- existing users should see no intended map-content change.
+
+A future reviewed provider can be selected without changing Driver product code by supplying an operator `map-provider.json`, exact CSP origin(s), validating, and reloading Caddy.
 
 ## Intentionally unchanged
 
-- existing database-only encrypted DR flow remains available;
-- no automatic deletion/rotation of old recovery sets;
-- no high-availability clustering or automatic failover;
-- no user data or recovery keys are committed to GitHub;
-- no password-policy change; minimum remains 6;
-- auth schema remains 12;
-- `main` unchanged;
-- Navigation and `NAV_ROUTER_URL` unchanged and still blocked by the provider gate;
-- existing Chat/Radio/Parking behavior unchanged.
+- MapLibre version/lazy loading;
+- GPS and server-side privacy;
+- nearby Drivers;
+- Road Reports;
+- Parking map bridge;
+- Navigation / `NAV_ROUTER_URL`;
+- no paid map service;
+- no offline tile packs, prefetch or scraping;
+- auth schema and password policy;
+- `main`;
+- SQLite, users, GPS, messages, media, tokens, secrets and runtime data.
 
 ## Mandatory Codex Windows gate
 
-Review the exact candidate diff and `docs/MACHINE_DISASTER_RECOVERY_V1.md`.
-
 Before any production apply:
 
-1. exact isolated checkout from base `faf56337ad060dec22649d81ce069218cff672f5`;
-2. Node 24.x, `npm ci`, syntax/static review and `npm run verify:release` PASS;
-3. production preflight remains `READY`;
-4. confirm no `data/`, `var/`, SQLite, media, users, GPS, messages, tokens, keys, logs or temporary recovery content is present in GitHub diff;
-5. on the real laptop, use the existing off-host recovery drive and locally held DR key to execute one real `backup-machine-recovery.ps1` export;
-6. prove the wrapper safely enters/leaves backend maintenance and stack returns HEALTHY;
-7. exported `manifest.json` must report `PATAP-MACHINE-DR1`, `restoreDrill: PASS`, SQLite integrity `ok`, zero foreign-key violations and plausible object/byte counts;
-8. perform an isolated replacement-machine drill into a clean temporary checkout/target, with `PATAP_RECOVERY_TUNNEL_TOKEN_TARGET` redirected to a temporary path so the live token is never overwritten;
-9. verify restored SQLite/private continuity and representative media by hashes/metadata only; do not print secrets or user content;
-10. prove a second restore refuses overwrite;
-11. after guarded production source apply, run build/resume/status/public smoke; `patap.eu` and `driver.patap.eu` must remain HTTP 200;
-12. synchronize the next safe `codex/local-workspace-snapshot` from actually deployed source, excluding every private/runtime path.
+1. Review exact final PR SHA and diff; confirm base is `b8ec2d31d973e811271e0ca2ca3f1fea8d979284`.
+2. Confirm no runtime/private data or provider secrets are in the diff.
+3. Windows Node 24.x + `npm ci`.
+4. Run `npm run map:provider:check`; default provider and exact OSM CSP origin must PASS.
+5. Run `npm run verify:release`; require full PASS.
+6. Parse and **validate the real Caddyfile** with current/default map environment before touching production. Fail closed on any Caddy env-substitution/adaptation error.
+7. In an isolated temporary directory, create a harmless alternate provider document that still points to the existing OSM tile origin but uses a different test provider id/mode. Set temporary `PATAP_MAP_CONFIG_ROOT` to that directory and exact `PATAP_MAP_CONNECT_SRC=https://tile.openstreetmap.org`; run `npm run map:provider:check` and Caddy adaptation/validation. This proves configuration switching without buying/calling another service. Remove temporary config afterward.
+8. Run production preflight; require `READY`.
+9. Create fresh encrypted off-host recovery/DR evidence using the existing safe release process.
+10. Make a recoverable source backup and enter normal guarded maintenance for only the processes that actually need source/build/Caddy replacement.
+11. Apply candidate source non-destructively, preserving all runtime/private data; `npm ci` + build.
+12. Validate deployed Caddyfile again before starting/reloading Caddy.
+13. Resume/reload through the normal stack procedure and require `status-patap-stack.ps1 = HEALTHY`.
+14. Public smoke: `https://patap.eu` and `https://driver.patap.eu` HTTP 200.
+15. Real browser check on Driver Map with current default fallback: basemap renders, MapLibre attribution is visible, Road Reports/GPS overlays still initialize, and browser console/network has no CSP rejection for the tile origin.
+16. Do not change to a new commercial tile provider during this deployment. Provider selection is a separate owner/product decision.
+17. Synchronize the next safe `codex/local-workspace-snapshot` only after successful deployment, excluding all runtime/private material.
 
-Report `CHANGES_REQUIRED` rather than rewriting the block if any safety, Windows-path, filesystem, encryption, restore or operational issue is found. Include file/location/reproduction/expected behavior.
-
-Do not destroy the real laptop, activate a second public origin, move/delete the live tunnel token, delete media, or expose recovery-key material as a test.
+If any Caddy validation, provider validation, Map initialization, CSP, release, DR or browser regression is found, report `CHANGES_REQUIRED` with file/location/reproduction/expected behavior. Do not broaden CSP to `https:` or `*` as a shortcut.

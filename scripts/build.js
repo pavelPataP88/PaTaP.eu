@@ -10,7 +10,7 @@ const driverModuleDirectories = [...new Set(driverRegistry.modules.map((module) 
   const entry = String(module.entry || "").split("?")[0];
   return entry.replace(/^\.\//, "").split("/")[0];
 }))];
-const driverEntries = ["index.html", "styles.css", "app.js", "event-worker.js", "module-registry.json", "shared", "core", ...driverModuleDirectories];
+const driverEntries = ["index.html", "styles.css", "app.js", "event-worker.js", "module-registry.json", "map-provider.json", "shared", "core", ...driverModuleDirectories];
 const assetEntries = ["patap-lab-bg.png"];
 
 function copyRequiredFile(source, target, label) {
@@ -71,4 +71,3 @@ for (const entry of assetEntries) {
 
 console.log(`Built Patap Lab into ${path.relative(root, dist)}`);
 console.log(`Built Driver Patap into ${path.relative(root, driverDist)}`);
-

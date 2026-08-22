@@ -1235,3 +1235,31 @@ Next step:
 2. Do not begin another large feature block until any field findings are written as a small, testable task.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-023 MAP_TILE_PROVIDER_V1
+TASK_ID: RELEASE-AUD023-20260822-001
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR #33 / branch `chatgpt/aud-023-map-tile-provider-v1`.
+- Source SHA: `4c8a224ffd0b5f6e89896406c91b38026ba0e5b4`.
+- Base confirmed: `codex/local-workspace-snapshot @ b8ec2d31d973e811271e0ca2ca3f1fea8d979284`.
+
+Review and Windows verification — PASS:
+- Diff contains only provider configuration, Caddy CSP/configuration wiring, build/check scripts, tests and documentation. No runtime/private data, provider credentials or secrets were included.
+- Changed JavaScript syntax — PASS. Default provider check — PASS: `osm-standard-public-fallback`, `https://tile.openstreetmap.org`, mandatory OSM attribution.
+- Caddy adapted/validated with the default environment and with an isolated alternate provider directory using the same OSM origin. Both passed; the temporary test directory was removed.
+- Exact isolated `npm ci` and `npm run verify:release` — PASS: audit 0 vulnerabilities, auth 57/57, Radio 1/1, Driver 78/78 across 15 files, client 2/2, config 42/42, two-user Driver E2E and local browser scenarios.
+- Production preflight — `PRODUCTION_PREFLIGHT READY`. Fresh encrypted off-host DR export and restore drill — PASS.
+
+Deployment — PASS:
+- Recoverable source backup was created before maintenance; only PaTaP backend/supervisor stopped.
+- Exact candidate source was copied non-destructively; 312 candidate source hashes matched. SQLite, media, secrets, logs and runtime data were preserved.
+- Root `npm ci`, build, deployed Caddy validation and map-provider check passed. Caddy was restarted through `stop-origin.ps1` / `start-origin.ps1`; backend resumed through `resume-backend.ps1`.
+- `status-patap-stack.ps1` reports HEALTHY for backend, Caddy, tunnel and public API. Public smoke passed: patap.eu and driver.patap.eu both HTTP 200. `https://driver.patap.eu/map-provider.json` returns HTTP 200 with `no-store` and the expected default OSM provider document.
+- The real guest browser opened Driver without console errors. Guest mode deliberately displays a read-only demo rather than MapLibre, so live authenticated GPS/MapLibre visual verification remains a phone/device task for the owner; it was not falsely claimed as complete.
+
+Safety:
+- No commercial provider was selected; no broad CSP, offline/bulk tile downloading, Navigation, `main`, password minimum (6), users or private/runtime data changed.
+
+---

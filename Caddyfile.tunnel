@@ -12,6 +12,10 @@
 	@nonDriverHost {
 		not host driver.patap.eu
 	}
+	@driverMapConfig {
+		host driver.patap.eu
+		path /map-provider.json
+	}
 
 	@driverHttpForwarded {
 		host driver.patap.eu
@@ -45,7 +49,7 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 	}
-	header @driverHost Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://tile.openstreetmap.org; worker-src 'self' blob:; form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
+	header @driverHost Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' {$PATAP_MAP_CONNECT_SRC:https://tile.openstreetmap.org}; worker-src 'self' blob:; form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
 	header @nonDriverHost Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
 	header @driverHost Permissions-Policy "camera=(), microphone=(self), geolocation=(self)"
 	header @nonDriverHost Permissions-Policy "camera=(), microphone=(), geolocation=()"
@@ -60,6 +64,15 @@
 		not path /assets/* /vendor/*
 	}
 	header @nonDriverDynamic Cache-Control "no-cache, no-store, must-revalidate"
+
+	# The default map-provider.json comes from the deployed Driver build. Operators
+	# can point this exact public config endpoint at an off-source directory by
+	# setting PATAP_MAP_CONFIG_ROOT; no other private file is exposed by this handle.
+	handle @driverMapConfig {
+		root * {$PATAP_MAP_CONFIG_ROOT:D:/WWW.PATAP.EU/var/build/driver}
+		header Cache-Control "no-cache, no-store, must-revalidate"
+		file_server
+	}
 
 	handle @driverHost {
 		handle /api/* {
