@@ -106,6 +106,30 @@ test("Event Outbox dead-letters after five failures, stops auto-retry, and succe
   db.close();
 });
 
+test("transient sqlite contention leaves event pending without consuming an attempt", () => {
+  const db = createOutboxDb();
+  db.prepare("INSERT INTO chat_messages(id,room_id) VALUES(1,9)").run();
+  db.prepare("INSERT INTO driver_event_outbox(event_kind,source_ref,created_at) VALUES('CHAT_MESSAGE','1',?)").run("2026-08-22T07:00:00.000Z");
+  const locked = new Error("database is locked");
+  locked.errcode = 5;
+  const dispatcher = createEventDispatcher({
+    db,
+    events: { consumeChatEvent() { throw locked; } },
+    nowIso: () => "2026-08-22T07:00:01.000Z"
+  });
+  const result = dispatcher.processBatch();
+  assert.equal(result.busy, true);
+  assert.equal(result.processed, 0);
+  assert.equal(result.failed, 0);
+  const row = db.prepare("SELECT status,attempts,last_error,processed_at,failed_at FROM driver_event_outbox WHERE id=1").get();
+  assert.equal(row.status, "PENDING");
+  assert.equal(Number(row.attempts), 0);
+  assert.equal(row.last_error, null);
+  assert.equal(row.processed_at, null);
+  assert.equal(row.failed_at, null);
+  db.close();
+});
+
 test("dead-letter retention is longer than normal processed retention", () => {
   const db = createOutboxDb();
   db.prepare("INSERT INTO driver_event_outbox(event_kind,source_ref,created_at,processed_at,status) VALUES('CHAT_MESSAGE','1',?,?, 'PROCESSED')")
