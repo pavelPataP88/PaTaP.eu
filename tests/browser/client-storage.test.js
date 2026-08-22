@@ -467,7 +467,12 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
   assert.equal(await page.locator("#driver-card-name").textContent(), "NearbyDriver");
   await page.locator("#driver-card-chat").click();
   await page.locator("#chat-view:not([hidden])").waitFor();
-  await page.waitForFunction(() => document.querySelector(".chat-conversation-identity strong")?.textContent.includes("NearbyDriver"));
+  await page.waitForFunction(() =>
+  document.querySelector(".chat-conversation-identity strong")?.textContent.includes("NearbyDriver")
+  && document.querySelectorAll("#chat-rooms button").length === 2
+  && document.querySelectorAll(".chat-message").length === 2
+  && document.querySelectorAll(".chat-message .chat-message-menu").length === 2
+);
   assert.deepEqual(requests.find((item) => item.path === "/api/driver/chat/direct").body, { nickname: "NearbyDriver" });
   assert.equal(await page.locator("#chat-rooms button.chat-room-row.active").textContent().then((text) => text.includes("NearbyDriver")), true);
   assert.equal(await page.locator("#chat-rooms button").count(), 2);
@@ -486,7 +491,15 @@ test("Driver GPS state persists, auto-restores, and couples visibility with near
 
   await page.locator('[data-driver-target="radio"]').click();
   await page.locator("#radio-view:not([hidden])").waitFor();
-  await page.waitForFunction(() => document.querySelectorAll(".radio-transmission").length === 2);
+  await page.waitForFunction(() => {
+  const transmissions = Array.from(document.querySelectorAll(".radio-transmission"));
+  const downloads = Array.from(document.querySelectorAll(".radio-transmission .message-menu a"))
+    .filter((link) => link.textContent.includes("Скачать"));
+  return transmissions.length === 2
+    && document.querySelectorAll(".radio-transmission .message-menu").length === 2
+    && document.querySelectorAll(".radio-audio-player").length === 2
+    && downloads.length === 2;
+});
   assert.equal(await page.locator(".radio-transmission .message-menu").count(), 2);
   assert.equal(await page.locator(".radio-audio-player").count(), 2);
   assert.equal(await page.locator(".radio-transmission audio[controls]").count(), 0);
