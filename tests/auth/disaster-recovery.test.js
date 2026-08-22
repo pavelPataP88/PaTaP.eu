@@ -49,3 +49,5 @@ test("DR export refuses the live database filesystem unless an explicit test ove
     /must not be inside|same filesystem\/device/i
   );
 });
+
+require("./machine-disaster-recovery.test.js");
