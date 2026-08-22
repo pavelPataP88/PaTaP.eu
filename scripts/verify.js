@@ -21,6 +21,7 @@ const requiredFiles = [
   "start-patap-tunnel.ps1",
   "stop-patap-tunnel.ps1",
   "server/auth/server.js",
+  "server/auth/http-server.js",
   "server/auth/db.js",
   "server/auth/bootstrap-owner.js",
   "server/auth/backup-db.js",
@@ -39,8 +40,11 @@ const requiredFiles = [
   "server/driver/location.js",
   "server/driver/profile.js",
   "server/driver/routes.js",
+  "server/driver/http-routes.js",
+  "server/driver/runtime.js",
   "server/chat/repository.js",
   "server/chat/routes.js",
+  "server/chat/realtime.js",
   "docs/PROJECT_CONTEXT.md",
   "docs/PROJECT_MAP.md",
   "docs/RUNBOOK.md",
@@ -190,14 +194,17 @@ for (const file of textFiles) {
 
 const index = exists("index.html") ? read("index.html") : "";
 const app = exists("app.js") ? read("app.js") : "";
-const authServer = exists("server/auth/server.js") ? read("server/auth/server.js") : "";
+const authEntrypoint = exists("server/auth/server.js") ? read("server/auth/server.js") : "";
+const authServer = exists("server/auth/http-server.js") ? read("server/auth/http-server.js") : authEntrypoint;
 const authDb = exists("server/auth/db.js") ? read("server/auth/db.js") : "";
 const driverApp = exists("driver/app.js") ? read("driver/app.js") : "";
 const driverIndex = exists("driver/index.html") ? read("driver/index.html") : "";
 const driverApi = exists("driver/shared/api.js") ? read("driver/shared/api.js") : "";
 const driverGps = exists("driver/gps/index.js") ? read("driver/gps/index.js") : "";
 const driverLocation = exists("server/driver/location.js") ? read("server/driver/location.js") : "";
-const driverRoutes = exists("server/driver/routes.js") ? read("server/driver/routes.js") : "";
+const driverRoutesFacade = exists("server/driver/routes.js") ? read("server/driver/routes.js") : "";
+const driverRoutes = exists("server/driver/http-routes.js") ? read("server/driver/http-routes.js") : driverRoutesFacade;
+const driverRuntime = exists("server/driver/runtime.js") ? read("server/driver/runtime.js") : "";
 const chatRoutes = exists("server/chat/routes.js") ? read("server/chat/routes.js") : "";
 const chatRoutesV2 = exists("server/chat/routes-v2.js") ? read("server/chat/routes-v2.js") : "";
 const chatRepository = exists("server/chat/repository.js") ? read("server/chat/repository.js") : "";
@@ -216,12 +223,12 @@ const scenarioChecks = [
   [app.includes("credentials: \"same-origin\""), "Frontend API calls must include same-origin cookies"],
   [app.includes("/api/password-reset/complete"), "Reset scenario must use server reset token endpoint"],
   [authDb.includes("crypto.scryptSync") && authDb.includes("password_hash"), "Backend must hash passwords server-side"],
-  [authServer.includes("HttpOnly") && authServer.includes("Secure") && authServer.includes("SameSite=Lax"), "Backend must set secure session cookies"],
+  [authEntrypoint.includes('require("./http-server")') && authServer.includes("HttpOnly") && authServer.includes("Secure") && authServer.includes("SameSite=Lax"), "Backend must set secure session cookies through the auth implementation boundary"],
   [authServer.includes("csrf") && authServer.includes("x-csrf-token"), "Backend must enforce CSRF tokens"],
   [authServer.includes("rate_limits"), "Backend must use server-side rate limits"],
   [authServer.includes("audit_events"), "Backend must write audit events"],
   [authDb.includes("CREATE TABLE driver_profiles"), "Backend must migrate Driver profiles"],
-  [driverRoutes.includes("/api/driver/profile"), "Backend must expose the Driver profile API"],
+  [driverRoutesFacade.includes('require("./http-routes")') && driverRoutes.includes("/api/driver/profile"), "Backend must expose the Driver profile API through the Driver implementation boundary"],
   [driverApp.includes('from "./shared/api.js?v=') && driverApi.includes("export async function api"), "Driver UI must use the shared ES module API client with a release URL"],
   [driverApp.includes("module-loader.mjs?v=") && driverApp.includes("loadDriverModuleRegistry"), "Driver UI must load its module registry at runtime"],
   [driverRegistry.includes('"id": "map"') && driverRegistry.includes('"id": "gps"') && driverRegistry.includes('"id": "chat"') && driverRegistry.includes('"id": "profile"'), "Driver registry must declare map, GPS, chat, and profile modules"],
@@ -232,7 +239,7 @@ const scenarioChecks = [
   [authDb.includes("CREATE TABLE chat_direct_pairs") && (chatRoutes.includes("/api/driver/chat/direct") || chatRoutesV2.includes("/api/driver/chat/direct")) && chatRepository.includes("createDirectRoom"), "Backend must provide unique Driver direct chats"],
   [authDb.includes("CREATE TABLE principal_owner"), "Backend must enforce one immutable principal Owner"],
   [driverRoutes.includes("/api/driver/location") && driverRoutes.includes("/api/driver/nearby"), "Backend must expose Driver location APIs through Driver routes"],
-  [authServer.includes('require("../driver/routes")') && driverRoutes.includes('require("./location")') && driverLocation.includes("createLocationRepository"), "Backend must keep Driver routes and location policy in module boundaries"],
+  [authServer.includes('require("../driver/routes")') && driverRoutes.includes('require("./location")') && driverRuntime.includes("createLocationRepository") && driverLocation.includes("createLocationRepository"), "Backend must keep Driver composition, routes, runtime, and location policy in explicit module boundaries"],
   [!authServer.includes("driver_profiles") && !authServer.includes("driver_locations"), "Auth composition root must not contain Driver profile or location SQL"],
   [driverGps.includes("watchPosition") && driverGps.includes("clearWatch"), "Driver UI must explicitly start and stop geolocation"],
   [!driverIndex.includes("visibility-toggle") && driverGps.includes("gpsEnabled") && driverGps.includes("body: { radius }"), "Driver UI must couple GPS, visibility, and nearby access in one persisted switch"],

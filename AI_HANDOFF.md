@@ -1331,3 +1331,27 @@ Safety:
 - `main`, Navigation, password policy, users, SQLite, media, secrets, tokens, logs and runtime/private data were not changed or committed.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-029 SERVER_BOUNDARY_CLEANUP_V1
+TASK_ID: RELEASE-AUD029-20260822-001
+STATUS: DEPLOYED
+DEPLOYED_SOURCE: `918afc8bd56ea730dc0972ffbddd6c31580be344`
+
+Verification — PASS:
+- Exact isolated candidate verified on Windows with Node v24.16.0: `npm ci` and `npm run verify:release` passed — audit 0 vulnerabilities; auth 57/57; Radio 1/1; Driver 89/89 including `server-boundary-cleanup.test.mjs`; client 2/2; config 42/42; two-user Driver E2E; isolated browser scenarios.
+- Production preflight returned `PRODUCTION_PREFLIGHT READY` before installation.
+- Fresh encrypted off-host DR export completed; `restoreDrill: PASS`. No key material was printed or committed.
+- A recoverable source backup was made before maintenance. Candidate was copied non-destructively; SQLite, users, media, secrets, tokens, logs and runtime data were excluded and preserved. A changed-source SHA-256 check passed.
+
+Production lifecycle — PASS:
+- Root `npm ci` and `npm run build` passed, then the backend was resumed with the repository scripts.
+- The targeted lifecycle contract passed on installed source: Driver runtime start/stop is deterministic, Chat realtime upgrade listener attaches/detaches idempotently, and auth composition contains no Chat WebSocket business logic.
+- A controlled second restart completed cleanly: exactly one PaTaP backend process and one supervisor remained. No duplicate process was left; the lifecycle test covers the single Chat upgrade listener and Event dispatcher start/stop ownership.
+- `status-patap-stack.ps1`: `HEALTHY`; local `/api/health`: HTTP 200 with `ok: true`; `https://patap.eu` and `https://driver.patap.eu`: HTTP 200.
+- Safe isolated two-user E2E after deployment passed: login/session, Driver, direct Chat realtime, Radio history, GPS/privacy, Road Reports restart, Parking and mobile viewport. No real user account or message was created for verification.
+
+Safety:
+- `main`, Navigation, password minimum (6) and the interface were not changed.
+- This snapshot was made from the actually running production source while excluding runtime/private data.
+
+---
