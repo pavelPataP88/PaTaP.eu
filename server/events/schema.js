@@ -6,17 +6,25 @@ function tableColumns(db, table) {
 
 function ensureOutboxLifecycleColumns(db) {
   const columns = tableColumns(db, "driver_event_outbox");
-  if (!columns.has("status")) {
+  const hadStatus = columns.has("status");
+  if (!hadStatus) {
     db.exec("ALTER TABLE driver_event_outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','PROCESSED','FAILED'))");
   }
   if (!columns.has("failed_at")) {
     db.exec("ALTER TABLE driver_event_outbox ADD COLUMN failed_at TEXT");
   }
-  db.prepare(`
-    UPDATE driver_event_outbox
-    SET status = CASE WHEN processed_at IS NULL THEN 'PENDING' ELSE 'PROCESSED' END
-    WHERE status IS NULL OR status NOT IN ('PENDING','PROCESSED','FAILED')
-  `).run();
+  if (!hadStatus) {
+    db.prepare(`
+      UPDATE driver_event_outbox
+      SET status = CASE WHEN processed_at IS NULL THEN 'PENDING' ELSE 'PROCESSED' END
+    `).run();
+  } else {
+    db.prepare(`
+      UPDATE driver_event_outbox
+      SET status = CASE WHEN processed_at IS NULL THEN 'PENDING' ELSE 'PROCESSED' END
+      WHERE status IS NULL OR status NOT IN ('PENDING','PROCESSED','FAILED')
+    `).run();
+  }
 }
 
 function ensureEventSchema(db, now = new Date().toISOString()) {
