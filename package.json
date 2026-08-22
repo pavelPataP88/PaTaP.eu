@@ -23,11 +23,12 @@
     "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js tests/config/production-preflight.test.js tests/config/supervisor-release-guard.test.js",
     "test:browser": "node scripts/run-browser-test.js",
     "test:browser:local": "node scripts/run-browser-test.js --local-only",
+    "test:driver-e2e": "node scripts/build.js && node scripts/run-driver-e2e.js",
     "test:public-smoke": "node scripts/run-public-smoke.js",
     "audit:performance": "node scripts/audit-interface-performance.js",
     "test:platformos": "node scripts/test-platformos-runtime.js",
     "verify": "npm run runtime:check && node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config",
-    "verify:release": "npm run verify && npm run test:browser:local"
+    "verify:release": "npm run verify && npm run test:driver-e2e && npm run test:browser:local"
   },
   "devDependencies": {
     "playwright": "^1.61.1"
