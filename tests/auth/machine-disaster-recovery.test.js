@@ -31,6 +31,7 @@ test("whole-machine DR encrypts database, private data and tunnel identity and r
   const chatMediaPath = path.join(dataRoot, "auth", "chat", "media-object.bin");
   const radioMediaPath = path.join(dataRoot, "auth", "radio", "radio-object.webm");
   const parkingMediaPath = path.join(dataRoot, "auth", "parking", "parking-object.jpg");
+  const emptyPrivatePath = path.join(dataRoot, "auth", "events", "empty-marker");
   const tunnelTokenPath = path.join(base, "patap-lab-token.txt");
   const destination = path.join(base, "external-drive");
   const targetRoot = path.join(base, "fresh-checkout");
@@ -41,6 +42,7 @@ test("whole-machine DR encrypts database, private data and tunnel identity and r
   write(chatMediaPath, Buffer.from("chat-private-media"));
   write(radioMediaPath, Buffer.from("radio-private-media"));
   write(parkingMediaPath, Buffer.from("parking-private-media"));
+  write(emptyPrivatePath, Buffer.alloc(0));
   write(tunnelTokenPath, "cloudflare-tunnel-token-test");
   fs.mkdirSync(destination, { recursive: true });
 
@@ -63,7 +65,7 @@ test("whole-machine DR encrypts database, private data and tunnel identity and r
     assert.equal(exported.manifest.restoreDrill, "PASS");
     assert.equal(exported.manifest.database.integrity, "ok");
     assert.equal(exported.manifest.database.foreignKeyViolations, 0);
-    assert.ok(exported.manifest.objectCount >= 7);
+    assert.ok(exported.manifest.objectCount >= 8);
     assert.ok(exported.manifest.totalPlaintextBytes > 0);
     assert.equal(exported.manifest.sourceSha, "faf56337ad060dec22649d81ce069218cff672f5");
 
@@ -93,6 +95,7 @@ test("whole-machine DR encrypts database, private data and tunnel identity and r
     assert.deepEqual(fs.readFileSync(path.join(targetRoot, "data", "auth", "chat", "media-object.bin")), fs.readFileSync(chatMediaPath));
     assert.deepEqual(fs.readFileSync(path.join(targetRoot, "data", "auth", "radio", "radio-object.webm")), fs.readFileSync(radioMediaPath));
     assert.deepEqual(fs.readFileSync(path.join(targetRoot, "data", "auth", "parking", "parking-object.jpg")), fs.readFileSync(parkingMediaPath));
+    assert.equal(fs.statSync(path.join(targetRoot, "data", "auth", "events", "empty-marker")).size, 0);
     assert.equal(fs.readFileSync(tunnelTarget, "utf8"), "cloudflare-tunnel-token-test");
     assert.ok(fs.existsSync(path.join(targetRoot, "data", "auth", "patap-auth.sqlite")));
 
