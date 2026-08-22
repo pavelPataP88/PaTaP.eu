@@ -348,7 +348,7 @@ const timeout = setTimeout(() => {
 
     result = await browserApi(pageB, `/api/driver/road-reports/${reportId}/confirm`, { method: "POST", body: { status: "ACTIVE" } });
     assert.equal(result.status, 200);
-    assert.ok(Number(result.data.report?.activeConfirmations || 0) >= 1);
+    assert.ok(Number(result.data.report?.confirmations?.active || 0) >= 1);
 
     await searchAndOpen(pageA, b.nickname);
     await pageA.locator("#driver-card-chat").click();
@@ -419,7 +419,7 @@ const timeout = setTimeout(() => {
     }, 12000);
     assert.equal(result.status, 200);
     assert.equal(Number(result.data.id), reportId);
-    assert.ok(Number(result.data.activeConfirmations || 0) >= 1, "Road Report confirmation was lost after backend restart");
+    assert.ok(Number(result.data.confirmations?.active || 0) >= 1, "Road Report confirmation was lost after backend restart");
 
     result = await browserApi(pageB, "/api/driver/chat/rooms");
     assert.equal(result.status, 200);
