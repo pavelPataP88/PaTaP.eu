@@ -204,10 +204,10 @@ function evaluatePreflight({ database, backupInfo, roadSnapshot, vapid }) {
   if (database?.authMigrations?.present && !database.authMigrations.supported) blockers.push("auth_schema_newer_than_candidate");
   if (!backupInfo?.integrity?.ok) blockers.push("backup_integrity_failed");
   if (roadSnapshot?.status === "FAIL") blockers.push("live_road_report_snapshot_failed");
+  if (roadSnapshot?.status === "SKIP_BACKEND_UNAVAILABLE") blockers.push("backend_unavailable_no_memory_snapshot");
   if (roadSnapshot?.status === "PASS" && Number(roadSnapshot.activeCount) > 0) {
     blockers.push(`active_in_memory_road_reports:${Number(roadSnapshot.activeCount)}`);
   }
-  if (roadSnapshot?.status === "SKIP_BACKEND_UNAVAILABLE") warnings.push("backend_unavailable_no_memory_snapshot");
   if (Number(database?.push?.activeSubscriptions || 0) > 0 && (!vapid?.exists || !vapid?.valid)) {
     blockers.push("active_push_subscriptions_without_valid_vapid_keys");
   }
