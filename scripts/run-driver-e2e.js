@@ -30,6 +30,7 @@ function startDriverServer(root, port, authPort) {
   const driverRoot = path.join(root, "var", "build", "driver");
   const server = http.createServer((req, res) => {
     if (req.url.startsWith("/api/")) {
+      let upstreamResponse = null;
       const proxy = http.request({
         hostname: "127.0.0.1",
         port: authPort,
@@ -41,10 +42,16 @@ function startDriverServer(root, port, authPort) {
           origin: "http://127.0.0.1:8090"
         }
       }, (upstream) => {
+        upstreamResponse = upstream;
         res.writeHead(upstream.statusCode || 502, upstream.headers);
         upstream.pipe(res);
       });
+      res.once("close", () => {
+        upstreamResponse?.destroy();
+        proxy.destroy();
+      });
       proxy.on("error", (error) => {
+        if (res.destroyed) return;
         if (!res.headersSent) res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: error.message }));
       });
@@ -181,16 +188,16 @@ function collectPageErrors(page, label, target) {
 }
 
 async function quiescePagesForBackendRestart(pages) {
-  await Promise.all(pages.map((page) => page.goto("about:blank", { waitUntil: "load" })));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await Promise.all(pages.map((page) => page.close()));
 }
 
-async function restorePagesAfterBackendRestart(pages, localUrl) {
-  await Promise.all(pages.map(async (page) => {
-    await page.goto(localUrl, { waitUntil: "domcontentloaded" });
-    await page.locator("#profile-view").waitFor({ state: "visible" });
-    await page.locator('[data-driver-target="map"]').waitFor({ state: "visible" });
-  }));
+async function restorePageAfterBackendRestart(context, localUrl, label, errors) {
+  const page = await context.newPage();
+  collectPageErrors(page, label, errors);
+  await page.goto(localUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#profile-view").waitFor({ state: "visible" });
+  await page.locator('[data-driver-target="map"]').waitFor({ state: "visible" });
+  return page;
 }
 
 async function registerDriver(page, localUrl, { username, email, password, nickname, driverType }) {
@@ -307,8 +314,8 @@ const timeout = setTimeout(() => {
       permissions: ["geolocation"]
     });
     await Promise.all([installDeterministicMap(contextA), installDeterministicMap(contextB)]);
-    const pageA = await contextA.newPage();
-    const pageB = await contextB.newPage();
+    let pageA = await contextA.newPage();
+    let pageB = await contextB.newPage();
     collectPageErrors(pageA, "driver-a", errors);
     collectPageErrors(pageB, "driver-b", errors);
 
@@ -420,17 +427,19 @@ const timeout = setTimeout(() => {
     await pageB.locator("#login-view").waitFor({ state: "visible" });
     await loginDriver(pageB, b.username, b.password);
 
-    // This restart is deliberate maintenance inside the persistence test. Quiesce
-    // both real browser clients before stopping the backend so the test does not
-    // manufacture 502s by polling a process it intentionally shut down. The strict
-    // HTTP-5xx collector remains active before and after this maintenance window.
+    // This restart is deliberate maintenance inside the persistence test. Close
+    // both pages first so SSE, polling and map tile requests cannot target a backend
+    // the test intentionally stops. BrowserContext state preserves sessions/storage.
     await quiescePagesForBackendRestart([pageA, pageB]);
     await stopChild(auth.child);
     // Simulate a slower Windows restart so this lifecycle remains covered on Linux CI.
     await new Promise((resolve) => setTimeout(resolve, 3500));
     replacementAuth = spawnAuth(auth.root, auth.env);
     await waitForHealth(auth.baseUrl, replacementAuth);
-    await restorePagesAfterBackendRestart([pageA, pageB], localUrl);
+    [pageA, pageB] = await Promise.all([
+      restorePageAfterBackendRestart(contextA, localUrl, "driver-a", errors),
+      restorePageAfterBackendRestart(contextB, localUrl, "driver-b", errors)
+    ]);
 
     result = await waitUntil("Road Report after backend restart", async () => {
       const listed = await browserApi(pageA, "/api/driver/road-reports");
