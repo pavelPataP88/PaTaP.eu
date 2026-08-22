@@ -115,6 +115,7 @@ test("repeated fast independent disputes create a decaying temporary create-only
       const closed = reports.confirm(3, report.id, "GONE");
       assert.equal(closed.closed, true);
       assert.equal(closed.report.trust.state, "DISPUTED");
+      assert.equal("abuseRecorded" in closed, false);
       clock += 60_000;
     }
 
