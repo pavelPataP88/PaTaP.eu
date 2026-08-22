@@ -15,11 +15,13 @@ test("continuous health watch is observable, bounded and maintenance-aware", () 
   assert.match(watch, /patap-health-watch\.log/);
   assert.match(watch, /FailureThreshold\s*=\s*3/);
   assert.match(watch, /consecutiveUnhealthy/);
-  assert.match(watch, /effective\s*=\s*"ALERT"/);
+  assert.match(watch, /\$effective\s*=\s*if[\s\S]*"ALERT"/);
   assert.match(watch, /patap-auth-maintenance\.flag/);
   assert.match(watch, /overall\s*=\s*"MAINTENANCE"/);
   assert.match(watch, /Move-Item[\s\S]*latestFile[\s\S]*-Force/);
   assert.match(watch, /maxArchivedLogs\s*=\s*5/);
+  assert.match(watch, /\$watchScriptPath\s*=\s*\[IO\.Path\]::GetFullPath/);
+  assert.match(watch, /\[Regex\]::Escape\(\$watchScriptPath\)/);
 });
 
 test("health watch observes only and never competes with the backend supervisor", () => {
