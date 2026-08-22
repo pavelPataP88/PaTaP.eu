@@ -1,4 +1,33 @@
 [2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-020 MEDIA_STORAGE_QUOTAS_V1
+TASK_ID: RELEASE-AUD020-20260822-001
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR #31 / branch `chatgpt/aud-020-media-storage-quotas-v1`.
+- Source SHA: `ae3a2497181560e768e7f24d8eece657cf360b88`.
+- Base confirmed: `codex/local-workspace-snapshot @ f70ee669d774a6810d3cfb69f55a17daa9c2c45c`.
+
+Review and Windows verification — PASS:
+- Static review confirms quota diagnostics only read files; no automatic orphan cleanup or rewrite of existing media was added.
+- Node --check passed for all changed server files.
+- Windows Node 24 free-space probe passed and reported a healthy disk with the configured reserve.
+- Exact isolated `npm ci` and `npm run verify:release` — PASS: audit 0, auth 55/55 including media quota tests, Radio 1/1, Driver 74/74, client 2/2, config 37/37, two-user Driver E2E and browser scenarios.
+- Production preflight — PRODUCTION_PREFLIGHT READY.
+- Fresh encrypted off-host DR export and restore drill — PASS. No key material was printed or committed.
+
+Deployment — PASS:
+- Recoverable source backup made before maintenance. Maintenance stopped only PaTaP backend and supervisor.
+- Candidate source copied non-destructively; SQLite, media, data, secrets, logs and runtime were preserved; hash check passed.
+- Root npm ci and build passed; standard resume returned backend health.
+- Stack health and health-watch are HEALTHY. Public smoke passed: patap.eu and driver.patap.eu both HTTP 200.
+- The new storage diagnostics endpoint correctly returns HTTP 401 to anonymous requests. Owner/Admin diagnostics were unit-tested; no real user account or media was used for post-deployment testing.
+
+Safety:
+- Existing media was neither deleted nor deliberately uploaded during verification. Password minimum remains 6; main and Navigation were not changed. Navigation remains BLOCKED_PROVIDER.
+
+---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
 BLOCK: AUD-021 AUTH_ASYNC_SCRYPT_V1
 TASK_ID: RELEASE-AUD021-20260822-001
 STATUS: DEPLOYED

@@ -2,6 +2,7 @@ const { createChatRoutes: createInnerChatRoutes, normalizeMessage, MAX_UPLOAD_BY
 const { createChatRepository } = require("./repository");
 const { createChatReactionRepository } = require("./reactions");
 const { DATA_DIR, hashToken: defaultHashToken, randomToken: defaultRandomToken } = require("../auth/db");
+const { createMediaQuota } = require("../storage/quota");
 
 const CLIENT_MESSAGE_ID = /^[A-Za-z0-9_-]{8,100}$/;
 
@@ -99,6 +100,7 @@ function createChatRoutes(options) {
   const inner = createInnerChatRoutes(dependencies);
   const chat = createChatRepository(options.db);
   const reactions = createChatReactionRepository(options.db);
+  const mediaQuota = options.mediaQuota || createMediaQuota({ db: options.db, dataDir: dependencies.dataDir });
 
   return async function handleChatRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/chat/")) return false;
@@ -119,6 +121,20 @@ function createChatRoutes(options) {
         const accessError = chat.roomAccessError(session.user.id, target);
         if (accessError) { options.json(res, ["driver_blocked", "chat_room_banned"].includes(accessError) ? 403 : 404, { error: accessError }); return true; }
         if (isReadOnlyGroup(chat, session.user.id, guardedRoomId)) { options.json(res, 403, { error: "chat_readonly" }); return true; }
+
+        if (Number.isSafeInteger(prepareUpload)) {
+          const kind = String(body?.kind || "").toUpperCase();
+          const byteLength = Number(body?.byteLength);
+          if (Object.hasOwn(MAX_KIND_BYTES, kind) && Number.isSafeInteger(byteLength) && byteLength >= 1 && byteLength <= MAX_KIND_BYTES[kind]) {
+            if (!options.requireCsrf(req, res, session)) return true;
+            const gate = mediaQuota.checkUpload(session.user.id, "chat", byteLength);
+            if (!gate.ok) {
+              options.audit(req, "media_quota_rejected", { userId: session.user.id, success: false, details: { domain: "chat", error: gate.error, scope: gate.scope, requestedBytes: byteLength } });
+              options.json(res, gate.status || 507, { error: gate.error });
+              return true;
+            }
+          }
+        }
 
         if (req.method === "POST" && postMessage && body?.forwardFromMessageId !== undefined && body?.forwardFromMessageId !== null) {
           const sourceMessageId = Number(body.forwardFromMessageId);
