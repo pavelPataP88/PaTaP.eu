@@ -9,8 +9,6 @@ const {
   validateUsername,
   validateEmail,
   validatePassword,
-  hashPassword,
-  verifyPassword,
   hashToken,
   randomToken,
   publicUser,
@@ -18,6 +16,7 @@ const {
   canManageRole,
   assertRole
 } = require("./db");
+const { hashPassword, verifyPassword } = require("./password");
 const { createDriverRoutes } = require("../driver/routes");
 const { createChatRoutes } = require("../chat/routes");
 const { createChatRepository } = require("../chat/repository");
@@ -414,13 +413,14 @@ async function route(req, res) {
     }
     let inTransaction = false;
     try {
+      const passwordHash = await hashPassword(password);
       const now = nowIso();
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
       const result = db.prepare(`
         INSERT INTO users(username, email, password_hash, role, created_at, updated_at)
         VALUES(?, ?, ?, 'User', ?, ?)
-      `).run(username, email, hashPassword(password), now, now);
+      `).run(username, email, passwordHash, now, now);
       const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
       const storedProfile = driverProfiles.save(user.id, profile, now);
       db.exec("COMMIT");
@@ -452,11 +452,12 @@ async function route(req, res) {
       return json(res, 400, { error: "invalid_registration" });
     }
     try {
+      const passwordHash = await hashPassword(password);
       const now = nowIso();
       const result = db.prepare(`
         INSERT INTO users(username, email, password_hash, role, created_at, updated_at)
         VALUES(?, ?, ?, 'User', ?, ?)
-      `).run(username, email, hashPassword(password), now, now);
+      `).run(username, email, passwordHash, now, now);
       const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
       const csrfToken = createSession(req, res, user);
       audit(req, "register", { userId: user.id, success: true });
@@ -479,18 +480,29 @@ async function route(req, res) {
       audit(req, "rate_limited", { success: false, details: { endpoint: "login" } });
       return json(res, 429, { error: "too_many_requests" });
     }
-    const user = db.prepare("SELECT * FROM users WHERE username = ? OR email = ?").get(identifier, identifier);
-    if (!user || user.disabled || (user.locked_until && user.locked_until > nowIso()) || !verifyPassword(String(body.password || ""), user.password_hash)) {
-      if (user) {
-        const failed = user.failed_login_count + 1;
-        const lockedUntil = failed >= 5 ? addMinutes(15) : user.locked_until;
-        db.prepare("UPDATE users SET failed_login_count = ?, locked_until = ?, updated_at = ? WHERE id = ?").run(failed, lockedUntil, nowIso(), user.id);
+    const initialUser = db.prepare("SELECT * FROM users WHERE username = ? OR email = ?").get(identifier, identifier);
+    const initialNow = nowIso();
+    const canVerify = Boolean(initialUser && !initialUser.disabled && !(initialUser.locked_until && initialUser.locked_until > initialNow));
+    const passwordMatches = canVerify ? await verifyPassword(String(body.password || ""), initialUser.password_hash) : false;
+    const user = initialUser ? db.prepare("SELECT * FROM users WHERE id = ?").get(initialUser.id) : null;
+    const currentNow = nowIso();
+    const passwordChanged = Boolean(initialUser && user && user.password_hash !== initialUser.password_hash);
+    const unavailable = !user || user.disabled || (user.locked_until && user.locked_until > currentNow) || passwordChanged;
+    if (unavailable || !passwordMatches) {
+      if (user && !passwordChanged) {
+        db.prepare(`
+          UPDATE users
+          SET failed_login_count = failed_login_count + 1,
+              locked_until = CASE WHEN failed_login_count + 1 >= 5 THEN ? ELSE locked_until END,
+              updated_at = ?
+          WHERE id = ?
+        `).run(addMinutes(15), currentNow, user.id);
       }
-      audit(req, "login", { userId: user?.id, success: false });
+      audit(req, "login", { userId: user?.id || initialUser?.id, success: false });
       return json(res, 401, { error: "invalid_credentials" });
     }
     db.prepare("UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = ?, last_seen_at = ?, updated_at = ? WHERE id = ?")
-      .run(nowIso(), nowIso(), nowIso(), user.id);
+      .run(currentNow, currentNow, currentNow, user.id);
     const csrfToken = createSession(req, res, user);
     audit(req, "login", { userId: user.id, success: true });
     return json(res, 200, loginResponse(user, csrfToken));
@@ -541,16 +553,39 @@ async function route(req, res) {
       audit(req, "password_reset_completed", { success: false });
       return json(res, 400, { error: "invalid_reset" });
     }
+    const tokenHash = hashToken(token);
     const row = db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
-      .get(hashToken(token), nowIso());
+      .get(tokenHash, nowIso());
     if (!row) {
       audit(req, "password_reset_completed", { success: false });
       return json(res, 400, { error: "invalid_reset" });
     }
-    db.prepare("UPDATE users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE id = ?")
-      .run(hashPassword(password), nowIso(), row.user_id);
-    db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE id = ?").run(nowIso(), row.id);
-    db.prepare("UPDATE sessions SET revoked_at = ? WHERE user_id = ?").run(nowIso(), row.user_id);
+    const passwordHash = await hashPassword(password);
+    let resetTransaction = false;
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      resetTransaction = true;
+      const currentRow = db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
+        .get(tokenHash, nowIso());
+      if (!currentRow) {
+        db.exec("ROLLBACK");
+        resetTransaction = false;
+        audit(req, "password_reset_completed", { userId: row.user_id, success: false });
+        return json(res, 400, { error: "invalid_reset" });
+      }
+      const changedAt = nowIso();
+      db.prepare("UPDATE users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE id = ?")
+        .run(passwordHash, changedAt, currentRow.user_id);
+      db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE id = ?").run(changedAt, currentRow.id);
+      db.prepare("UPDATE sessions SET revoked_at = ? WHERE user_id = ?").run(changedAt, currentRow.user_id);
+      db.exec("COMMIT");
+      resetTransaction = false;
+    } catch (error) {
+      if (resetTransaction) {
+        try { db.exec("ROLLBACK"); } catch {}
+      }
+      throw error;
+    }
     audit(req, "password_reset_completed", { userId: row.user_id, success: true });
     return json(res, 200, { ok: true });
   }
