@@ -1,0 +1,34 @@
+name: AUD007 CRLF Once
+
+on:
+  push:
+    branches: [chatgpt/aud-007-account-lifecycle-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: ${{ !contains(github.event.head_commit.message, '[aud007-crlf-done]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chatgpt/aud-007-account-lifecycle-v1
+          fetch-depth: 0
+      - name: Restore reviewed CRLF for Driver routes
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server/driver/routes.js')
+          text = p.read_text(encoding='utf-8').replace('\r\n', '\n').replace('\r', '\n')
+          p.write_bytes(text.replace('\n', '\r\n').encode('utf-8'))
+      - name: Commit only if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- server/driver/routes.js; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add server/driver/routes.js
+          git commit -m 'AUD-007 restore Driver routes CRLF [aud007-crlf-done]'
+          git push origin HEAD:chatgpt/aud-007-account-lifecycle-v1
