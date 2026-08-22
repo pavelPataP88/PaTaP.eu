@@ -148,3 +148,7 @@ try {
   }
   Write-WatchLog "Health watch exited (PID $PID)."
 }
+
+# A monitored outage is data for the watcher, not a watcher process failure.
+# Terminating script errors still bypass this line because ErrorActionPreference is Stop.
+exit 0
