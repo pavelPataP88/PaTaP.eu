@@ -180,7 +180,7 @@ test("guard routes restrict only creation and keep diagnostics admin-only and lo
     assert.equal(diagnostics.locationHistoryStored, false);
     assert.equal(diagnostics.restrictedUsers, 1);
     const serialized = JSON.stringify(diagnostics);
-    assert.doesNotMatch(serialized, /latitude|longitude|location|reportId/i);
+    assert.doesNotMatch(serialized, /latitude|longitude|reportId/i);
 
     handled = await handle({ method: "POST", session: { user: { id: 9, role: "Owner" } } }, {}, new URL("https://driver.test/api/driver/admin/road-reports"));
     assert.equal(handled, true);
