@@ -306,7 +306,6 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
         const independentActive = Number(summary.independent_active || 0);
         const independentGone = Number(summary.independent_gone || 0);
         let closed = false;
-        let abuseRecorded = false;
 
         if (status === "GONE") {
           const authorClosingOwn = report.author_id !== null && Number(userId) === Number(report.author_id);
@@ -317,7 +316,6 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
                 db.prepare("UPDATE road_reports SET abuse_counted_at = ? WHERE id = ? AND abuse_counted_at IS NULL")
                   .run(now, reportId);
                 recordAbuse(Number(report.author_id), now);
-                abuseRecorded = true;
               }
             }
             db.prepare("UPDATE road_reports SET closed_at = ? WHERE id = ? AND closed_at IS NULL").run(now, reportId);
@@ -334,7 +332,7 @@ function createRoadReportRepository(db, { nowIso = () => new Date().toISOString(
 
         const publicReport = publicRow(selectPublicById.get(reportId));
         db.exec("COMMIT");
-        return { closed, report: publicReport, abuseRecorded };
+        return { closed, report: publicReport };
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch {}
         throw error;
