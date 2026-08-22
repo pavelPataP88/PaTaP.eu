@@ -391,7 +391,7 @@ const timeout = setTimeout(() => {
     await pageA.locator('[data-driver-target="parking"]').click();
     const parkingView = pageA.locator('[data-driver-view="parking"]');
     await parkingView.waitFor({ state: "visible" });
-    result = await browserApi(pageA, "/api/driver/parking/places?limit=10");
+    result = await browserApi(pageA, "/api/driver/parking/search?limit=10");
     assert.equal(result.status, 200);
     assert.ok(Array.isArray(result.data.places));
 
