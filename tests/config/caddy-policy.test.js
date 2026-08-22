@@ -33,6 +33,8 @@ test("Driver map provider can move to a reviewed origin without broadening conne
 
 test("only the exact public map-provider file may use an off-source config root", () => {
   assert.match(caddy, /@driverMapConfig\s*\{[\s\S]*host driver\.patap\.eu[\s\S]*path \/map-provider\.json[\s\S]*\}/);
-  assert.match(caddy, /handle @driverMapConfig\s*\{[\s\S]*root \* \{\$PATAP_MAP_CONFIG_ROOT:D:\/WWW\/PATAP\.EU\/var\/build\/driver\}[\s\S]*file_server/);
+  const handleBody = caddy.match(/handle @driverMapConfig\s*\{([\s\S]*?)\r?\n\t\}/)?.[1] || "";
+  assert.ok(handleBody.includes("root * {$PATAP_MAP_CONFIG_ROOT:D:/WWW.PATAP.EU/var/build/driver}"));
+  assert.ok(handleBody.includes("file_server"));
   assert.match(caddy, /@private[\s\S]*\/data\*/);
 });
