@@ -16,9 +16,8 @@ if (-not (Test-Path -LiteralPath $maintenanceFlag)) {
 
 Remove-Item -LiteralPath $maintenanceFlag -Force
 try {
-  $result = & $startScript
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript
   $exitCode = $LASTEXITCODE
-  $result
   if ($exitCode -ne 0) {
     throw "Backend start failed with exit code $exitCode"
   }
