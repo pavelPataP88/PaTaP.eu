@@ -24,3 +24,14 @@ test("large immutable assets use a long browser cache", () => {
 test("dynamic pages are explicitly not stored", () => {
   assert.ok(caddy.includes('Cache-Control "no-cache, no-store, must-revalidate"'));
 });
+
+test("Driver map provider can move to a reviewed origin without broadening connect-src to all HTTPS", () => {
+  assert.ok(caddy.includes("connect-src 'self' {$PATAP_MAP_CONNECT_SRC:https://tile.openstreetmap.org}"));
+  assert.doesNotMatch(caddy, /connect-src[^\n\"]*https:/);
+});
+
+test("only the exact public map-provider file may use an off-source config root", () => {
+  assert.match(caddy, /@driverMapConfig\s*\{[\s\S]*host driver\.patap\.eu[\s\S]*path \/map-provider\.json[\s\S]*\}/);
+  assert.match(caddy, /handle @driverMapConfig\s*\{[\s\S]*root \* \{\$PATAP_MAP_CONFIG_ROOT:D:\/WWW\/PATAP\.EU\/var\/build\/driver\}[\s\S]*file_server/);
+  assert.match(caddy, /@private[\s\S]*\/data\*/);
+});
