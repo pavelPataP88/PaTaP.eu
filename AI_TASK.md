@@ -1,9 +1,11 @@
-# AI_TASK — COMMERCIAL_HARDENING_V1: deployed
+# AI_TASK — новый чат: восстановление контекста
 
-Status: DEPLOYED.
+Status: production стабильный, новый функциональный блок ещё не выбран.
 
-The exact candidate `chatgpt/commercial-hardening-v1-work @ 0dbfb137758a0d2c8dc62866079002740e50a4e1` is now applied after full Windows release verification, production preflight, encrypted external DR export with restore drill, controlled maintenance, restart and public smoke.
+Сначала прочитай `docs/AI_NEW_CHAT_START.md`, затем `docs/AI_COLLABORATION_PROTOCOL.md` и актуальную запись `COMMERCIAL_HARDENING_V1` в `AI_HANDOFF.md`.
 
-`codex/local-workspace-snapshot` is updated from the actually deployed source. Runtime data, keys, SQLite, GPS, messages, uploads and logs are excluded.
+Источник истины: `codex/local-workspace-snapshot @ 9745b5145bce247d3cce6b3f9a67fbd983a0011c`. Это безопасное зеркало реально установленного кода; runtime и личные данные исключены.
 
-Navigation remains out of scope because no reviewed `NAV_ROUTER_URL` is configured. Do not modify `main`, Navigation, secrets or runtime data. Read the newest CODEX entry in AI_HANDOFF.md before proposing the next small block.
+Не менять `main`, Navigation, secrets или runtime-данные. Navigation остаётся заблокированной без настоящего проверенного `NAV_ROUTER_URL`.
+
+Первая задача: после чтения документов предложить один небольшой следующий блок с критериями готовности. Не писать большой код до выбора и фиксации блока.

@@ -1,3 +1,16 @@
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: NEW_CHAT_ONBOARDING
+STATUS: CURRENT_CONTEXT_PUBLISHED
+
+New ChatGPT must use `docs/AI_NEW_CHAT_START.md` as the single current entry point.
+
+- Current safe source-of-truth: `codex/local-workspace-snapshot @ 9745b5145bce247d3cce6b3f9a67fbd983a0011c`.
+- Latest deployed source: `chatgpt/commercial-hardening-v1-work @ 0dbfb137758a0d2c8dc62866079002740e50a4e1`.
+- Its Windows verification, preflight, encrypted external DR restore drill, deployment and public smoke are factual PASS. See the detailed `COMMERCIAL_HARDENING_V1` entry further below.
+- Navigation is still BLOCKED_PROVIDER; no real reviewed truck router is configured.
+- No new coding block is active. First action is to propose one small, testable block from the current snapshot.
+
+---
 [2026-08-20 Europe/Warsaw] FROM: CODEX
 BLOCK: NAVIGATION_ENGINE_V1
 TASK_ID: NAVIGATION-20260820-003
