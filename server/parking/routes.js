@@ -5,6 +5,7 @@ const { DATA_DIR }=require("../auth/db");
 const { createParkingRepository,haversineKm }=require("./repository");
 const { validImageBytes }=require("./media");
 const { createMediaQuota }=require("../storage/quota");
+const { createStorageRoutes }=require("../storage/routes");
 
 const PHOTO_TYPES=new Set(["image/jpeg","image/png","image/webp"]);
 const MAX_PHOTO_BYTES=5*1024*1024;
@@ -18,6 +19,7 @@ function createParkingRoutes(options){
   const parking=createParkingRepository(options.db,{nowIso:options.nowIso});
   const storageDir=path.join(DATA_DIR,"parking");
   const mediaQuota=options.mediaQuota||createMediaQuota({db:options.db,dataDir:DATA_DIR});
+  const handleStorageRoute=createStorageRoutes({...options,mediaQuota,dataDir:DATA_DIR});
   function respond(res,status,payload,headers){options.json(res,status,payload,headers);return true;}
   function requireUser(req,res){const session=options.requireSession(req,res);if(!session)return null;if(!parking.hasDriver(session.user.id)){respond(res,409,{error:"driver_profile_required"});return null;}parking.ensurePreferences(session.user.id,options.nowIso());return session;}
   function requireMutation(req,res,key,limit=40,minutes=1){const session=requireUser(req,res);if(!session||!options.requireCsrf(req,res,session))return null;if(key&&!options.checkRate(`parking:${key}:user:${session.user.id}`,limit,minutes)){respond(res,429,{error:"parking_rate_limited"});return null;}return session;}
@@ -32,6 +34,7 @@ function createParkingRoutes(options){
   }
 
   return async function handleParkingRoute(req,res,url,body){
+    if(await handleStorageRoute(req,res,url))return true;
     if(!url.pathname.startsWith("/api/driver/parking"))return false;
 
     const photoContent=url.pathname.match(/^\/api\/driver\/parking\/photos\/(\d+)\/content$/);
