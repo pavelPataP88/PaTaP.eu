@@ -5,6 +5,7 @@ const { ensureAccountSchema } = require("./schema");
 
 const DELETED_LABEL = "Удалённый пользователь";
 const FORWARDED_DELETED_LABEL = "Исходное сообщение удалено";
+const QUARANTINE_SUFFIX = /\.account-delete-[0-9a-f-]+\.pending$/i;
 
 function tableExists(db, name) {
   return Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
@@ -52,6 +53,24 @@ function safeStorageFile(root, storageKey) {
   return target;
 }
 
+function cleanupDeletionQuarantine(dataDir) {
+  let removed = 0;
+  let failed = 0;
+  for (const kind of ["chat", "radio", "parking"]) {
+    const root = path.join(dataDir, kind);
+    if (!fs.existsSync(root)) continue;
+    let entries;
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); }
+    catch { failed += 1; continue; }
+    for (const entry of entries) {
+      if (!entry.isFile() || !QUARANTINE_SUFFIX.test(entry.name)) continue;
+      try { fs.rmSync(path.join(root, entry.name), { force: true }); removed += 1; }
+      catch { failed += 1; }
+    }
+  }
+  return { removed, failed };
+}
+
 function accountOwnershipBlockers(db, userId) {
   const blockers = {
     principalOwner: false,
@@ -85,9 +104,9 @@ function exportAccountData(db, userId, { nowIso = () => new Date().toISOString()
     FROM users WHERE id=?`).get(userId));
   if (!account) return null;
 
-  const profile = oneIf(db, "driver_profiles", `SELECT nickname,driver_type,real_name,vehicle,country_code,gps_enabled,created_at,updated_at
+  const profile = oneIf(db, "driver_profiles", `SELECT nickname,driver_type,real_name,vehicle,language,country,city,country_code,gps_enabled,created_at,updated_at
     FROM driver_profiles WHERE user_id=?`, userId);
-  const location = oneIf(db, "driver_locations", `SELECT latitude,longitude,accuracy_m,heading_deg,updated_at
+  const location = oneIf(db, "driver_locations", `SELECT latitude,longitude,accuracy_m,updated_at
     FROM driver_locations WHERE user_id=?`, userId);
   const sessions = rowsIf(db, "sessions", `SELECT created_at,expires_at,last_seen_at,revoked_at,ip,user_agent
     FROM sessions WHERE user_id=? ORDER BY created_at`, userId);
@@ -116,6 +135,8 @@ function exportAccountData(db, userId, { nowIso = () => new Date().toISOString()
     WHERE m.sender_id=? ORDER BY m.id`, userId);
   const chatAttachments = rowsIf(db, "chat_message_attachments", `SELECT a.message_id,a.kind,a.file_name,a.mime_type,a.byte_length,a.duration_ms,a.created_at
     FROM chat_message_attachments a JOIN chat_messages m ON m.id=a.message_id WHERE m.sender_id=? ORDER BY a.id`, userId);
+  const chatUploads = rowsIf(db, "chat_uploads", `SELECT id,room_id,kind,file_name,mime_type,byte_length,duration_ms,state,created_at,expires_at
+    FROM chat_uploads WHERE user_id=? ORDER BY created_at`, userId);
   const chatDrafts = rowsIf(db, "chat_drafts", "SELECT room_id,body,reply_to_message_id,updated_at FROM chat_drafts WHERE user_id=? ORDER BY room_id", userId);
   const chatReactions = rowsIf(db, "chat_message_reactions_v2", "SELECT message_id,reaction,created_at FROM chat_message_reactions_v2 WHERE user_id=? ORDER BY message_id,reaction", userId);
 
@@ -136,16 +157,27 @@ function exportAccountData(db, userId, { nowIso = () => new Date().toISOString()
     .map((row) => ({ ...row, proposed_json: parseJson(row.proposed_json) }));
   const parkingPhotos = rowsIf(db, "parking_photos", "SELECT id,place_id,mime_type,byte_length,file_name,state,created_at FROM parking_photos WHERE uploader_id=? ORDER BY id", userId);
 
-  const eventPreferences = oneIf(db, "driver_event_preferences", `SELECT in_app_enabled,push_enabled,preview_enabled,driving_mode,quiet_start,quiet_end,updated_at
+  const eventPreferences = oneIf(db, "driver_event_preferences", `SELECT enabled,driving_mode,quiet_enabled,quiet_start,quiet_end,timezone,show_previews,in_app_popups,updated_at
     FROM driver_event_preferences WHERE user_id=?`, userId);
-  const eventCategoryPreferences = rowsIf(db, "driver_event_category_preferences", "SELECT category,enabled,updated_at FROM driver_event_category_preferences WHERE user_id=? ORDER BY category", userId);
-  const events = rowsIf(db, "driver_events", `SELECT id,event_key,category,priority,title,preview,action_json,created_at,read_at,archived_at,snoozed_until,expires_at
-    FROM driver_events WHERE user_id=? ORDER BY id`, userId).map((row) => ({ ...row, action_json: parseJson(row.action_json) }));
-  const pushSubscriptions = rowsIf(db, "driver_push_subscriptions", `SELECT endpoint,created_at,updated_at,last_success_at,last_failure_at,failure_count,revoked_at
+  const eventCategoryPreferences = rowsIf(db, "driver_event_category_preferences", `SELECT category,inbox_enabled,push_enabled,min_priority,updated_at
+    FROM driver_event_category_preferences WHERE user_id=? ORDER BY category`, userId);
+  const eventSourceOverrides = rowsIf(db, "driver_event_source_overrides", `SELECT source_kind,source_id,mode,updated_at
+    FROM driver_event_source_overrides WHERE user_id=? ORDER BY source_kind,source_id`, userId);
+  const events = rowsIf(db, "driver_events", `SELECT id,event_type,category,priority,source_kind,source_id,title,preview,route_json,data_json,dedupe_key,occurrence_count,created_at,updated_at,read_at,archived_at,snoozed_until,expires_at
+    FROM driver_events WHERE user_id=? ORDER BY id`, userId).map((row) => ({
+      ...row,
+      route_json: parseJson(row.route_json),
+      data_json: parseJson(row.data_json)
+    }));
+  const pushSubscriptions = rowsIf(db, "driver_push_subscriptions", `SELECT endpoint,user_agent,created_at,updated_at,last_success_at,failure_count,revoked_at
     FROM driver_push_subscriptions WHERE user_id=? ORDER BY id`, userId).map((row) => ({
-      endpointHost: endpointHost(row.endpoint), created_at: row.created_at, updated_at: row.updated_at,
-      last_success_at: row.last_success_at, last_failure_at: row.last_failure_at,
-      failure_count: row.failure_count, revoked_at: row.revoked_at
+      endpointHost: endpointHost(row.endpoint),
+      userAgent: row.user_agent,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      lastSuccessAt: row.last_success_at,
+      failureCount: Number(row.failure_count || 0),
+      revokedAt: row.revoked_at
     }));
 
   const auditEvents = rowsIf(db, "audit_events", `SELECT created_at,event_type,success,source_ip,user_agent,
@@ -158,11 +190,11 @@ function exportAccountData(db, userId, { nowIso = () => new Date().toISOString()
     account,
     driver: { profile, location, relationships, blocks },
     people: { settings: peopleSettings, contactPreferences, communities },
-    chat: { messages: chatMessages, attachments: chatAttachments, drafts: chatDrafts, reactions: chatReactions },
+    chat: { messages: chatMessages, attachments: chatAttachments, uploads: chatUploads, drafts: chatDrafts, reactions: chatReactions },
     radio: { settings: radioSettings, transmissions: radioTransmissions },
     roadReports: { reports: roadReports, votes: roadVotes },
     parking: { preferences: parkingPreferences, reviews: parkingReviews, favorites: parkingFavorites, occupancy: parkingOccupancy, corrections: parkingCorrections, photos: parkingPhotos },
-    events: { preferences: eventPreferences, categories: eventCategoryPreferences, inbox: events, pushSubscriptions },
+    events: { preferences: eventPreferences, categories: eventCategoryPreferences, sourceOverrides: eventSourceOverrides, inbox: events, pushSubscriptions },
     securityHistory: { sessions, auditEvents },
     exportPolicy: {
       binaryMediaEmbedded: false,
@@ -224,12 +256,8 @@ function removeQuarantine(items) {
   let removed = 0;
   let pending = 0;
   for (const item of items) {
-    try {
-      fs.rmSync(item.pending, { force: true });
-      removed += 1;
-    } catch {
-      pending += 1;
-    }
+    try { fs.rmSync(item.pending, { force: true }); removed += 1; }
+    catch { pending += 1; }
   }
   return { removed, pending };
 }
@@ -244,8 +272,8 @@ function deleteAccountData(db, userId, { nowIso = () => new Date().toISOString()
   if (ownership.chatGroups || ownership.communities || ownership.radioGroups) {
     return { error: "account_ownership_transfer_required", status: 409, ownership };
   }
-
   if (!dataDir) throw new Error("account_data_dir_required");
+
   const media = collectMedia(db, userId, dataDir);
   let quarantined;
   try { quarantined = quarantineMedia(media); }
@@ -256,6 +284,9 @@ function deleteAccountData(db, userId, { nowIso = () => new Date().toISOString()
   const tombstoneUsername = `deleted_${token}`;
   const tombstoneEmail = `deleted+${token}@deleted.invalid`;
   const tombstonePassword = `deleted$${crypto.randomBytes(32).toString("hex")}`;
+  const tombstoneNickname = `${DELETED_LABEL} ${token.slice(0, 6)}`;
+  const tombstoneNicknameKey = tombstoneNickname.toLocaleLowerCase("und");
+  const hadProfile = tableExists(db, "driver_profiles") && Boolean(db.prepare("SELECT 1 FROM driver_profiles WHERE user_id=?").get(userId));
 
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -286,7 +317,8 @@ function deleteAccountData(db, userId, { nowIso = () => new Date().toISOString()
 
     if (tableExists(db, "driver_events")) {
       db.prepare("DELETE FROM driver_events WHERE user_id=?").run(userId);
-      db.prepare("UPDATE driver_events SET actor_user_id=NULL,title='Событие пользователя',preview='',data_json='{}' WHERE actor_user_id=?").run(userId);
+      db.prepare(`UPDATE driver_events SET actor_user_id=NULL,source_id='deleted',title='Событие пользователя',preview='',
+        route_json='{}',data_json='{}',dedupe_key=NULL WHERE actor_user_id=?`).run(userId);
     }
     runIf(db, "driver_event_preferences", "DELETE FROM driver_event_preferences WHERE user_id=?", userId);
     runIf(db, "driver_event_category_preferences", "DELETE FROM driver_event_category_preferences WHERE user_id=?", userId);
@@ -350,7 +382,6 @@ function deleteAccountData(db, userId, { nowIso = () => new Date().toISOString()
     runIf(db, "radio_channel_members", "DELETE FROM radio_channel_members WHERE user_id=?", userId);
     if (tableExists(db, "radio_direct_pairs")) db.prepare("DELETE FROM radio_direct_pairs WHERE first_user_id=? OR second_user_id=?").run(userId, userId);
 
-    runIf(db, "driver_people_settings", "DELETE FROM driver_people_settings WHERE user_id=?", userId);
     if (tableExists(db, "driver_contact_preferences")) db.prepare("DELETE FROM driver_contact_preferences WHERE user_id=? OR target_user_id=?").run(userId, userId);
     runIf(db, "driver_community_members", "DELETE FROM driver_community_members WHERE user_id=?", userId);
     runIf(db, "driver_community_invites", "DELETE FROM driver_community_invites WHERE target_user_id=?", userId);
@@ -373,7 +404,25 @@ function deleteAccountData(db, userId, { nowIso = () => new Date().toISOString()
     if (tableExists(db, "driver_relationships")) db.prepare("DELETE FROM driver_relationships WHERE requester_id=? OR target_id=?").run(userId, userId);
     if (tableExists(db, "driver_blocks")) db.prepare("DELETE FROM driver_blocks WHERE blocker_id=? OR blocked_id=?").run(userId, userId);
     runIf(db, "driver_locations", "DELETE FROM driver_locations WHERE user_id=?", userId);
-    runIf(db, "driver_profiles", "DELETE FROM driver_profiles WHERE user_id=?", userId);
+
+    if (tableExists(db, "driver_profiles") && (hadProfile || messageIds.length)) {
+      db.prepare(`INSERT INTO driver_profiles(
+          user_id,nickname,nickname_key,driver_type,real_name,vehicle,language,country,city,created_at,updated_at,gps_enabled,country_code
+        ) VALUES(?,?,?,'GENERAL',NULL,NULL,NULL,NULL,NULL,?,?,0,NULL)
+        ON CONFLICT(user_id) DO UPDATE SET
+          nickname=excluded.nickname,nickname_key=excluded.nickname_key,driver_type='GENERAL',real_name=NULL,vehicle=NULL,
+          language=NULL,country=NULL,city=NULL,created_at=excluded.created_at,updated_at=excluded.updated_at,gps_enabled=0,country_code=NULL`)
+        .run(userId, tombstoneNickname, tombstoneNicknameKey, now, now);
+      if (tableExists(db, "driver_people_settings")) {
+        db.prepare(`INSERT INTO driver_people_settings(user_id,discoverability,nearby_visibility,contact_requests,community_invites,vehicle_visibility,updated_at)
+          VALUES(?,'HIDDEN','NOBODY','NOBODY','NOBODY','NOBODY',?)
+          ON CONFLICT(user_id) DO UPDATE SET discoverability='HIDDEN',nearby_visibility='NOBODY',contact_requests='NOBODY',
+            community_invites='NOBODY',vehicle_visibility='NOBODY',updated_at=excluded.updated_at`).run(userId, now);
+      }
+    } else {
+      runIf(db, "driver_people_settings", "DELETE FROM driver_people_settings WHERE user_id=?", userId);
+      runIf(db, "driver_profiles", "DELETE FROM driver_profiles WHERE user_id=?", userId);
+    }
 
     runIf(db, "password_reset_tokens", "DELETE FROM password_reset_tokens WHERE user_id=?", userId);
     runIf(db, "sessions", "DELETE FROM sessions WHERE user_id=?", userId);
@@ -409,6 +458,7 @@ module.exports = {
   FORWARDED_DELETED_LABEL,
   tableExists,
   safeStorageFile,
+  cleanupDeletionQuarantine,
   accountOwnershipBlockers,
   exportAccountData,
   deleteAccountData
