@@ -12,7 +12,7 @@
 
 ## Что реально установлено
 
-Последние установленные блоки: `COMMERCIAL_HARDENING_V1`, `AUD-021 AUTH_ASYNC_SCRYPT_V1` и `AUD-020 MEDIA_STORAGE_QUOTAS_V1`.
+Последние установленные блоки: `COMMERCIAL_HARDENING_V1`, `AUD-021 AUTH_ASYNC_SCRYPT_V1`, `AUD-020 MEDIA_STORAGE_QUOTAS_V1` и `AUD-019 MACHINE_DISASTER_RECOVERY_V1`.
 
 - PR #28 / `chatgpt/commercial-hardening-v1-work` / код `0dbfb137758a0d2c8dc62866079002740e50a4e1`.
 - Добавлены безопасный экспорт данных пользователя и защищённое удаление аккаунта, обязательная проверка зависимостей, штатный Windows-автозапуск и постоянный health-watch.
@@ -22,6 +22,8 @@
 `AUD-021` переводит обработку паролей на асинхронный scrypt в HTTP-пути входа, регистрации, сброса и удаления аккаунта. Формат прежних password hashes, параметры scrypt, auth schema 12 и минимальный пароль 6 символов сохранены. Полный Windows release suite, preflight, DR restore drill и public smoke прошли.
 
 `AUD-020` добавляет квоты на новые загрузки Chat, Radio и Parking, чтобы медиа не заполнили диск ноутбука. Существующие файлы не удаляются и не переписываются. Diagnostics доступны только Owner/Administrator и только читают состояние; гость получает 401. Windows disk probe, полный release suite, preflight, DR restore drill и public smoke прошли.
+
+`AUD-019` добавляет зашифрованное полное восстановление после потери ноутбука: проверенная SQLite-копия, приватные файлы из `data/` и tunnel token сохраняются только во внешнем recovery-set, а не в GitHub. Реальный export, проверка всех encrypted objects, изолированное восстановление и защита от перезаписи прошли. Recovery key остаётся отдельно от backup drive.
 
 До этого уже были установлены и отражены в текущем snapshot: карта и Road Reports, Chat Console V2, Radio Console V2, People & Communities, Parking Network и Event Center. Их подробная история находится в `AI_HANDOFF.md` и тематических документах в `docs/`.
 

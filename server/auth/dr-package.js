@@ -89,7 +89,7 @@ async function decryptFile(packagePath, targetPath, credentials = {}) {
   const target = path.resolve(targetPath);
   const stat = fs.statSync(source);
   const { header, bodyOffset } = readHeader(source);
-  if (stat.size <= bodyOffset + TAG_BYTES) throw new Error("PaTaP DR package is truncated");
+  if (stat.size < bodyOffset + TAG_BYTES) throw new Error("PaTaP DR package is truncated");
   const salt = Buffer.from(header.salt, "base64url");
   const iv = Buffer.from(header.iv, "base64url");
   const { key, kdf } = resolveKey({ ...credentials, salt });
@@ -101,11 +101,17 @@ async function decryptFile(packagePath, targetPath, credentials = {}) {
   decipher.setAuthTag(tag);
   fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
   try {
-    await pipeline(
-      fs.createReadStream(source, { start: bodyOffset, end: stat.size - TAG_BYTES - 1 }),
-      decipher,
-      fs.createWriteStream(target, { flags: "wx", mode: 0o600 })
-    );
+    const ciphertextEnd = stat.size - TAG_BYTES - 1;
+    if (ciphertextEnd < bodyOffset) {
+      const plaintext = decipher.final();
+      fs.writeFileSync(target, plaintext, { flags: "wx", mode: 0o600 });
+    } else {
+      await pipeline(
+        fs.createReadStream(source, { start: bodyOffset, end: ciphertextEnd }),
+        decipher,
+        fs.createWriteStream(target, { flags: "wx", mode: 0o600 })
+      );
+    }
   } catch (error) {
     fs.rmSync(target, { force: true });
     throw new Error(`DR package decryption failed: ${error.message}`);

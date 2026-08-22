@@ -1,4 +1,37 @@
 [2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-019 MACHINE_DISASTER_RECOVERY_V1
+TASK_ID: RELEASE-AUD019-20260822-001
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR #32 / branch `chatgpt/aud-019-machine-disaster-recovery-v1`.
+- Source SHA: `e01dd3c4ea9f29b9d54f138a8564c16330201243`.
+- Base confirmed: `codex/local-workspace-snapshot @ faf56337ad060dec22649d81ce069218cff672f5`.
+
+Review and verification — PASS:
+- Static review confirms no runtime/private material is in the Git diff; recovery index is encrypted and restore is explicit/non-overwriting/no-start.
+- Changed JavaScript syntax and PowerShell parsing — PASS.
+- Exact isolated `npm ci` and `npm run verify:release` — PASS: audit 0, auth 57/57 including whole-machine recovery, Radio 1/1, Driver 74/74, client 2/2, config 40/40, two-user Driver E2E and browser scenarios.
+- Production preflight — PRODUCTION_PREFLIGHT READY. Fresh normal encrypted database DR export and restore drill — PASS.
+
+Actual Windows recovery drill — PASS:
+- A real off-host `PATAP-MACHINE-DR1` set was created on F: using locally held key material. Manifest reported 31 encrypted objects, SQLite integrity OK, zero foreign-key violations and restoreDrill PASS.
+- The wrapper entered maintenance only for its snapshot and resumed the backend itself.
+- The set was verified and restored into a clean isolated source checkout with a redirected temporary tunnel-token target. Database was restored; 29/29 private files and the temporary token matched by hash without printing content.
+- A second restore refused overwrite as required. The isolated target and temporary token directory were then removed.
+
+Deployment — PASS:
+- Recoverable source backup created before maintenance; only PaTaP backend/supervisor stopped.
+- Candidate source copied non-destructively; SQLite, media, secrets, logs and runtime preserved; hash check passed.
+- Root npm ci/build, normal resume, health-watch and full stack health — PASS.
+- Public smoke — PASS: patap.eu and driver.patap.eu both HTTP 200.
+
+Safety:
+- The complete recovery set, its key, database, media, tunnel token and all temporary recovery data remain outside GitHub.
+- main, Navigation and password minimum (6) were not changed. Navigation remains BLOCKED_PROVIDER.
+
+---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
 BLOCK: AUD-020 MEDIA_STORAGE_QUOTAS_V1
 TASK_ID: RELEASE-AUD020-20260822-001
 STATUS: DEPLOYED
