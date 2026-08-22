@@ -1,96 +1,79 @@
-# AI_TASK — AUD-022/AUD-027 FINAL_AUDIT_CLOSE_V1
+# AI_TASK — AUD-031 EVENT_STREAM_SESSION_GUARD_V1
 
-Status: `DEPLOYED` — final audit-close documentation applied from `c3cc77179f24dc6000c861a0885cf219b78c248d`.
+Status: `VERIFYING` — NOT DEPLOYED.
 
 Authoritative production base:
-`codex/local-workspace-snapshot @ 0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
+`codex/local-workspace-snapshot @ 0bf2d26dc97b69ee728ae4e9f3d36da2b574b74d`.
 
 Working branch:
-`chatgpt/aud-022-027-final-audit-close-v1`.
+`chatgpt/aud-031-event-stream-session-guard-v1`.
 
-## Goal
+## Why this block exists
 
-Formally close the final two items of the 30-point technical audit without changing product runtime:
+The completed 30-point audit remains closed. During the subsequent whole-system residual review, one concrete privacy/session-lifecycle gap was found in Event Center.
 
-- `AUD-022 PASSWORD_POLICY_V2`;
-- `AUD-027 DEFAULT_BRANCH_SOURCE_OF_TRUTH_V1`.
+`GET /api/driver/events/stream` authenticates when the SSE connection is opened, but the established stream did not revalidate the backing session afterward. Therefore a stream could remain subscribed after that session was revoked, expired or its user was disabled, until the network connection itself ended.
 
-After this documentation/policy block is safely mirrored to production and recorded in `AI_HANDOFF.md`, the 30-point audit is closed 30/30. This does not mean every future product feature or real-device field test is complete.
+Chat realtime already revalidates live sessions. Radio live is periodically forced to reconnect. Event Center must also fail closed after auth loss.
 
-## AUD-022 — owner password-policy decision
+## Implemented contract
 
-The owner explicitly keeps the minimum registration password length at **6 characters** for Driver V1.
+- Event Center SSE keeps the existing authenticated connect requirement and existing event wire format.
+- An established Event stream rechecks the exact user/session state periodically against SQLite.
+- Production default recheck interval: 15 seconds.
+- Test-only override `PATAP_EVENT_STREAM_SESSION_RECHECK_MS` is bounded to 250 ms..60 s; invalid values fall back to 15 s.
+- Recheck requires:
+  - same user id;
+  - same session CSRF token;
+  - session not revoked;
+  - session not expired;
+  - user not disabled.
+- Any invalid session or recheck/database error closes the SSE response fail-closed and removes the Event listener.
+- Stream cleanup is idempotent and clears heartbeat + session-check timers.
+- Existing 20-second SSE heartbeat remains.
+- No Event payload, push behavior, inbox semantics, schema or UI changes.
 
-This is an accepted product/security trade-off and must not be silently changed by an engineer or AI agent.
+## Verification added
 
-Important boundary:
+`tests/auth/event-stream-session.test.js` proves:
 
-- do not describe six characters as a universally strong password guarantee;
-- continue to encourage users to choose a longer, unique password where product copy permits;
-- current asynchronous scrypt hashing/verification remains unchanged;
-- existing auth/session/CSRF/rate-limit/admin controls remain unchanged;
-- no forced reset or migration of existing users is authorized;
-- raising the minimum later requires a new explicit owner decision.
+1. the recheck interval is bounded;
+2. a real isolated Driver session can open Event SSE and receive `event.ready`;
+3. after that same session is revoked through normal `/api/logout`, the already-open Event SSE closes within the test recheck window.
 
-Therefore `AUD-022` is closed by explicit owner risk acceptance, not by changing runtime behavior.
-
-## AUD-027 — Git source-of-truth decision
-
-On 2026-08-22 GitHub `main` was safely fast-forwarded, without force/rewrite, from its stale ancestor to the exact verified production snapshot:
-
-`0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
-
-Immediately after that operation GitHub compare reported:
-
-- `main` vs production snapshot: `identical`;
-- ahead: 0;
-- behind: 0.
-
-The permanent policy is:
-
-1. `codex/local-workspace-snapshot` is the evidence branch representing the last clean source copied from actually running production after a successful release.
-2. `main` is the normal stable/default GitHub branch and must track the latest verified production snapshot.
-3. After a successful production deployment and creation/verification of a new clean snapshot, `main` may be advanced only by a non-force fast-forward to that verified snapshot.
-4. Never force-push/rewrite `main` to resolve divergence.
-5. If `main` and the snapshot ever diverge, stop and investigate before changing either ref.
-6. New engineering branches must start from the latest verified production source; when `main` is identical to the snapshot, either ref points to the same source, but the snapshot remains the deployment evidence.
-7. GitHub is an engineering mirror; the Windows production working tree remains the actual running system.
-
-Therefore `AUD-027` is closed.
+`scripts/run-auth-tests.js` includes the new test and starts the isolated auth backend with a 250 ms Event-stream recheck only for deterministic tests. Production configuration is unchanged.
 
 ## Intentionally unchanged
 
-This block must not change:
+- password minimum remains 6;
+- async scrypt/auth format unchanged;
+- session expiry durations unchanged;
+- Chat/Radio protocols unchanged;
+- Event payloads/push subscriptions/outbox unchanged;
+- SQLite schema/data unchanged;
+- GPS/Map/Parking/People/Road Reports unchanged;
+- Navigation/Valhalla/`NAV_ROUTER_URL` unchanged;
+- interface unchanged;
+- Caddy/tunnel/service topology unchanged;
+- `main` unchanged by this candidate;
+- no runtime/private data in GitHub.
 
-- Driver/server/runtime code;
-- password minimum in code (it remains 6);
-- password hashing parameters/format;
-- SQLite/schema/users/sessions;
-- Navigation/Valhalla/`NAV_ROUTER_URL`;
-- interface;
-- Caddy/tunnel/services;
-- runtime/private data.
+## Mandatory Codex Windows/production gate
 
-## Mandatory Codex gate
+1. Review exact final PR SHA only and confirm base `0bf2d26dc97b69ee728ae4e9f3d36da2b574b74d`.
+2. Confirm the diff is limited to Event SSE session lifecycle, its auth regression test, test runner wiring and documentation; no schema/private data/interface changes.
+3. Windows Node 24.x + clean `npm ci`.
+4. Run full `npm run verify:release`; require complete PASS.
+5. Require the new auth tests to prove established Event SSE closes after normal session revocation.
+6. Confirm normal Event SSE still connects for an authenticated Driver and receives `event.ready` / committed events before revocation.
+7. Production preflight must be `READY`.
+8. Fresh encrypted off-host DR export + restore drill must PASS.
+9. Make a recoverable source backup and apply the exact candidate non-destructively, preserving SQLite/users/media/secrets/tokens/logs/runtime data.
+10. Root `npm ci` + build; normal backend resume.
+11. Require `status-patap-stack.ps1 = HEALTHY`, local `/api/health` healthy and both public domains HTTP 200.
+12. Safe authenticated smoke with temporary/test identity only: open Event SSE, logout/revoke that session and prove the established stream closes. Do not revoke or alter a real user's session for this smoke.
+13. Confirm Chat realtime, Radio and normal Driver login/session smoke remain healthy.
+14. Create a new clean `codex/local-workspace-snapshot` from actually running production and append `STATUS: DEPLOYED` evidence to `AI_HANDOFF.md`.
+15. Return the new snapshot SHA. Do not move `main`; ChatGPT will verify the new snapshot and fast-forward `main` afterward.
 
-1. Confirm exact base `0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
-2. Confirm the candidate changes Markdown documentation only.
-3. Confirm `main` currently resolves to that same base snapshot before applying this docs block; if it does not, report the exact difference rather than force-changing refs.
-4. `git diff --check` must PASS.
-5. Apply only the documentation files using the normal recoverable docs-only workflow.
-6. No backend restart, dependency install, SQLite operation or DR cycle is required solely for this docs-only policy block.
-7. Confirm the running stack remains `HEALTHY` and both public domains remain HTTP 200 without disturbing services.
-8. Create a new clean `codex/local-workspace-snapshot` from the actual production working tree.
-9. Append `AI_HANDOFF.md` evidence:
-   - `BLOCK: AUD-022/AUD-027 FINAL_AUDIT_CLOSE_V1`
-   - `STATUS: DEPLOYED`
-   - `AUDIT: 30/30 CLOSED`
-   - password minimum 6 retained by explicit owner decision;
-   - scrypt unchanged;
-   - main/source-of-truth policy recorded;
-   - no runtime/interface/Navigation change.
-10. Return the new clean production snapshot SHA.
-
-After Codex produces and verifies the new snapshot, ChatGPT will fast-forward `main` to that new snapshot as the final GitHub synchronization step. No force push is allowed.
-
-If any runtime/code/config/private-data change appears, return `CHANGES_REQUIRED` and do not expand the block.
+If Event SSE remains live after session revocation, normal Event delivery regresses, or any mandatory release/DR/health check fails, return `CHANGES_REQUIRED` precisely and do not broaden the fix.

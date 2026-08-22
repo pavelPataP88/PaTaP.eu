@@ -1,9 +1,17 @@
-function createEventRoutes({events,push,json,requireSession,requireCsrf,checkRate,nowIso,audit}){
+const DEFAULT_EVENT_STREAM_SESSION_RECHECK_MS=15_000;
+function eventStreamSessionRecheckMs(value=process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS){const parsed=Number(value);return Number.isFinite(parsed)?Math.max(250,Math.min(60_000,Math.floor(parsed))):DEFAULT_EVENT_STREAM_SESSION_RECHECK_MS;}
+
+function createEventRoutes({db,events,push,json,requireSession,requireCsrf,checkRate,nowIso,audit}){
   function respond(res,status,payload){json(res,status,payload);return true;}
   function requireUser(req,res){const session=requireSession(req,res);if(!session)return null;if(!events.repo.hasDriver(session.user.id)){respond(res,409,{error:"driver_profile_required"});return null;}events.repo.ensurePreferences(session.user.id,nowIso());return session;}
   function requireOwner(req,res,{csrf=false}={}){const session=requireSession(req,res);if(!session)return null;if(session.user.role!=="Owner"){respond(res,403,{error:"forbidden"});return null;}if(csrf&&!requireCsrf(req,res,session))return null;return session;}
   function mutation(req,res,key,limit=60,windowMinutes=1){const session=requireUser(req,res);if(!session||!requireCsrf(req,res,session))return null;if(key&&!checkRate(`events:${key}:user:${session.user.id}`,limit,windowMinutes)){respond(res,429,{error:"event_rate_limited"});return null;}return session;}
   function result(res,value,status=200){if(value?.error)return respond(res,value.status||400,{error:value.error});return respond(res,status,value);}
+  function streamSessionActive(session){
+    if(!db?.prepare||!session?.user?.id||!session?.csrfToken)return false;
+    try{return Boolean(db.prepare("SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.user_id=? AND s.csrf_token=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.disabled=0 LIMIT 1").get(Number(session.user.id),session.csrfToken,nowIso()));}
+    catch{return false;}
+  }
 
   return async function handleEventRoute(req,res,url,body){
     if(!url.pathname.startsWith("/api/driver/events"))return false;
@@ -23,8 +31,11 @@ function createEventRoutes({events,push,json,requireSession,requireCsrf,checkRat
       const session=requireUser(req,res);if(!session)return true;
       res.writeHead(200,{"Content-Type":"text/event-stream; charset=utf-8","Cache-Control":"no-store, no-transform","Connection":"keep-alive","X-Content-Type-Options":"nosniff","X-Accel-Buffering":"no"});
       res.write("retry: 3000\n\n");events.addListener(session.user.id,res);events.sendSse(res,{type:"event.ready",counts:events.repo.counts(session.user.id,nowIso())});
-      const heartbeat=setInterval(()=>{try{res.write(`: keepalive ${Date.now()}\n\n`);}catch{clearInterval(heartbeat);events.removeListener(session.user.id,res);}},20000);heartbeat.unref?.();
-      const close=()=>{clearInterval(heartbeat);events.removeListener(session.user.id,res);};req.once("close",close);req.once("aborted",close);return true;
+      let heartbeat=null,sessionCheck=null,closed=false;
+      const close=()=>{if(closed)return;closed=true;if(heartbeat)clearInterval(heartbeat);if(sessionCheck)clearInterval(sessionCheck);events.removeListener(session.user.id,res);};
+      heartbeat=setInterval(()=>{try{res.write(`: keepalive ${Date.now()}\n\n`);}catch{close();}},20000);heartbeat.unref?.();
+      sessionCheck=setInterval(()=>{if(streamSessionActive(session))return;close();try{res.end();}catch{}},eventStreamSessionRecheckMs());sessionCheck.unref?.();
+      req.once("close",close);req.once("aborted",close);return true;
     }
     if(req.method==="GET"&&url.pathname==="/api/driver/events/push-config"){
       const session=requireUser(req,res);if(!session)return true;return respond(res,200,push.config());
@@ -71,4 +82,4 @@ function createEventRoutes({events,push,json,requireSession,requireCsrf,checkRat
   };
 }
 
-module.exports={createEventRoutes};
+module.exports={createEventRoutes,eventStreamSessionRecheckMs,DEFAULT_EVENT_STREAM_SESSION_RECHECK_MS};
