@@ -9,5 +9,5 @@
   "roles": ["Administrator", "Developer", "TruckDriver", "TaxiDriver"],
   "permissions": ["transport:open"],
   "storage": ["modules", "projects", "cache", "uploads", "config"],
-  "description": "Independent future transport module. No implementation yet."
+  "description": "Architecture-only future transport model. Not the current Driver runtime; migration requires an explicit per-domain strangler plan."
 }
