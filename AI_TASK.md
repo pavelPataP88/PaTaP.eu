@@ -1,91 +1,73 @@
-# AI_TASK — AUD-024 RADIO_AUDIOWORKLET_V1
+# AI_TASK — AUD-030 ROAD_REPORT_ABUSE_GUARD_V1
 
 Status: `DEPLOYED` — installed and verified by Codex on 2026-08-22.
 
 Production source of truth before this block:
-`codex/local-workspace-snapshot @ 6ea22faf1ede12b6342cc02bf55a3508db719d87`.
+`codex/local-workspace-snapshot @ 7f9df7dabc99d96072c1bf0084d49ad202190864`.
 
-Exact deployed source: `044e15c178a9c4d7a3d97cd43ce5aa1fa1c57ca3`.
+Exact deployed source: `6d0204cde8e274023d9cf77513376299dc062d52`.
 
 Working branch:
-`chatgpt/aud-024-radio-audioworklet-v1`.
+`chatgpt/aud-030-road-report-abuse-guard-v1`.
 
-Do not deploy an intermediate commit. Use only the exact final PR head recorded in the PR conversation after GitHub Verify is fully green.
+Use only the exact final PR head recorded in the PR conversation after GitHub Verify is fully green. Do not deploy an intermediate commit.
 
 ## Goal
 
-Close `AUD-024`: make modern Driver Radio microphone capture use `AudioWorklet` instead of deprecated `AudioContext.createScriptProcessor()`, while preserving the current 16 kHz PCM live-radio protocol and all existing PTT/history behavior.
+Close `AUD-030`: protect Road Reports from repeated false/spam reporting using independent peer evidence, a decaying internal abuse counter and temporary create-only restrictions, without creating a public driver reputation score or location-history diagnostics.
 
-## Engineering contract
+## Implemented contract
 
-Implemented:
+- Road Report module schema upgrades additively from v1 to v2; existing reports/votes remain;
+- two nullable lifecycle markers are added to existing report rows: historical peer support and whether that report already produced an abuse signal;
+- user guard table stores only user id, abuse score, restriction expiry and timestamps — no coordinates or route history;
+- public report trust is report-level only: `UNCONFIRMED`, `SUPPORTED`, `CONFIRMED`, `DISPUTED`;
+- report author never counts as an independent peer;
+- two independent ACTIVE peers mark a report confirmed/historically supported;
+- a report that was independently supported can later clear without penalizing its author;
+- one abuse point is recorded only for a report closed by two independent GONE peers within 10 minutes, before it ever reached two independent ACTIVE peers;
+- each report can contribute at most one point;
+- score decays by one each seven days without a new signal;
+- score 3-4 -> six-hour creation restriction; score 5+ -> 24-hour restriction; score capped at 10;
+- restriction affects only `POST /api/driver/road-reports`; read/confirm/self-close and all other Driver modules remain available;
+- restricted creation returns HTTP 429 + stable `road_report_temporarily_restricted` + `Retry-After`;
+- `GET /api/driver/admin/road-reports` is read-only Owner/Administrator diagnostics with policy/trust/guard counts and no coordinates/report ids/location history;
+- no public people rating is added;
+- documentation: `docs/ROAD_REPORT_ABUSE_GUARD_V1.md`.
 
-- new same-origin static AudioWorklet processor: `driver/radio/live-capture-worklet.mjs`;
-- new capture adapter: `driver/radio/capture-graph.mjs`;
-- AudioWorklet is always attempted first when the browser exposes `audioWorklet.addModule` and `AudioWorkletNode`;
-- the worklet only forwards mono float audio blocks through its message port; no network/storage/domain logic runs on the audio rendering thread;
-- `driver/radio/live-audio.mjs` no longer directly calls `.createScriptProcessor()`;
-- old ScriptProcessor capture remains only as an explicit compatibility fallback inside the capture adapter if AudioWorklet is unavailable or fails to load/construct;
-- capture fails closed if neither engine is available;
-- deterministic stop clears worklet/script handlers and disconnects the graph;
-- capture mode is locally observable for diagnostics;
-- automated tests cover worklet-first selection, fallback, fail-closed cleanup, static worklet behavior and unchanged wire constants;
-- documentation: `docs/RADIO_AUDIOWORKLET_V1.md`.
+## Existing boundaries that must remain unchanged
 
-## Transport behavior that MUST remain unchanged
+- fixed Road Report types/TTLs and no free text/media;
+- create requires profile + enabled fresh GPS and remains within 2 km;
+- peer confirm requires fresh nearby GPS and remains within 2 km;
+- author can close own report;
+- guest Road Report list remains read-only and does not expose author identity;
+- seven-day closed/expired report retention;
+- auth schema remains 12;
+- password minimum remains 6;
+- no Navigation / `NAV_ROUTER_URL` changes;
+- no `main` changes;
+- no SQLite/users/GPS/messages/media/secrets/logs/runtime content committed.
 
-- sample rate: 16,000 Hz PCM;
-- chunk size: 4,000 samples;
-- accidental PTT gate: 550 ms;
-- little-endian PCM16 live body;
-- upload token and sequence headers;
-- `X-Radio-Live-Sample-Rate` remains 16000;
-- final zero-byte completion request with `X-Radio-Live-End: 1`;
-- live failure degrades to existing `history_only` state;
-- server radio permissions/channel policies/PTT lease rules unchanged;
-- committed history and already-heard live dedup unchanged;
-- existing MediaRecorder committed-history path unchanged.
-
-## Security boundary
-
-- worklet module is static and same-origin;
-- no blob worklet, eval, remote script or third-party audio code;
-- do not broaden Driver CSP;
-- no server/API/auth schema change;
-- no runtime/private data in GitHub.
-
-## Intentionally unchanged
-
-- Radio channel/group/direct data model;
-- contact requirements, moderation and roles;
-- server live HTTP endpoints;
-- 60-second / 3 MiB limits;
-- Radio history retention;
-- playback engine;
-- GPS, Map, Road Reports, Parking, Chat, People, Event Center;
-- Navigation / `NAV_ROUTER_URL`;
-- password policy;
-- `main`;
-- SQLite, users, GPS, messages, radio media, tokens, secrets and logs.
-
-## Mandatory Codex Windows gate
+## Mandatory Codex Windows/production gate
 
 Before any production apply:
 
-1. Review the exact final PR SHA and diff; confirm base is `6ea22faf1ede12b6342cc02bf55a3508db719d87`.
-2. Confirm the diff contains no runtime/private data and no unrelated server/channel/auth changes.
+1. Review exact final PR SHA/diff and confirm base `7f9df7dabc99d96072c1bf0084d49ad202190864`.
+2. Confirm no runtime/private data and no public user reputation/location-history feature is present.
 3. Windows Node 24.x + clean `npm ci`.
-4. Run the Driver radio/worklet tests and then full `npm run verify:release`; require full PASS.
-5. Confirm `driver/radio/live-audio.mjs` contains no direct `.createScriptProcessor(` call and the only remaining call is the documented fallback in `capture-graph.mjs`.
-6. Confirm build output contains `radio/live-capture-worklet.mjs` and `radio/capture-graph.mjs`.
-7. Production preflight must be `READY`.
-8. Create fresh encrypted off-host recovery/DR evidence using the existing safe release process.
-9. Make a recoverable source backup and use normal guarded maintenance; preserve SQLite/media/secrets/runtime data.
-10. Apply exact candidate source non-destructively, run root `npm ci`, build, and normal stack resume.
-11. Require stack `HEALTHY` and both `https://patap.eu` and `https://driver.patap.eu` HTTP 200.
-12. Browser smoke after login: Radio screen loads without module/CSP/404 console errors. Confirm `/radio/live-capture-worklet.mjs` is served from the Driver origin when live capture starts on an AudioWorklet-capable browser.
-13. If a real microphone is available on the Windows machine, perform a local PTT smoke longer than 550 ms and confirm committed history remains normal. Do not claim this proves Android/iOS hardware behavior.
-14. Physical phone two-user live mic/speaker smoke remains owner/field verification when practical: live hear, release, committed history, no duplicate replay.
-15. After successful deployment, create the next safe `codex/local-workspace-snapshot` from actually deployed source and append `STATUS: DEPLOYED` evidence to `AI_HANDOFF.md`.
+4. Run full `npm run verify:release`; require full PASS including the new Road Report guard tests.
+5. Inspect a copy of the current production SQLite through the existing safe preflight/backup workflow and prove the additive Road Report v1 -> v2 migration on an isolated copy; existing report/vote counts must not decrease because of migration.
+6. Production preflight must be `READY`.
+7. Create fresh encrypted off-host recovery/DR evidence and successful restore drill.
+8. Make recoverable source backup and enter normal guarded maintenance only when ready to apply.
+9. Apply exact candidate non-destructively, preserving all runtime/private data; `npm ci` + build.
+10. Resume backend normally and require `status-patap-stack.ps1 = HEALTHY`.
+11. Public smoke: `https://patap.eu` and `https://driver.patap.eu` both HTTP 200.
+12. Read-only browser/API smoke after login: current Road Reports still list/create/confirm normally for an unrestricted test user; guest list remains safe.
+13. Owner/Administrator read-only `GET /api/driver/admin/road-reports` must return 200 and contain no latitude/longitude/reportId/location history; User must receive 403; non-GET must receive 405.
+14. Do not manufacture three abuse strikes against any real production user just to test restriction. Synthetic restriction behavior is already isolated in automated tests.
+15. Do not change Navigation, `main`, password policy or unrelated UI.
+16. After successful deployment, create a new clean `codex/local-workspace-snapshot` from the actually running source and append `STATUS: DEPLOYED` evidence to `AI_HANDOFF.md`.
 
-If any AudioWorklet loading, CSP, microphone, live chunking, PTT, history, Windows browser or release regression appears, report `CHANGES_REQUIRED` with exact file/location/reproduction/expected behavior. Do not remove the explicit compatibility fallback or weaken CSP as a shortcut.
+If migration, trust counting, restriction, GPS/create/confirm compatibility, admin privacy, release, DR or production smoke fails: report `CHANGES_REQUIRED` with exact file/location/reproduction/expected behavior. Do not weaken the independent-peer threshold or store location history as a shortcut.

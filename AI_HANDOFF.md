@@ -1301,3 +1301,14 @@ STATUS: DEPLOYED
 - No commercial provider, broad CSP, Navigation, main or private/runtime data was changed.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-030 ROAD_REPORT_ABUSE_GUARD_V1
+STATUS: DEPLOYED
+- PR #35 exact source `6d0204cde8e274023d9cf77513376299dc062d52`; base `7f9df7dabc99d96072c1bf0084d49ad202190864` confirmed.
+- Exact Windows release suite passed: audit 0, auth 57/57, Radio 1/1, Driver 86/86, client 2/2, config 42/42, Driver E2E and browser scenarios. Dedicated guard tests 4/4 passed.
+- Isolated copy of current production SQLite migrated Road Reports v1→v2 additively: reports/votes did not decrease, schema v2 and new guard table present, integrity OK, zero FK violations. Temporary copy removed.
+- Preflight READY; fresh encrypted off-host DR export and restore drill PASS. Candidate source copied non-destructively with 319 matching hashes; runtime/private data preserved.
+- Backend resumed normally; stack HEALTHY and public smoke passed for patap.eu and driver.patap.eu (HTTP 200).
+- No abuse strikes were created for real users. Navigation, main, password policy and interface were unchanged.
+
+---
