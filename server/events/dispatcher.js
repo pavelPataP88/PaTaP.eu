@@ -7,6 +7,7 @@ function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={
   const CLEANUP_INTERVAL_MS=60*60*1000;
   const PARKING_EVENT_MAX_AGE_MS=3*60*60*1000;
   const MAX_ATTEMPTS=5;
+  const isBusy=(error)=>Number(error?.errcode)===5||/database is (?:locked|busy)/i.test(String(error?.message||""));
 
   function processRow(row){
     if(row.event_kind==="CHAT_MESSAGE"){
@@ -48,19 +49,42 @@ function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={
   function cleanupProcessed(now=nowIso()){
     const nowMs=Date.parse(now);if(!Number.isFinite(nowMs))return 0;
     if(lastCleanupAt&&nowMs-lastCleanupAt<CLEANUP_INTERVAL_MS)return 0;
-    lastCleanupAt=nowMs;
     const processedCutoff=new Date(nowMs-OUTBOX_RETENTION_MS).toISOString();
     const failedCutoff=new Date(nowMs-FAILED_RETENTION_MS).toISOString();
-    const processed=Number(db.prepare("DELETE FROM driver_event_outbox WHERE status='PROCESSED' AND processed_at IS NOT NULL AND processed_at < ?").run(processedCutoff).changes||0);
-    const failed=Number(db.prepare("DELETE FROM driver_event_outbox WHERE status='FAILED' AND failed_at IS NOT NULL AND failed_at < ?").run(failedCutoff).changes||0);
-    return processed+failed;
+    try{
+      const processed=Number(db.prepare("DELETE FROM driver_event_outbox WHERE status='PROCESSED' AND processed_at IS NOT NULL AND processed_at < ?").run(processedCutoff).changes||0);
+      const failed=Number(db.prepare("DELETE FROM driver_event_outbox WHERE status='FAILED' AND failed_at IS NOT NULL AND failed_at < ?").run(failedCutoff).changes||0);
+      lastCleanupAt=nowMs;
+      return processed+failed;
+    }catch(error){if(isBusy(error))return 0;throw error;}
   }
 
-  function processBatch(limit=100){if(running)return {processed:0,failed:0,cleaned:0};running=true;let processed=0,failed=0;try{
-    const rows=db.prepare("SELECT * FROM driver_event_outbox WHERE status='PENDING' AND processed_at IS NULL ORDER BY id LIMIT ?").all(Math.min(500,Math.max(1,Number(limit)||100)));
-    for(const row of rows){const now=nowIso();try{processRow(row);db.prepare("UPDATE driver_event_outbox SET status='PROCESSED',processed_at=?,failed_at=NULL,attempts=attempts+1,last_error=NULL WHERE id=? AND status='PENDING'").run(now,row.id);processed++;}catch(error){const attempts=Number(row.attempts||0)+1;const dead=attempts>=MAX_ATTEMPTS;db.prepare("UPDATE driver_event_outbox SET attempts=?,last_error=?,status=?,failed_at=?,processed_at=NULL WHERE id=? AND status='PENDING'").run(attempts,String(error?.message||"event_dispatch_failed").slice(0,500),dead?"FAILED":"PENDING",dead?now:null,row.id);if(dead)failed++;}}
-    return {processed,failed,cleaned:cleanupProcessed(nowIso())};
-  }finally{running=false;}}
+  function processBatch(limit=100){
+    if(running)return {processed:0,failed:0,cleaned:0,busy:false};
+    running=true;let processed=0,failed=0;
+    try{
+      let rows;
+      try{rows=db.prepare("SELECT * FROM driver_event_outbox WHERE status='PENDING' AND processed_at IS NULL ORDER BY id LIMIT ?").all(Math.min(500,Math.max(1,Number(limit)||100)));}
+      catch(error){if(isBusy(error))return {processed,failed,cleaned:0,busy:true};throw error;}
+      for(const row of rows){
+        const now=nowIso();
+        try{
+          processRow(row);
+          db.prepare("UPDATE driver_event_outbox SET status='PROCESSED',processed_at=?,failed_at=NULL,attempts=attempts+1,last_error=NULL WHERE id=? AND status='PENDING'").run(now,row.id);
+          processed++;
+        }catch(error){
+          if(isBusy(error))return {processed,failed,cleaned:0,busy:true};
+          const attempts=Number(row.attempts||0)+1;const dead=attempts>=MAX_ATTEMPTS;
+          try{
+            db.prepare("UPDATE driver_event_outbox SET attempts=?,last_error=?,status=?,failed_at=?,processed_at=NULL WHERE id=? AND status='PENDING'").run(attempts,String(error?.message||"event_dispatch_failed").slice(0,500),dead?"FAILED":"PENDING",dead?now:null,row.id);
+          }catch(markError){if(isBusy(markError))return {processed,failed,cleaned:0,busy:true};throw markError;}
+          if(dead)failed++;
+        }
+      }
+      return {processed,failed,cleaned:cleanupProcessed(nowIso()),busy:false};
+    }catch(error){if(isBusy(error))return {processed,failed,cleaned:0,busy:true};throw error;}
+    finally{running=false;}
+  }
 
   function listFailed(limit=100){
     return db.prepare(`
@@ -80,7 +104,8 @@ function createEventDispatcher({db,events,nowIso=()=>new Date().toISOString()}={
     return Number(result.changes||0)===1?{ok:true,id:value}:{error:"failed_outbox_not_found"};
   }
 
-  function start(intervalMs=1000){if(timer)return;processBatch();timer=setInterval(()=>processBatch(),Math.max(500,intervalMs));timer.unref?.();}
+  function runScheduled(){try{processBatch();}catch(error){console.error("Event dispatcher batch failed:",error);}}
+  function start(intervalMs=1000){if(timer)return;runScheduled();timer=setInterval(runScheduled,Math.max(500,intervalMs));timer.unref?.();}
   function stop(){if(timer){clearInterval(timer);timer=null;}}
   return {processBatch,cleanupProcessed,listFailed,failedCount,retryFailed,start,stop};
 }
