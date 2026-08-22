@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { createRadioRepository } = require("./repository");
 const { createRadioLiveHttp } = require("./live-http");
 const { createRadioRetentionCleaner, startRadioRetentionCleanup } = require("./retention");
+const { createMediaQuota } = require("../storage/quota");
 
 const AUDIO_TYPES = new Set(["audio/webm", "audio/ogg", "audio/mp4"]);
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
@@ -17,6 +18,7 @@ function audioMimeType(header) {
 function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, audit, nowIso, hashToken, randomToken, dataDir, readBinaryBody }) {
   const radio = createRadioRepository(db, { hashToken, randomToken, nowIso });
   const storageDir = path.join(dataDir, "radio");
+  const mediaQuota = createMediaQuota({ db, dataDir });
   const eventClients = new Set();
   const live = createRadioLiveHttp({ radio, requireSession, requireCsrf, json, nowIso, readBinaryBody });
   startRadioRetentionCleanup({ cleaner: createRadioRetentionCleaner({ db, storageDir, nowIso }) });
@@ -303,7 +305,8 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const target = radio.channelDeletionTarget(session.user.id, channelId);
       if (target.error) return respond(res, target.status, { error: target.error });
       try { for (const storageKey of target.storageKeys) fs.rmSync(path.join(storageDir, storageKey), { force: true }); }
-      catch { return respond(res, 500, { error: "radio_delete_failed" }); }
+      catch { return respond(res, 500, { error: "radio_delete_failed" });
+      }
       const result = radio.deleteGroupChannel(session.user.id, channelId);
       if (result.error) return respond(res, result.status, { error: result.error });
       audit(req, "radio_channel_deleted", { userId: session.user.id, success: true, details: { channelId } });
@@ -440,6 +443,11 @@ function createRadioRoutes({ db, json, requireSession, requireCsrf, checkRate, a
       const session = requireMutation(req, res);
       if (!session) return true;
       if (!checkRate(`radio-ptt:user:${session.user.id}`, 30, 1)) return respond(res, 429, { error: "radio_rate_limited" });
+      const gate = mediaQuota.checkUpload(session.user.id, "radio", MAX_AUDIO_BYTES);
+      if (!gate.ok) {
+        audit(req, "media_quota_rejected", { userId: session.user.id, success: false, details: { domain: "radio", error: gate.error, scope: gate.scope, requestedBytes: MAX_AUDIO_BYTES } });
+        return respond(res, gate.status || 507, { error: gate.error });
+      }
       const result = radio.beginTransmission(session.user.id, Number(pttMatch[1]), nowIso());
       if (result.error) return respond(res, result.status, { error: result.error, speaker: result.speaker });
       audit(req, "radio_ptt_granted", { userId: session.user.id, success: true, details: { channelId: Number(pttMatch[1]), transmissionId: result.transmissionId } });
