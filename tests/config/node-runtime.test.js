@@ -11,8 +11,10 @@ const {
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const driverPkg = JSON.parse(fs.readFileSync(path.join(root, "driver", "package.json"), "utf8"));
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "verify.yml"), "utf8");
 const supervisor = fs.readFileSync(path.join(root, "backend-supervisor.ps1"), "utf8");
+const buildScript = fs.readFileSync(path.join(root, "scripts", "build.js"), "utf8");
 const nvmrc = fs.readFileSync(path.join(root, ".nvmrc"), "utf8").trim();
 const nodeVersion = fs.readFileSync(path.join(root, ".node-version"), "utf8").trim();
 
@@ -37,6 +39,13 @@ test("repository metadata, CI and verification agree on Node 24", () => {
   const nodePins = [...workflow.matchAll(/node-version:\s*['"]?(\d+)/g)].map((match) => Number(match[1]));
   assert.ok(nodePins.length >= 2);
   assert.deepEqual([...new Set(nodePins)], [24]);
+});
+
+test("Driver source has an explicit ESM boundary without converting the CommonJS backend", () => {
+  assert.equal(driverPkg.private, true);
+  assert.equal(driverPkg.type, "module");
+  assert.equal(Object.hasOwn(pkg, "type"), false);
+  assert.doesNotMatch(buildScript, /["']package\.json["']/);
 });
 
 test("Windows supervisor uses the same runtime check and fails once instead of restart-looping", () => {
