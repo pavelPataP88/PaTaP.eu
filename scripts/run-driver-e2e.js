@@ -200,7 +200,6 @@ async function registerDriver(page, localUrl, { username, email, password, nickn
   await page.locator("#map-view").waitFor({ state: "visible" });
   await page.locator("#gps-toggle").waitFor({ state: "attached" });
   assert.equal(await page.locator("#gps-toggle").isDisabled(), false, "GPS toggle is disabled after Driver registration");
-  await page.locator("label.switch-row").filter({ has: page.locator("#gps-toggle") }).waitFor({ state: "visible" });
 }
 
 async function loginDriver(page, username, password) {
@@ -214,8 +213,14 @@ async function loginDriver(page, username, password) {
 async function enableGps(page) {
   const toggle = page.locator("#gps-toggle");
   if (!(await toggle.isChecked())) {
+    const layersButton = page.locator('[data-map-experience="layers"]');
+    const layersPanel = page.locator(".map-layers-panel");
     const switchRow = page.locator("label.switch-row").filter({ has: toggle });
+    await layersButton.waitFor({ state: "visible" });
+    if (await layersPanel.isHidden()) await layersButton.click();
+    await switchRow.waitFor({ state: "visible" });
     await switchRow.click();
+    if (!(await layersPanel.isHidden())) await layersButton.click();
   }
   await waitUntil("GPS upload", async () => {
     const text = await page.locator("#gps-state").textContent();
