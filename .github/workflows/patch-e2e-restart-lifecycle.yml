@@ -1,0 +1,84 @@
+name: Patch E2E restart lifecycle
+
+on:
+  push:
+    branches:
+      - chatgpt/audit-integration-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chatgpt/audit-integration-v1
+          fetch-depth: 0
+      - name: Patch planned restart lifecycle and Windows gate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          e2e_path = Path('scripts/run-driver-e2e.js')
+          source = e2e_path.read_text(encoding='utf-8')
+          anchor = '''async function registerDriver(page, localUrl, { username, email, password, nickname, driverType }) {'''
+          helper = '''async function quiescePagesForBackendRestart(pages) {
+            await Promise.all(pages.map((page) => page.goto("about:blank", { waitUntil: "load" })));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+
+          async function restorePagesAfterBackendRestart(pages, localUrl) {
+            await Promise.all(pages.map(async (page) => {
+              await page.goto(localUrl, { waitUntil: "domcontentloaded" });
+              await page.locator("#profile-view").waitFor({ state: "visible" });
+              await page.locator('[data-driver-target="map"]').waitFor({ state: "visible" });
+            }));
+          }
+
+          async function registerDriver(page, localUrl, { username, email, password, nickname, driverType }) {'''
+          if 'async function quiescePagesForBackendRestart' not in source:
+              if anchor not in source:
+                  raise SystemExit('registerDriver anchor not found')
+              source = source.replace(anchor, helper, 1)
+
+          old_restart = '''    await stopChild(auth.child);\n    replacementAuth = spawnAuth(auth.root, auth.env);\n    await waitForHealth(auth.baseUrl, replacementAuth);'''
+          new_restart = '''    // The persistence restart is deliberate maintenance. Quiesce both real browser\n    // clients first so they do not manufacture 502s by polling a backend we\n    // intentionally stopped. Strict HTTP-5xx collection remains enabled before\n    // and after this window. The fixed pause simulates a slower Windows restart.\n    await quiescePagesForBackendRestart([pageA, pageB]);\n    await stopChild(auth.child);\n    await new Promise((resolve) => setTimeout(resolve, 3500));\n    replacementAuth = spawnAuth(auth.root, auth.env);\n    await waitForHealth(auth.baseUrl, replacementAuth);\n    await restorePagesAfterBackendRestart([pageA, pageB], localUrl);'''
+          if 'await quiescePagesForBackendRestart([pageA, pageB]);' not in source:
+              if old_restart not in source:
+                  raise SystemExit('restart block not found')
+              source = source.replace(old_restart, new_restart, 1)
+          e2e_path.write_text(source, encoding='utf-8')
+
+          workflow_path = Path('.github/workflows/verify.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          if 'windows-driver-e2e:' not in workflow:
+              marker = '  public-smoke:\n'
+              windows_job = '''  windows-driver-e2e:\n    name: windows-driver-e2e\n    runs-on: windows-2025\n    timeout-minutes: 10\n    steps:\n      - uses: actions/checkout@v7\n      - uses: actions/setup-node@v7\n        with:\n          node-version: 24\n          cache: npm\n      - name: Install dependencies\n        run: npm ci\n      - name: Install Chromium\n        run: npx playwright install chromium\n      - name: Windows Driver E2E\n        run: npm run test:driver-e2e\n\n'''
+              if marker not in workflow:
+                  raise SystemExit('public-smoke marker not found')
+              workflow = workflow.replace(marker, windows_job + marker, 1)
+          workflow_path.write_text(workflow, encoding='utf-8')
+
+          test_path = Path('tests/config/release-gate.test.js')
+          test_source = test_path.read_text(encoding='utf-8')
+          old_assert = '  assert.match(driverE2e, /Driver E2E PASS:/);\n  assert.doesNotMatch(driverE2e, /https:\\\/\\\/(?:patap\\.eu|driver\\.patap\\.eu)/);'
+          new_assert = '''  assert.match(driverE2e, /Driver E2E PASS:/);\n  assert.match(workflow, /windows-driver-e2e:/);\n  assert.match(workflow, /runs-on:\\s*windows-2025/);\n  assert.match(workflow, /Windows Driver E2E[\\s\\S]*npm run test:driver-e2e/);\n  const quiesceAt = driverE2e.indexOf("await quiescePagesForBackendRestart([pageA, pageB])");\n  const stopAt = driverE2e.indexOf("await stopChild(auth.child)");\n  const restoreAt = driverE2e.indexOf("await restorePagesAfterBackendRestart([pageA, pageB], localUrl)");\n  assert.ok(quiesceAt >= 0 && quiesceAt < stopAt, "planned backend restart must quiesce browser streams before stop");\n  assert.ok(stopAt < restoreAt, "browser sessions must restore only after the restarted backend is healthy");\n  assert.match(driverE2e, /setTimeout\\(resolve, 3500\\)/);\n  assert.match(driverE2e, /assert\\.deepEqual\\(errors, \\[\\]/);\n  assert.doesNotMatch(driverE2e, /https:\\\/\\\/(?:patap\\.eu|driver\\.patap\\.eu)/);'''
+          if 'planned backend restart must quiesce browser streams before stop' not in test_source:
+              if old_assert not in test_source:
+                  raise SystemExit('release gate assertion anchor not found')
+              test_source = test_source.replace(old_assert, new_assert, 1)
+          test_path.write_text(test_source, encoding='utf-8')
+          PY
+          git diff --check
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/run-driver-e2e.js .github/workflows/verify.yml tests/config/release-gate.test.js
+          git commit -m "fix: quiesce E2E clients across planned backend restart"
+          git push origin HEAD:chatgpt/audit-integration-v1
