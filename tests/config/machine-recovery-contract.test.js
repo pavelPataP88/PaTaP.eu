@@ -23,7 +23,8 @@ test("whole-machine restore is explicit, non-overwriting and never activates pub
   assert.match(core, /PATAP_MACHINE_RECOVERY_CONFIRM/);
   assert.match(core, /machine_recovery_refuses_overwrite/);
   assert.match(core, /publicActivationRequired:\s*true/);
-  assert.doesNotMatch(core, /start-patap-stack|start-patap-tunnel|cloudflared\s+tunnel\s+run/i);
+  assert.match(core, /const required = \["package\.json", "start-patap-stack\.ps1", "Caddyfile\.tunnel"\]/);
+  assert.doesNotMatch(core, /child_process|spawnSync|\bspawn\s*\(|execFile|execSync|Start-Process|powershell(?:\.exe)?\s+-/i);
 });
 
 test("whole-machine recovery preserves the private continuity boundary instead of committing it to GitHub", () => {
