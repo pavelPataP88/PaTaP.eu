@@ -44,10 +44,6 @@ function fixtureDb(file) {
   db.close();
 }
 
-test("database inspection is read-only and previews migration, radio, push and road state", () => {
-  const dir = tempDir(test.mock ? { after: test.mock } : { after: () => {} });
-});
-
 test("database inspection is read-only and reports the deployment-sensitive state", (t) => {
   const dir = tempDir(t);
   const file = path.join(dir, "auth.sqlite");
