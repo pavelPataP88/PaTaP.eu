@@ -1,11 +1,9 @@
-# AI_TASK — AUDIT_INTEGRATION_V1: awaiting owner DR configuration
+# AI_TASK — AUDIT_INTEGRATION_V1: deployed
 
-Status: BLOCKED_DEPLOYMENT — code and release checks are accepted; production is not updated.
+Status: DEPLOYED.
 
-Accepted candidate: `chatgpt/audit-integration-v1 @ 66aee30744711206a5f92e032d8e7308b3fe0233`.
+The exact candidate `chatgpt/audit-integration-v1 @ 66aee30744711206a5f92e032d8e7308b3fe0233` is now applied to `D:\WWW.PATAP.EU` after full Windows release verification, production preflight, encrypted external DR export with restore drill, controlled maintenance, restart and public smoke.
 
-Codex actually passed `npm ci` (0 vulnerabilities), Node 24 check, and `verify:release`: auth 47/47, radio 1/1, Driver 14 files / 74/74, client 2/2, config 30/30, two-user Driver E2E and local browser. `PRODUCTION_PREFLIGHT READY` also passed against the existing site.
+`codex/local-workspace-snapshot` is being updated from the actually deployed source. Runtime data, keys, SQLite, GPS, messages, uploads and logs are excluded.
 
-The only blocker is operational, not code: no external encrypted disaster-recovery destination or key is configured (`PATAP_DR_EXPORT_DIR`, `PATAP_DR_KEY_FILE` / secure passphrase are unset). Deployment must not continue before the owner configures it and Codex gets a successful encrypted export plus restore drill.
-
-No ChatGPT code task now. Do not alter the accepted candidate, start a new feature, touch `main`, Navigation, secrets or runtime data. Read AI_HANDOFF.md for details.
+Navigation remains out of scope because no reviewed `NAV_ROUTER_URL` is configured. Do not modify `main`, Navigation, secrets or runtime data. Read the newest CODEX entry in AI_HANDOFF.md before proposing the next small block.

@@ -6,7 +6,7 @@ const { createParkingRoutes } = require("../parking/routes");
 const { createEventRuntime } = require("../events/factory");
 const { createEventRoutes } = require("../events/routes");
 const {
-  createRoadReportStore,
+  createRoadReportRepository,
   CONFIRMATIONS,
   MAX_REPORT_DISTANCE_KM,
   haversineKm,
@@ -27,7 +27,7 @@ function createDriverRoutes({
   const profiles = createProfileRepository(db);
   const locations = createLocationRepository(db, { addMinutes });
   const directory = createDriverDirectory(db, { addMinutes, nowIso });
-  const roadReports = createRoadReportStore();
+  const roadReports = createRoadReportRepository(db, { nowIso });
   const routeOptions = { db, json, requireSession, requireCsrf, checkRate, audit, nowIso, addMinutes };
   // Parking + People initialize their additive domain schemas, including Chat/Radio
   // structures used by the Event Center projection triggers.
@@ -323,4 +323,3 @@ function createDriverRoutes({
 }
 
 module.exports = { createDriverRoutes };
-

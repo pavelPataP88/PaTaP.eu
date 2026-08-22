@@ -1,5 +1,6 @@
 const test=require("node:test");
 const assert=require("node:assert/strict");
+const crypto=require("node:crypto");
 const {DatabaseSync}=require("node:sqlite");
 
 const runId=process.env.PATAP_TEST_RUN_ID;
@@ -22,6 +23,7 @@ async function waitForEvent(driver,predicate,timeoutMs=5000){const deadline=Date
 async function waitOutbox(){const deadline=Date.now()+5000;while(Date.now()<deadline){const db=new DatabaseSync(process.env.PATAP_DB_PATH,{readOnly:true});let pending;try{pending=Number(db.prepare("SELECT COUNT(*) n FROM driver_event_outbox WHERE processed_at IS NULL").get().n||0);}finally{db.close();}if(!pending)return;await new Promise(resolve=>setTimeout(resolve,100));}assert.fail("Event outbox did not drain");}
 async function readStreamUntil(reader,pattern,timeoutMs=3000){let text="";const deadline=Date.now()+timeoutMs;while(Date.now()<deadline&&text.length<16384){const remaining=Math.max(1,deadline-Date.now());const result=await Promise.race([reader.read(),new Promise((_,reject)=>setTimeout(()=>reject(new Error("sse_read_timeout")),remaining))]);if(result.done)break;text+=Buffer.from(result.value||[]).toString("utf8");if(pattern.test(text))return text;}assert.match(text,pattern);return text;}
 function messageId(){return `evt_${Date.now()}_${Math.random().toString(36).slice(2)}`;}
+function pushKeys(){const ecdh=crypto.createECDH("prime256v1");ecdh.generateKeys();return {p256dh:ecdh.getPublicKey().toString("base64url"),auth:crypto.randomBytes(16).toString("base64url")};}
 
 test("Event Center projects contact and direct-chat actions into durable actionable inbox events",async()=>{
   const sender=await createDriver("sender"),recipient=await createDriver("recipient");
@@ -60,11 +62,10 @@ test("Event Center preferences schema and Web Push boundary are enforced",async(
   r=await driver.client.request("/api/driver/events/push-subscriptions",{method:"POST",body:{endpoint:"https://example.test/push",keys:{p256dh:"x",auth:"y"}}});assert.equal(r.response.status,400);assert.equal(r.data.error,"unsupported_push_endpoint");
   await waitOutbox();
   const endpoint="https://fcm.googleapis.com/fcm/send/patap-test-subscription";
-  r=await driver.client.request("/api/driver/events/push-subscriptions",{method:"POST",body:{endpoint,keys:{p256dh:"test-p256dh",auth:"test-auth"}}});assert.equal(r.response.status,201);assert.equal(r.data.subscribed,true);
+  r=await driver.client.request("/api/driver/events/push-subscriptions",{method:"POST",body:{endpoint,keys:{p256dh:"test-p256dh",auth:"test-auth"}}});assert.equal(r.response.status,400);assert.equal(r.data.error,"invalid_push_subscription");
+  r=await driver.client.request("/api/driver/events/push-subscriptions",{method:"POST",body:{endpoint,keys:pushKeys()}});assert.equal(r.response.status,201);assert.equal(r.data.subscribed,true);
   r=await driver.client.request("/api/driver/events/overview");assert.equal(r.data.push.subscriptions,1);
   r=await driver.client.request("/api/driver/events/push-subscriptions",{method:"DELETE",body:{endpoint}});assert.equal(r.response.status,200);assert.equal(r.data.unsubscribed,true);
 
-  const db=new DatabaseSync(process.env.PATAP_DB_PATH,{readOnly:true});try{assert.equal(Number(db.prepare("SELECT MAX(version) version FROM schema_migrations").get().version),12);assert.equal(Number(db.prepare("SELECT version FROM driver_event_schema_meta WHERE singleton=1").get().version),1);for(const table of ["driver_events","driver_event_preferences","driver_event_category_preferences","driver_event_source_overrides","driver_event_outbox","driver_push_subscriptions"])assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));}finally{db.close();}
+  const db=new DatabaseSync(process.env.PATAP_DB_PATH,{readOnly:true});try{assert.equal(Number(db.prepare("SELECT MAX(version) version FROM schema_migrations").get().version),12);assert.equal(Number(db.prepare("SELECT version FROM driver_event_schema_meta WHERE singleton=1").get().version),2);for(const table of ["driver_events","driver_event_preferences","driver_event_category_preferences","driver_event_source_overrides","driver_event_outbox","driver_push_subscriptions"])assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));const columns=new Set(db.prepare("PRAGMA table_info(driver_event_outbox)").all().map(row=>row.name));assert.ok(columns.has("status"));assert.ok(columns.has("failed_at"));}finally{db.close();}
 });
-
-

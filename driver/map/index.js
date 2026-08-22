@@ -179,6 +179,9 @@ export function createMapController({ setState, onDriverCard, api, onAuthLost, s
   async function init() {
     if (map) return true;
     try { await ensureMapLibre(); } catch { setState("Не удалось загрузить карту. Чат, контакты и профиль продолжают работать.", "error"); return false; }
+    // Activation can be requested again while the lazy loader is pending. Recheck
+    // after the await so only one Map/experience overlay can be constructed.
+    if (map) return true;
     try {
       const configuredZoom = Number.isFinite(config.zoom) ? config.zoom : INITIAL_MAP_ZOOM;
       map = new window.maplibregl.Map({ container: "driver-map", center: config.center, zoom: Math.max(INITIAL_MAP_ZOOM, configuredZoom), maxZoom: config.maxZoom, attributionControl: false, style: { version: 8, sources: { basemap: { type: "raster", tiles: config.tiles, tileSize: 256, maxzoom: config.maxZoom, attribution: config.attribution } }, layers: [{ id: "basemap", type: "raster", source: "basemap" }] } });

@@ -3,6 +3,16 @@ const path = require("path");
 const { DATA_DIR } = require("../auth/db");
 const { createPeopleRepository } = require("./repository");
 const { createCommunityLinkGuard } = require("./guard");
+const { LOCATION_PRECISION } = require("./location-disclosure");
+
+function coarsenDistance(distanceKm, precision) {
+  const distance = Number(distanceKm);
+  if (!Number.isFinite(distance)) return null;
+  if (precision === LOCATION_PRECISION.PRECISE) return Number(distance.toFixed(1));
+  if (precision === LOCATION_PRECISION.CONTACT_APPROXIMATE) return Math.max(0.5, Math.round(distance * 2) / 2);
+  if (precision === LOCATION_PRECISION.PUBLIC_APPROXIMATE) return Math.max(1, Math.round(distance / 2) * 2);
+  return null;
+}
 
 function createPeopleRoutes(options) {
   const people = createPeopleRepository(options.db, { nowIso: options.nowIso, addMinutes: options.addMinutes });
@@ -41,6 +51,29 @@ function createPeopleRoutes(options) {
     return respond(res, successStatus, value);
   }
 
+  function sanitizeNearby(userId, value) {
+    if (!value || value.error || !Array.isArray(value.people) || value.people.length === 0) return value;
+    const nicknames = [...new Set(value.people.map((item) => item.nickname).filter(Boolean))];
+    if (!nicknames.length) return { ...value, people: [] };
+    const placeholders = nicknames.map(() => "?").join(",");
+    const ids = new Map(options.db.prepare(`SELECT user_id,nickname FROM driver_profiles WHERE nickname IN (${placeholders})`)
+      .all(...nicknames).map((row) => [row.nickname, Number(row.user_id)]));
+    return {
+      ...value,
+      people: value.people.map((person) => {
+        const targetId = ids.get(person.nickname);
+        if (!targetId) return null;
+        const precision = people.privacy.nearbyPrecision(userId, targetId);
+        if (precision === LOCATION_PRECISION.NONE) return null;
+        return {
+          ...person,
+          locationPrecision: precision,
+          distanceKm: coarsenDistance(person.distanceKm, precision)
+        };
+      }).filter(Boolean)
+    };
+  }
+
   function removeStorage(keys, folder) {
     for (const key of new Set((keys || []).filter(Boolean))) {
       try { fs.rmSync(path.join(dataDir, folder, key), { force:true }); } catch {}
@@ -69,7 +102,7 @@ function createPeopleRoutes(options) {
 
     if (req.method === "GET" && url.pathname === "/api/driver/people/nearby") {
       const session = requireUser(req,res); if (!session) return true;
-      return result(res,people.nearbyPeople(session.user.id,Number(url.searchParams.get("radius") || 25)));
+      return result(res,sanitizeNearby(session.user.id,people.nearbyPeople(session.user.id,Number(url.searchParams.get("radius") || 25))));
     }
 
     if (req.method === "GET" && url.pathname === "/api/driver/people/communities/discover") {
@@ -206,4 +239,4 @@ function createPeopleRoutes(options) {
   };
 }
 
-module.exports = { createPeopleRoutes };
+module.exports = { createPeopleRoutes, coarsenDistance };

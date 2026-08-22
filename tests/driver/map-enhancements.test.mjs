@@ -90,6 +90,8 @@ test("map integrates follow mode, accuracy, layers, driver clusters and auto rad
   assert.match(experienceSource, /Впереди/);
   assert.doesNotMatch(experienceSource, /ensureMapLibre|new window\.maplibregl\.Map/);
   assert.match(mapSource, /await ensureMapLibre\(\)/);
+  const afterLoader = mapSource.slice(mapSource.indexOf("await ensureMapLibre()"), mapSource.indexOf("await ensureMapLibre()") + 420);
+  assert.match(afterLoader, /if \(map\) return true;/);
 });
 
 test("mobile overlay moves GPS and radius controls onto the map without replacing their handlers", () => {

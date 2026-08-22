@@ -1045,3 +1045,41 @@ Owner action required (not a ChatGPT code fix):
 4. Tell Codex when configured; Codex will run the encrypted export + restore drill and, only if PASS, resume the already accepted deployment protocol.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUDIT_INTEGRATION_V1
+TASK_ID: RELEASE-PR19-20260822-004
+STATUS: DEPLOYED
+
+Source applied exactly:
+- PR #19 / branch chatgpt/audit-integration-v1 @ 66aee30744711206a5f92e032d8e7308b3fe0233.
+- Candidate was checked in D:\\WWW.PATAP.EU\\.release-66aee-candidate; then its non-runtime source files were hash-verified after copying into D:\\WWW.PATAP.EU.
+- main and Navigation were not changed.
+
+Factual verification before deployment:
+- Windows Node v24.16.0 (required 24.x) — PASS.
+- npm ci — PASS, 0 vulnerabilities.
+- npm run verify:release — PASS: auth 47/47; radio-live 1/1; Driver 14 files / 74/74; client 2/2; config 30/30; two-user Driver E2E PASS; isolated local browser PASS.
+- npm run production:preflight against the old live backend/database — PRODUCTION_PREFLIGHT READY. Database integrity passed, active road reports=0, expired committed radio=0 and active push subscriptions=0.
+- A verified local preflight database backup was created before maintenance. Runtime artifacts were not published.
+
+Disaster recovery:
+- Encrypted DR package exported to external F:\\PaTaP-DR.
+- Key material is kept separately in protected local runtime storage and was not printed, committed or published.
+- The export command's restore drill — PASS; auth schema version 12.
+
+Deployment and health:
+- Process identity was checked before maintenance: only the matching PaTaP backend/supervisor was stopped; PaTaP Caddy and cloudflared were identified separately and left running.
+- Maintenance mode entered successfully, stopping 1 PaTaP supervisor and 1 PaTaP backend.
+- Source backup preserved locally at var\\release-source-backups\\release-2026-08-22T11-21-00 before copying files. SQLite, data, media, secrets, logs, var and node_modules were excluded from the code copy.
+- npm ci and npm run build passed in the production workspace.
+- resume-backend.ps1 succeeded. MaintenanceMode=False, SupervisorRunning=True, BackendHealth=True.
+- status-patap-stack.ps1 — HEALTHY: local site/API, PaTaP Caddy, PaTaP tunnel, public site/API, HTTPS and canonical redirect all passed.
+- npm run test:public-smoke — PASS: patap.eu 200 and driver.patap.eu 200.
+
+Manual/live scope not claimed:
+- No real user account was used by Codex after deployment. Login/session, profile edits, real-device GPS, Road Report creation, Chat, Radio, Parking and Event Center are covered by the two-user isolated Driver E2E but should still be manually exercised on real phones by the owner/test drivers.
+
+Safety:
+- GitHub snapshot contains only the actually applied source and documentation. It excludes SQLite/backups, users, GPS, messages, radio/media uploads, VAPID/auth/DR keys, tokens, logs, data/, var/ and node_modules.
+
+---

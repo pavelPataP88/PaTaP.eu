@@ -3,30 +3,41 @@
   "version": "0.1.0",
   "private": true,
   "description": "Patap Lab static site served from this laptop through Cloudflare Tunnel.",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
+    "runtime:check": "node scripts/check-node-runtime.js",
     "build": "node scripts/build.js",
-    "auth:start": "node server/auth/server.js",
+    "auth:start": "npm run runtime:check && node server/auth/server.js",
     "auth:bootstrap-owner": "node server/auth/bootstrap-owner.js",
     "auth:backup": "node server/auth/backup-db.js",
+    "auth:backup:dr": "npm run runtime:check && node server/auth/export-dr-backup.js",
+    "auth:backup:dr:verify": "npm run runtime:check && node server/auth/verify-dr-backup.js",
     "auth:restore": "node server/auth/restore-db.js",
+    "production:preflight": "npm run runtime:check && node scripts/production-preflight.js",
     "parking:import": "node scripts/import-parking.js",
     "parking:import-osm-country": "node scripts/import-osm-parking-country.js",
     "test:auth": "node scripts/run-auth-tests.js",
     "test:radio-live": "node scripts/run-radio-live-test.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
-    "test:driver-modules": "node --test tests/driver/module-loader.test.mjs tests/driver/chat-reactions.test.mjs tests/driver/chat-console.test.mjs tests/driver/people-console.test.mjs tests/driver/parking-network.test.mjs tests/driver/event-center.test.mjs tests/driver/road-reports.test.mjs tests/driver/map-enhancements.test.mjs tests/driver/radio-experience.test.mjs tests/driver/radio-console.test.mjs",
-    "test:config": "node --test tests/config/caddy-policy.test.js",
+    "test:driver-modules": "node scripts/run-driver-tests.js",
+    "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js tests/config/production-preflight.test.js tests/config/supervisor-release-guard.test.js tests/config/stack-process-detection.test.js",
     "test:browser": "node scripts/run-browser-test.js",
+    "test:browser:local": "node scripts/run-browser-test.js --local-only",
+    "test:driver-e2e": "node scripts/build.js && node scripts/run-driver-e2e.js",
+    "test:public-smoke": "node scripts/run-public-smoke.js",
     "audit:performance": "node scripts/audit-interface-performance.js",
     "test:platformos": "node scripts/test-platformos-runtime.js",
-    "verify": "node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config"
+    "verify": "npm run runtime:check && node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config",
+    "verify:release": "npm run verify && npm run test:driver-e2e && npm run test:browser:local"
   },
   "devDependencies": {
     "playwright": "^1.61.1"
   },
   "dependencies": {
     "maplibre-gl": "5.24.0",
+    "web-push": "3.6.7",
     "ws": "^8.21.0"
   }
 }
-

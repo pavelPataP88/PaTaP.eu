@@ -2,18 +2,32 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $supervisorScript = Join-Path $root "backend-supervisor.ps1"
-$supervisorPidFile = Join-Path $root "var\run\patap-auth-supervisor.pid"
+$runDirectory = Join-Path $root "var\run"
+$supervisorPidFile = Join-Path $runDirectory "patap-auth-supervisor.pid"
+$maintenanceFlag = Join-Path $runDirectory "patap-auth-maintenance.flag"
 
 if (-not (Test-Path -LiteralPath $supervisorScript)) {
   throw "Backend supervisor script not found: $supervisorScript"
 }
 
+if (Test-Path -LiteralPath $maintenanceFlag) {
+  Write-Error "Backend maintenance mode is active. Use resume-backend.ps1 after the approved release action."
+  exit 2
+}
+
 $existing = $null
 if (Test-Path -LiteralPath $supervisorPidFile) {
-  $supervisorPid = [int](Get-Content -LiteralPath $supervisorPidFile -Raw)
-  $candidate = Get-Process -Id $supervisorPid -ErrorAction SilentlyContinue
-  if ($candidate -and $candidate.ProcessName -eq "powershell") {
-    $existing = $candidate
+  try {
+    $supervisorPid = [int](Get-Content -LiteralPath $supervisorPidFile -Raw)
+    $candidate = Get-Process -Id $supervisorPid -ErrorAction SilentlyContinue
+    if ($candidate -and $candidate.ProcessName -eq "powershell") {
+      $command = Get-CimInstance Win32_Process -Filter "ProcessId = $supervisorPid" -ErrorAction SilentlyContinue
+      if ($command -and [string]$command.CommandLine -like "*backend-supervisor.ps1*") {
+        $existing = $candidate
+      }
+    }
+  } catch {
+    $existing = $null
   }
 }
 
@@ -42,11 +56,19 @@ for ($attempt = 0; $attempt -lt 20 -and -not $health; $attempt++) {
   }
 }
 
-[PSCustomObject]@{
+$result = [PSCustomObject]@{
+  MaintenanceMode = $false
   SupervisorRunning = [bool]$(if (Test-Path -LiteralPath $supervisorPidFile) {
-    $supervisorPid = [int](Get-Content -LiteralPath $supervisorPidFile -Raw)
-    Get-Process -Id $supervisorPid -ErrorAction SilentlyContinue
+    try {
+      $supervisorPid = [int](Get-Content -LiteralPath $supervisorPidFile -Raw)
+      Get-Process -Id $supervisorPid -ErrorAction SilentlyContinue
+    } catch { $null }
   })
   BackendHealth = $health
 }
+$result
 
+if (-not $health) {
+  Write-Error "Backend did not become healthy. Inspect var\logs\patap-auth-supervisor.log and backend error logs; automatic restart may have been stopped by the crash-loop guard."
+  exit 1
+}
