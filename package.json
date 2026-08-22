@@ -18,7 +18,7 @@
     "test:auth": "node scripts/run-auth-tests.js",
     "test:radio-live": "node scripts/run-radio-live-test.js",
     "test:client": "node --test tests/browser/client-storage.test.js",
-    "test:driver-modules": "node --test tests/driver/module-loader.test.mjs tests/driver/chat-reactions.test.mjs tests/driver/chat-console.test.mjs tests/driver/people-console.test.mjs tests/driver/parking-network.test.mjs tests/driver/event-center.test.mjs tests/driver/road-reports.test.mjs tests/driver/map-enhancements.test.mjs tests/driver/radio-experience.test.mjs tests/driver/radio-console.test.mjs",
+    "test:driver-modules": "node scripts/run-driver-tests.js",
     "test:config": "node --test tests/config/caddy-policy.test.js tests/config/release-gate.test.js tests/config/node-runtime.test.js",
     "test:browser": "node scripts/run-browser-test.js",
     "test:browser:local": "node scripts/run-browser-test.js --local-only",
@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "maplibre-gl": "5.24.0",
+    "web-push": "3.6.7",
     "ws": "^8.21.0"
   }
 }

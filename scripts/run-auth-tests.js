@@ -28,10 +28,13 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     testProcess = spawn(process.execPath, [
       "--test-concurrency=1",
       "--test",
+      path.join("tests", "auth", "migration-atomicity.test.js"),
       path.join("tests", "auth", "api.test.js"),
+      path.join("tests", "auth", "session-touch.test.js"),
       path.join("tests", "auth", "chat-reactions.test.js"),
       path.join("tests", "auth", "chat-console.test.js"),
       path.join("tests", "auth", "people-communities.test.js"),
+      path.join("tests", "auth", "location-privacy.test.js"),
       path.join("tests", "auth", "parking-network.test.js"),
       path.join("tests", "auth", "event-center.test.js"),
       path.join("tests", "auth", "radio-reliability.test.js"),
@@ -56,4 +59,3 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   }
   process.exitCode = exitCode;
 })();
-

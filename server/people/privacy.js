@@ -1,4 +1,5 @@
 const { ensurePeopleSchema } = require("./schema");
+const { LOCATION_PRECISION } = require("./location-disclosure");
 
 const DEFAULT_SETTINGS = Object.freeze({
   discoverability: "EVERYONE",
@@ -79,23 +80,35 @@ function createPeoplePrivacy(db, { nowIso = () => new Date().toISOString() } = {
     return mode === "EVERYONE";
   }
 
+  function nearbyPrecision(viewerId, targetId) {
+    if (Number(viewerId) === Number(targetId) || isBlocked(viewerId, targetId)) return LOCATION_PRECISION.NONE;
+    const mode = ensureSettings(targetId).nearbyVisibility;
+    if (mode === "NOBODY") return LOCATION_PRECISION.NONE;
+
+    const contact = isContact(viewerId, targetId);
+    const trustedByTarget = contact && preference(targetId, viewerId).trusted;
+    if (mode === "TRUSTED") return trustedByTarget ? LOCATION_PRECISION.PRECISE : LOCATION_PRECISION.NONE;
+    if (mode === "CONTACTS") {
+      if (!contact) return LOCATION_PRECISION.NONE;
+      return trustedByTarget ? LOCATION_PRECISION.PRECISE : LOCATION_PRECISION.CONTACT_APPROXIMATE;
+    }
+    if (mode === "EVERYONE") {
+      if (trustedByTarget) return LOCATION_PRECISION.PRECISE;
+      return contact ? LOCATION_PRECISION.CONTACT_APPROXIMATE : LOCATION_PRECISION.PUBLIC_APPROXIMATE;
+    }
+    return LOCATION_PRECISION.NONE;
+  }
+
+  function canSeeNearby(viewerId, targetId) {
+    return nearbyPrecision(viewerId, targetId) !== LOCATION_PRECISION.NONE;
+  }
+
   function canOpenCard(viewerId, targetId) {
     if (Number(viewerId) === Number(targetId)) return true;
     if (isBlocked(viewerId, targetId)) {
       return Boolean(db.prepare("SELECT 1 FROM driver_blocks WHERE blocker_id = ? AND blocked_id = ?").get(viewerId, targetId));
     }
     return isContact(viewerId, targetId) || canDiscover(viewerId, targetId) || canSeeNearby(viewerId, targetId);
-  }
-
-  function canSeeNearby(viewerId, targetId) {
-    if (Number(viewerId) === Number(targetId)) return false;
-    if (isBlocked(viewerId, targetId)) return false;
-    const mode = ensureSettings(targetId).nearbyVisibility;
-    if (mode === "EVERYONE") return true;
-    if (mode === "NOBODY") return false;
-    if (!isContact(viewerId, targetId)) return false;
-    if (mode === "CONTACTS") return true;
-    return preference(targetId, viewerId).trusted;
   }
 
   function canSeeVehicle(viewerId, targetId) {
@@ -125,6 +138,7 @@ function createPeoplePrivacy(db, { nowIso = () => new Date().toISOString() } = {
     isContact,
     canDiscover,
     canOpenCard,
+    nearbyPrecision,
     canSeeNearby,
     canSeeVehicle,
     canRequestContact,
@@ -139,5 +153,6 @@ module.exports = {
   NEARBY,
   CONTACT_REQUESTS,
   COMMUNITY_INVITES,
-  VEHICLE
+  VEHICLE,
+  LOCATION_PRECISION
 };

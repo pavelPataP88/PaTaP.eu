@@ -14,6 +14,7 @@ const peopleRepositorySource = await readFile(new URL("../../server/people/repos
 const peoplePrivacySource = await readFile(new URL("../../server/people/privacy.js", import.meta.url), "utf8");
 const peopleSchemaSource = await readFile(new URL("../../server/people/schema.js", import.meta.url), "utf8");
 const locationSource = await readFile(new URL("../../server/driver/location.js", import.meta.url), "utf8");
+const locationDisclosureSource = await readFile(new URL("../../server/people/location-disclosure.js", import.meta.url), "utf8");
 
 test("People Console exposes driver-focused filters and responsive UI", () => {
   assert.deepEqual(PEOPLE_FILTERS.map(([key]) => key), ["ALL","CONTACTS","FAVORITES","TRUSTED","NEARBY","REQUESTS","COMMUNITIES","BLOCKED"]);
@@ -59,7 +60,11 @@ test("People schema is additive and links one community to one chat room and rad
 test("privacy affects old map coordinates and does not only decorate People UI", () => {
   assert.match(peoplePrivacySource, /nearby_visibility/);
   assert.match(peoplePrivacySource, /TRUSTED/);
-  assert.match(locationSource, /privacy\.canSeeNearby/);
+  assert.match(peoplePrivacySource, /nearbyPrecision/);
+  assert.match(locationSource, /privacy\.nearbyPrecision/);
+  assert.match(locationSource, /discloseLocation/);
+  assert.match(locationDisclosureSource, /PUBLIC_APPROXIMATE/);
+  assert.match(locationDisclosureSource, /CONTACT_APPROXIMATE/);
   assert.match(locationSource, /privacy\.canSeeVehicle/);
 });
 
