@@ -6,6 +6,7 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "../..");
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "verify.yml"), "utf8");
 const browser = fs.readFileSync(path.join(root, "scripts", "run-browser-test.js"), "utf8");
+const driverE2e = fs.readFileSync(path.join(root, "scripts", "run-driver-e2e.js"), "utf8");
 const publicSmoke = fs.readFileSync(path.join(root, "scripts", "run-public-smoke.js"), "utf8");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
@@ -30,12 +31,17 @@ test("CI action runtimes stay on the reviewed v7 majors", () => {
   assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-6]\b/);
 });
 
-test("release verification runs isolated browser scenarios without depending on public internet", () => {
+test("release verification requires Driver E2E plus isolated browser scenarios without public internet", () => {
   assert.equal(pkg.scripts["test:browser:local"], "node scripts/run-browser-test.js --local-only");
-  assert.equal(pkg.scripts["verify:release"], "npm run verify && npm run test:browser:local");
+  assert.equal(pkg.scripts["test:driver-e2e"], "node scripts/build.js && node scripts/run-driver-e2e.js");
+  assert.equal(pkg.scripts["verify:release"], "npm run verify && npm run test:driver-e2e && npm run test:browser:local");
   assert.match(browser, /process\.argv\.includes\("--local-only"\)/);
   assert.match(browser, /if \(!localOnly\)[\s\S]*https:\/\/patap\.eu/);
   assert.match(browser, /Public patap\.eu smoke skipped; running deterministic local browser scenarios only/);
+  assert.match(driverE2e, /browser\.newContext\(/);
+  assert.match(driverE2e, /permissions:\s*\["geolocation"\]/);
+  assert.match(driverE2e, /Driver E2E PASS:/);
+  assert.doesNotMatch(driverE2e, /https:\/\/(?:patap\.eu|driver\.patap\.eu)/);
 });
 
 test("public availability remains visible as a separate non-blocking signal", () => {
