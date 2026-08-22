@@ -7,7 +7,8 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$watchScriptPath = [IO.Path]::GetFullPath($MyInvocation.MyCommand.Path)
+$root = Split-Path -Parent $watchScriptPath
 $statusScript = Join-Path $root "status-patap-stack.ps1"
 $runDirectory = Join-Path $root "var\run"
 $logsDirectory = Join-Path $root "var\logs"
@@ -53,7 +54,7 @@ function Test-ExistingWatchProcess([int]$ProcessId) {
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
   if (-not $process) { return $false }
   $command = [string]$process.CommandLine
-  $escaped = [Regex]::Escape([IO.Path]::GetFullPath($MyInvocation.MyCommand.Path))
+  $escaped = [Regex]::Escape($watchScriptPath)
   return $command -match "(?i)$escaped"
 }
 
