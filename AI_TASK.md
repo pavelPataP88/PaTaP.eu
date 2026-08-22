@@ -1,73 +1,61 @@
-# AI_TASK — AUD-030 ROAD_REPORT_ABUSE_GUARD_V1
+# AI_TASK — AUD-028 PLATFORMOS_SCOPE_FREEZE_V1
 
-Status: `DEPLOYED` — installed and verified by Codex on 2026-08-22.
+Status: `VERIFYING` — NOT DEPLOYED.
 
 Production source of truth before this block:
-`codex/local-workspace-snapshot @ 7f9df7dabc99d96072c1bf0084d49ad202190864`.
-
-Exact deployed source: `6d0204cde8e274023d9cf77513376299dc062d52`.
+`codex/local-workspace-snapshot @ 30a39f16f35b67a92637117d32f288d2e982804e`.
 
 Working branch:
-`chatgpt/aud-030-road-report-abuse-guard-v1`.
+`chatgpt/aud-028-platformos-scope-freeze-v1`.
 
 Use only the exact final PR head recorded in the PR conversation after GitHub Verify is fully green. Do not deploy an intermediate commit.
 
 ## Goal
 
-Close `AUD-030`: protect Road Reports from repeated false/spam reporting using independent peer evidence, a decaying internal abuse counter and temporary create-only restrictions, without creating a public driver reputation score or location-history diagnostics.
+Close `AUD-028`: prevent PlatformOS `modules/transport` from becoming a second parallel implementation of the active Driver product while preserving PlatformOS as future architecture.
+
+This is an architecture-boundary block, not a Driver feature or runtime migration.
 
 ## Implemented contract
 
-- Road Report module schema upgrades additively from v1 to v2; existing reports/votes remain;
-- two nullable lifecycle markers are added to existing report rows: historical peer support and whether that report already produced an abuse signal;
-- user guard table stores only user id, abuse score, restriction expiry and timestamps — no coordinates or route history;
-- public report trust is report-level only: `UNCONFIRMED`, `SUPPORTED`, `CONFIRMED`, `DISPUTED`;
-- report author never counts as an independent peer;
-- two independent ACTIVE peers mark a report confirmed/historically supported;
-- a report that was independently supported can later clear without penalizing its author;
-- one abuse point is recorded only for a report closed by two independent GONE peers within 10 minutes, before it ever reached two independent ACTIVE peers;
-- each report can contribute at most one point;
-- score decays by one each seven days without a new signal;
-- score 3-4 -> six-hour creation restriction; score 5+ -> 24-hour restriction; score capped at 10;
-- restriction affects only `POST /api/driver/road-reports`; read/confirm/self-close and all other Driver modules remain available;
-- restricted creation returns HTTP 429 + stable `road_report_temporarily_restricted` + `Retry-After`;
-- `GET /api/driver/admin/road-reports` is read-only Owner/Administrator diagnostics with policy/trust/guard counts and no coordinates/report ids/location history;
-- no public people rating is added;
-- documentation: `docs/ROAD_REPORT_ABUSE_GUARD_V1.md`.
+- `system/registry.json` continues to declare `activeRuntime = legacy-root-site`;
+- Transport remains `status = architecture-only` and `enabled = false`;
+- registry/manifest descriptions explicitly state that PlatformOS Transport is not the current Driver runtime;
+- `modules/transport/README.md` defines the frozen scope and names `driver/` + `server/` as the active Driver engineering runtime;
+- current Map/GPS/Parking/Chat/Radio/People/Event Center/Road Reports/auth/Navigation work must not be duplicated into `modules/transport`;
+- future migration is allowed only as `EXPLICIT_PER_DOMAIN_STRANGLER_ONLY`, one separately reviewed domain at a time;
+- no broad PlatformOS rewrite/cutover is authorized;
+- `docs/PLATFORMOS_SCOPE_FREEZE_V1.md` records the project-wide boundary, allowed architecture work, forbidden duplication and migration exit rules;
+- `scripts/test-platformos-runtime.js` now verifies the scope contract and fails if Transport is enabled, stops being architecture-only, or the explicit non-runtime/per-domain migration markers disappear;
+- the PlatformOS test remains part of `npm run verify` and therefore `npm run verify:release`.
 
-## Existing boundaries that must remain unchanged
+## Intentionally unchanged
 
-- fixed Road Report types/TTLs and no free text/media;
-- create requires profile + enabled fresh GPS and remains within 2 km;
-- peer confirm requires fresh nearby GPS and remains within 2 km;
-- author can close own report;
-- guest Road Report list remains read-only and does not expose author identity;
-- seven-day closed/expired report retention;
-- auth schema remains 12;
-- password minimum remains 6;
-- no Navigation / `NAV_ROUTER_URL` changes;
+- no Driver product code under `driver/` or `server/` is changed;
+- no auth/session/GPS/Map/Parking/Chat/Radio/People/Event/Road Report behavior changes;
+- no Navigation source or `NAV_ROUTER_URL` changes;
+- no Caddy/tunnel/runtime/service changes;
+- no SQLite/schema/data/media/users/secrets/logs changes;
 - no `main` changes;
-- no SQLite/users/GPS/messages/media/secrets/logs/runtime content committed.
+- password minimum remains 6;
+- PlatformOS is not deleted;
+- no PlatformOS module is activated.
 
 ## Mandatory Codex Windows/production gate
 
-Before any production apply:
+Before any apply:
 
-1. Review exact final PR SHA/diff and confirm base `7f9df7dabc99d96072c1bf0084d49ad202190864`.
-2. Confirm no runtime/private data and no public user reputation/location-history feature is present.
+1. Review the exact final PR SHA/diff and confirm base `30a39f16f35b67a92637117d32f288d2e982804e`.
+2. Confirm the diff contains only scope documentation/config metadata/test assertions and no Driver runtime/private data.
 3. Windows Node 24.x + clean `npm ci`.
-4. Run full `npm run verify:release`; require full PASS including the new Road Report guard tests.
-5. Inspect a copy of the current production SQLite through the existing safe preflight/backup workflow and prove the additive Road Report v1 -> v2 migration on an isolated copy; existing report/vote counts must not decrease because of migration.
-6. Production preflight must be `READY`.
-7. Create fresh encrypted off-host recovery/DR evidence and successful restore drill.
-8. Make recoverable source backup and enter normal guarded maintenance only when ready to apply.
-9. Apply exact candidate non-destructively, preserving all runtime/private data; `npm ci` + build.
-10. Resume backend normally and require `status-patap-stack.ps1 = HEALTHY`.
-11. Public smoke: `https://patap.eu` and `https://driver.patap.eu` both HTTP 200.
-12. Read-only browser/API smoke after login: current Road Reports still list/create/confirm normally for an unrestricted test user; guest list remains safe.
-13. Owner/Administrator read-only `GET /api/driver/admin/road-reports` must return 200 and contain no latitude/longitude/reportId/location history; User must receive 403; non-GET must receive 405.
-14. Do not manufacture three abuse strikes against any real production user just to test restriction. Synthetic restriction behavior is already isolated in automated tests.
-15. Do not change Navigation, `main`, password policy or unrelated UI.
-16. After successful deployment, create a new clean `codex/local-workspace-snapshot` from the actually running source and append `STATUS: DEPLOYED` evidence to `AI_HANDOFF.md`.
+4. Run `npm run test:platformos`; require PASS.
+5. Run full `npm run verify:release`; require full PASS.
+6. Confirm the built Driver product is unchanged in behavior and Transport remains disabled/not launchable.
+7. Production preflight must be `READY` even though no DB/runtime migration is expected.
+8. Use the normal safe release process and preserve all runtime/private data. No schema migration or destructive action is needed.
+9. If applying the docs/config/test-only source update, build/resume normally and require `status-patap-stack.ps1 = HEALTHY`.
+10. Public smoke: `https://patap.eu` and `https://driver.patap.eu` must both remain HTTP 200.
+11. Do not activate Transport, move routes, migrate data, touch Navigation, change `main`, or change password policy.
+12. After successful installation, create a new clean `codex/local-workspace-snapshot` from the actually running source and append `STATUS: DEPLOYED` evidence to `AI_HANDOFF.md`.
 
-If migration, trust counting, restriction, GPS/create/confirm compatibility, admin privacy, release, DR or production smoke fails: report `CHANGES_REQUIRED` with exact file/location/reproduction/expected behavior. Do not weaken the independent-peer threshold or store location history as a shortcut.
+If any test shows that PlatformOS Transport is active, launchable as production Driver, or a Driver regression appears, report `CHANGES_REQUIRED` precisely. Do not solve it by weakening the scope assertions.
