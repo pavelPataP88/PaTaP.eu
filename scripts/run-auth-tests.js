@@ -24,14 +24,8 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 (async () => {
   let exitCode = 1;
   try {
-    const previousRecheck = process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS;
-    process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS = previousRecheck || "250";
-    try {
-      environment = await createIsolatedAuth();
-    } finally {
-      if (previousRecheck === undefined) delete process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS;
-      else process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS = previousRecheck;
-    }
+    process.env.PATAP_EVENT_STREAM_SESSION_RECHECK_MS ||= "250";
+    environment = await createIsolatedAuth();
     testProcess = spawn(process.execPath, [
       "--test-concurrency=1",
       "--test",

@@ -9,9 +9,8 @@ function createEventRoutes({db,events,push,json,requireSession,requireCsrf,check
   function result(res,value,status=200){if(value?.error)return respond(res,value.status||400,{error:value.error});return respond(res,status,value);}
   function streamSessionActive(session){
     if(!db?.prepare||!session?.user?.id||!session?.csrfToken)return false;
-    try{
-      return Boolean(db.prepare(`SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.user_id=? AND s.csrf_token=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.disabled=0 LIMIT 1`).get(Number(session.user.id),session.csrfToken,nowIso()));
-    }catch{return false;}
+    try{return Boolean(db.prepare("SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.user_id=? AND s.csrf_token=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.disabled=0 LIMIT 1").get(Number(session.user.id),session.csrfToken,nowIso()));}
+    catch{return false;}
   }
 
   return async function handleEventRoute(req,res,url,body){
