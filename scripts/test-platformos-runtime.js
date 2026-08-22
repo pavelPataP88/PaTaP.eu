@@ -92,6 +92,7 @@ function testPlatformOsScopeFreeze() {
   const transport = projectRegistry.modules.find((item) => item.id === "transport");
   const manifest = JSON.parse(fs.readFileSync(transportManifestPath, "utf8"));
   const transportReadme = fs.readFileSync(transportReadmePath, "utf8");
+  const normalizedTransportReadme = transportReadme.replace(/\*\*/g, "");
   const scopeDoc = fs.readFileSync(scopeDocPath, "utf8");
 
   assert.strictEqual(projectRegistry.activeRuntime, "legacy-root-site");
@@ -107,10 +108,10 @@ function testPlatformOsScopeFreeze() {
   assert.match(manifest.description, /per-domain strangler/i);
 
   assert.match(transportReadme, /PLATFORMOS_TRANSPORT_ARCHITECTURE_ONLY/);
-  assert.match(transportReadme, /not the runtime implementation of Driver Patap/i);
+  assert.match(normalizedTransportReadme, /not the runtime implementation of Driver Patap/i);
   assert.match(transportReadme, /`driver\/`/);
   assert.match(transportReadme, /`server\/`/);
-  assert.match(transportReadme, /Do \*\*not\*\* copy or reimplement current Map/i);
+  assert.match(normalizedTransportReadme, /Do not copy or reimplement current Map/i);
   assert.match(transportReadme, /EXPLICIT_PER_DOMAIN_STRANGLER_ONLY/);
 
   assert.match(scopeDoc, /activeRuntime = legacy-root-site/);
