@@ -1,64 +1,78 @@
-# AI_TASK — AUD-029 SERVER_BOUNDARY_CLEANUP_V1
+# AI_TASK — AUD-025/AUD-026 NAVIGATION_SCOPE_V1
 
-Status: `DEPLOYED` — verified and installed from `918afc8bd56ea730dc0972ffbddd6c31580be344`.
+Status: `DEPLOYED` — documentation/product-scope decision applied from `ddeda3b6789ed3ef599f0a638c37b80d13ce1bfb`.
 
-Production source of truth before this block:
-`codex/local-workspace-snapshot @ a94c9cf6c624e637211f045601b0b4dd12becb8a`.
+Authoritative production base:
+`codex/local-workspace-snapshot @ edeacb22ec6fbf8765ee816f053de54aa0fbc3ec`.
 
 Working branch:
-`chatgpt/aud-029-server-boundary-cleanup-v1`.
+`chatgpt/aud-025-026-navigation-scope-v1`.
 
-Use only the exact final PR head recorded in the PR conversation after GitHub Verify is fully green. Do not deploy an intermediate commit.
+## Owner decision
 
-## Goal
+For Driver V1, PaTaP will **not** build, self-host or deploy its own route-calculation/navigation engine.
 
-Close `AUD-029`: reduce server boundary coupling with explicit Driver domain bootstrap/lifecycle and a separate Chat realtime boundary, without a framework rewrite, process split or product behavior change.
+The existing historical Navigation Engine work remains preserved for possible future use, but it is intentionally deferred. It must not be rebased, merged, deployed or used as a release blocker unless the owner explicitly reopens that product direction later.
 
-## Implemented contract
+Therefore:
 
-- `server/driver/runtime.js` owns Driver domain construction and deterministic initialization order;
-- Parking and People additive domains initialize before Event Center projection triggers;
-- Event dispatcher lifecycle is explicit and idempotent through Driver runtime `start()` / `stop()`;
-- `server/driver/routes.js` remains a stable compatibility facade and real HTTP implementation moves to `server/driver/http-routes.js`;
-- the returned Driver route handler exposes runtime `start`, `stop` and read-only runtime state hooks;
-- `server/chat/realtime.js` owns Chat WebSocket upgrade/origin/session/room/typing/fan-out behavior and explicit start/stop lifecycle;
-- auth HTTP composition no longer contains WebSocketServer business logic;
-- `server/auth/server.js` remains a stable thin process entrypoint and delegates to `server/auth/http-server.js`;
-- HTTP server close stops Driver dispatcher, Chat realtime and the security cleanup timer;
-- targeted contract: `tests/driver/server-boundary-cleanup.test.mjs`;
-- documentation: `docs/SERVER_BOUNDARY_CLEANUP_V1.md`.
+- `AUD-025 NAV_PROVIDER_LOCAL_V1` is superseded for V1 by this owner product decision;
+- `AUD-026 NAVIGATION_REBASE_V1` is superseded for V1 by this owner product decision;
+- `NAV_ROUTER_URL` is not required for Driver V1;
+- do not install or operate Valhalla for Driver V1;
+- do not substitute passenger-car routing for truck routing;
+- do not delete the historical Navigation branch/code.
 
-## Existing behavior that must remain unchanged
+## V1 navigation direction
 
-- auth/session/cookie/CSRF/rate-limit/admin behavior;
-- password minimum remains 6;
-- Driver registration/profile/GPS/contacts/Road Reports;
-- Parking, People, Event Center, account export/delete;
-- Chat HTTP API and `/api/driver/chat/socket` wire behavior;
-- Radio HTTP/live behavior;
-- SQLite schemas/data and additive domain migration semantics;
-- Caddy/tunnel/runtime services;
-- Navigation / `NAV_ROUTER_URL`;
-- `main`;
-- all runtime/private data.
+PaTaP's V1 value is the driver network: Map/GPS, People, Chat, Radio, Parking, Road Reports and Events.
 
-## Mandatory Codex Windows/production gate
+When a user wants turn-by-turn navigation, PaTaP will later provide a small external-navigation handoff so the user can choose their preferred navigation app. The external app, not PaTaP, will calculate and own the route.
 
-Before any apply:
+Planned free/no-backend handoff targets include:
 
-1. Review exact final PR SHA/diff and confirm base `a94c9cf6c624e637211f045601b0b4dd12becb8a`.
-2. Confirm this is structural extraction only: no API/wire/schema/product-policy change and no runtime/private data.
-3. Windows Node 24.x + clean `npm ci`.
-4. Run full `npm run verify:release`; require complete PASS including `server-boundary-cleanup.test.mjs`, auth, Radio, all Driver tests, two-user E2E and browser scenarios.
-5. Specifically verify Chat WebSocket subscribe/typing/realtime delivery through the existing automated/live tests; do not accept HTTP-only proof.
-6. Verify process shutdown/restart does not leave a second backend, leaked listener or duplicate Event dispatcher.
-7. Production preflight must be `READY`.
-8. Fresh encrypted off-host DR export + restore drill must PASS.
-9. Make recoverable source backup; apply exact candidate non-destructively preserving SQLite/users/media/secrets/tokens/logs/runtime data.
-10. Root `npm ci` + build; normal backend resume.
-11. Require `status-patap-stack.ps1 = HEALTHY` and both public domains HTTP 200.
-12. Verify `/api/health`, normal login/session and a safe authenticated Chat/Driver smoke without manufacturing user content that should not exist.
-13. Do not touch Navigation, `main`, password policy or interface.
-14. After successful installation, create a new clean `codex/local-workspace-snapshot` from actually running source and append `STATUS: DEPLOYED` evidence to `AI_HANDOFF.md`.
+- Google Maps standard Maps URLs;
+- Waze standard deep links;
+- the device/system map handler where supported.
 
-If Chat realtime, Driver/Event lifecycle, auth, E2E, restart, DR or production smoke fails: return `CHANGES_REQUIRED` with exact file/location/reproduction/expected behavior. Do not solve it with a broad framework rewrite or process split.
+No paid Maps/Navigation SDK, commercial routing provider, route telemetry integration or PaTaP-owned truck-routing guarantee is authorized in this block.
+
+The actual external-navigation UI/handoff is a separate future functional block. Do not redesign the interface inside this scope-close block.
+
+## Historical Navigation preservation
+
+Historical branch known from prior work:
+`chatgpt/navigation-engine-v1`.
+
+It is evidence/prototype code only and is **not production source**. Preserve it as-is. Do not force-merge it into the current snapshot.
+
+A future owner decision may reopen one of these directions:
+
+1. keep external navigation only;
+2. integrate commercial navigation/routing services;
+3. build/revive PaTaP-owned routing with reviewed data/provider infrastructure.
+
+Until then, no internal route provider is a V1 requirement.
+
+## Mandatory Codex gate
+
+This block changes documentation/product scope only.
+
+1. Confirm exact base `edeacb22ec6fbf8765ee816f053de54aa0fbc3ec`.
+2. Confirm the PR changes only Markdown documentation and contains no runtime/private data.
+3. Confirm there is no Driver/server/Caddy/package/schema/config/runtime code change.
+4. Confirm no Navigation branch is merged/rebased and no `NAV_ROUTER_URL`/Valhalla configuration is introduced.
+5. `git diff --check` must pass.
+6. No backend restart, SQLite backup, DR cycle or dependency install is required for this docs-only scope decision.
+7. Apply only the documentation files to the production working tree using the normal recoverable source workflow.
+8. Confirm the running stack remains `HEALTHY` and both public domains remain HTTP 200; do not disturb the running services merely to prove a docs-only change.
+9. Create a new clean `codex/local-workspace-snapshot` from the actual production working tree.
+10. Append to `AI_HANDOFF.md`:
+   - `BLOCK: AUD-025/AUD-026 NAVIGATION_SCOPE_V1`
+   - `STATUS: DEPLOYED`
+   - both AUD-025 and AUD-026 superseded/closed for V1 by owner decision;
+   - internal Navigation preserved but deferred;
+   - Valhalla/`NAV_ROUTER_URL` not required for V1;
+   - no runtime/interface/password/main change.
+
+If the diff contains any runtime change, return `CHANGES_REQUIRED`; do not expand this block.

@@ -1355,3 +1355,22 @@ Safety:
 - This snapshot was made from the actually running production source while excluding runtime/private data.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-025/AUD-026 NAVIGATION_SCOPE_V1
+STATUS: DEPLOYED
+DEPLOYED_SOURCE: `ddeda3b6789ed3ef599f0a638c37b80d13ce1bfb`
+
+Docs-only gate — PASS:
+- Exact base confirmed: `codex/local-workspace-snapshot @ edeacb22ec6fbf8765ee816f053de54aa0fbc3ec`.
+- GitHub Verify #386 for the exact SHA completed with `success`.
+- Diff review and `git diff --check` passed: only `AI_TASK.md`, `docs/AI_NEW_CHAT_START.md`, and `docs/NAVIGATION_SCOPE_V1.md` changed. No Driver/server/Caddy/package/schema/config/runtime/private-data change.
+- Only those Markdown files were applied with a recoverable documentation backup and SHA-256 checks. No restart, dependency install, SQLite, DR or service operation occurred.
+- Running stack remained `HEALTHY`; `patap.eu` and `driver.patap.eu` both returned HTTP 200.
+
+V1 scope decision:
+- `AUD-025 NAV_PROVIDER_LOCAL_V1` and `AUD-026 NAVIGATION_REBASE_V1` are superseded/closed for V1 by owner decision.
+- Historical internal Navigation is preserved but deferred; it is not production source.
+- Valhalla and `NAV_ROUTER_URL` are not required for Driver V1. No passenger-car routing substitute is authorized.
+- No runtime, interface, password-policy or `main` change was made.
+
+---
