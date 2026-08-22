@@ -56,6 +56,55 @@ jobs:
       - name: Windows Driver E2E
         run: npm run test:driver-e2e
 
+  windows-ops-contract:
+    name: windows-ops-contract
+    runs-on: windows-2025
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Static config contracts
+        run: npm run test:config
+      - name: Parse operational PowerShell
+        shell: powershell
+        run: |
+          $files = @(
+            '.\install-autostart.ps1',
+            '.\uninstall-autostart.ps1',
+            '.\watch-patap-health.ps1',
+            '.\start-patap-health-watch.ps1',
+            '.\stop-patap-health-watch.ps1',
+            '.\start-patap-stack.ps1'
+          )
+          foreach ($file in $files) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "${file}: $($_.Message)" }
+              exit 1
+            }
+          }
+      - name: One-shot health watch runtime smoke
+        shell: powershell
+        run: |
+          & .\watch-patap-health.ps1 -IntervalSeconds 10 -FailureThreshold 1 -Iterations 1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $state = Get-Content -LiteralPath '.\var\run\patap-health-watch.json' -Raw | ConvertFrom-Json
+          if (-not $state.checkedAt) { throw 'health watch did not write checkedAt' }
+          if ($state.source -notin @('status-patap-stack.ps1', 'maintenance-flag')) { throw "unexpected health watch source: $($state.source)" }
+          if ($state.effective -notin @('HEALTHY', 'DEGRADED', 'DOWN', 'ALERT', 'MAINTENANCE')) { throw "unexpected health watch state: $($state.effective)" }
+          if (Test-Path -LiteralPath '.\var\run\patap-health-watch.pid') { throw 'one-shot health watch left a stale PID file' }
+
   public-smoke:
     name: public-smoke-nonblocking
     runs-on: ubuntu-24.04

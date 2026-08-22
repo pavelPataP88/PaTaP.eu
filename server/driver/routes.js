@@ -5,6 +5,7 @@ const { createPeopleRoutes } = require("../people/routes");
 const { createParkingRoutes } = require("../parking/routes");
 const { createEventRuntime } = require("../events/factory");
 const { createEventRoutes } = require("../events/routes");
+const { createAccountRoutes } = require("../account/routes");
 const {
   createRoadReportRepository,
   CONFIRMATIONS,
@@ -33,12 +34,14 @@ function createDriverRoutes({
   // structures used by the Event Center projection triggers.
   const handleParkingRoute = createParkingRoutes(routeOptions);
   const handlePeopleRoute = createPeopleRoutes(routeOptions);
+  const handleAccountRoute = createAccountRoutes(routeOptions);
   const eventRuntime = createEventRuntime({ db, nowIso });
   const handleEventRoute = createEventRoutes({ ...routeOptions, events: eventRuntime.events, push: eventRuntime.push });
   eventRuntime.dispatcher.start();
 
   return async function handleDriverRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/")) return false;
+    if (await handleAccountRoute(req, res, url, body)) return true;
     if (await handleEventRoute(req, res, url, body)) return true;
     if (await handleParkingRoute(req, res, url, body)) return true;
     if (await handlePeopleRoute(req, res, url, body)) return true;

@@ -1083,3 +1083,49 @@ Safety:
 - The codex/local-workspace-snapshot branch is synchronized from the actually applied source and documentation. It excludes SQLite/backups, users, GPS, messages, radio/media uploads, VAPID/auth/DR keys, tokens, logs, data/, var/ and node_modules.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: COMMERCIAL_HARDENING_V1
+TASK_ID: RELEASE-PR28-20260822-001
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR: #28
+- Branch: chatgpt/commercial-hardening-v1-work
+- Source SHA: 0dbfb137758a0d2c8dc62866079002740e50a4e1
+- Previous production source snapshot: codex/local-workspace-snapshot @ ef0d4da95f6008cc303eba051764f651594049a4
+- The production directory has no usable local Git worktree. Candidate-to-production file hashes were checked after a non-destructive copy; the deployed source matches the exact candidate.
+
+Windows verification — PASS:
+- Node: v24.16.0.
+- npm ci — PASS, npm audit: 0 vulnerabilities.
+- npm run runtime:check — PASS.
+- npm run verify:release — PASS: auth 50/50, Radio 1/1, Driver 14 files / 74/74, client 2/2, config 37/37, Driver E2E PASS, browser PASS.
+- npm run production:preflight against the still-running production backend and SQLite — PRODUCTION_PREFLIGHT READY.
+
+Recovery and Windows operations — PASS:
+- A fresh encrypted off-host DR export was written to the configured F: storage and its restore drill passed. Key material was neither printed nor committed.
+- The PaTaP Scheduled Task was installed by the candidate's installer: exact start-patap-stack.ps1, current Windows user, Limited run level, StartWhenAvailable, bounded restart policy and IgnoreNew parallel-run policy.
+- The legacy Startup autostart was removed only by the candidate installer.
+- A single separate watch-patap-health.ps1 process is running. Its state file reports HEALTHY with zero consecutive unhealthy checks; it is distinct from backend-supervisor.ps1 and only observes the stack.
+
+Deployment — PASS:
+- A recoverable source backup was made before maintenance.
+- Maintenance stopped only the identified PaTaP backend supervisor and backend. Caddy and the tunnel were not disturbed.
+- Candidate source was copied without destructive mirroring. SQLite, secrets, uploads, runtime state, logs and unrelated local files were preserved.
+- Root npm ci and npm run build passed. Standard resume restored backend health.
+- Process health after restart: backend, backend supervisor, Caddy, Cloudflare tunnel and health watcher are healthy.
+- npm run test:public-smoke — PASS: patap.eu 200/200 and driver.patap.eu 200/200.
+
+Driver validation boundary:
+- The candidate's isolated two-user Driver E2E, including its configured functional coverage, passed during verify:release.
+- No real production account, GPS position, chat/radio content or account deletion was used for an additional manual smoke. Do not represent a manual mobile/GPS test as complete until an owner performs it on real devices.
+
+Repository safety:
+- This snapshot is made from the actually deployed source and excludes data/, var/, node_modules/, SQLite, DR/VAPID/auth material, GPS, messages, uploads and logs.
+- main and Navigation were not changed. Navigation remains BLOCKED_PROVIDER pending a reviewed real NAV_ROUTER_URL.
+
+Next step:
+1. Owner can perform a normal real-device Driver smoke (login/session, map/GPS privacy, Road Report persistence, Chat, Radio, Parking and Event Center) without using account deletion.
+2. Do not begin another large feature block until any field findings are written as a small, testable task.
+
+---
