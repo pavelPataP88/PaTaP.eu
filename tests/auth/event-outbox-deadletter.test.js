@@ -116,7 +116,7 @@ test("dead-letter retention is longer than normal processed retention", () => {
     .run("2026-06-01T00:00:00.000Z", "2026-07-01T00:00:00.000Z");
   const dispatcher = createEventDispatcher({ db, events: {}, nowIso: () => "2026-08-22T08:00:00.000Z" });
   assert.equal(dispatcher.cleanupProcessed(), 2);
-  const remaining = db.prepare("SELECT source_ref,status FROM driver_event_outbox ORDER BY id").all();
+  const remaining = db.prepare("SELECT source_ref,status FROM driver_event_outbox ORDER BY id").all().map((row) => ({ source_ref: row.source_ref, status: row.status }));
   assert.deepEqual(remaining, [{ source_ref: "2", status: "FAILED" }]);
   db.close();
 });
