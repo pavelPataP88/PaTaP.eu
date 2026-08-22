@@ -1,17 +1,18 @@
-# AI_TASK — AUDIT_INTEGRATION_V1: fix the release E2E gate
+# AI_TASK — AUDIT_INTEGRATION_V1: fix repeatable SSE 502 in release E2E
 
 Status: CHANGES_REQUIRED — PR #19 is not deployed.
 
-Codex checked exactly `chatgpt/audit-integration-v1 @ fd11a193a18d6485a4ade2ab2cb93a083b646041` in an isolated checkout.
+Codex checked the replacement candidate `chatgpt/audit-integration-v1 @ 7552c7d624df1d45f99d141915cee3ba531073aa` in an isolated checkout.
 
-Passed: Node 24, `npm ci` with 0 vulnerabilities, `runtime:check`, and the complete `verify` suite: auth 47/47, radio 1/1, Driver 14 files / 74/74, client 2/2, config 30/30.
+Passed: Node 24, `npm ci` with 0 vulnerabilities, `runtime:check`, and complete `verify`: auth 47/47, radio 1/1, Driver 14 files / 74/74, client 2/2, config 30/30.
 
-Blocking release failure:
+Blocking release failure is repeatable:
 
-- `npm run verify:release` fails in its required `npm run test:driver-e2e` stage.
-- `scripts/run-driver-e2e.js:216-220`, `enableGps()` uses `locator('[data-map-experience="layers"]')`.
-- Playwright finds two elements and strict mode refuses to select one at line 219.
+- `npm run verify:release` fails at its required `npm run test:driver-e2e` stage.
+- The isolated local origin returns HTTP 502 to authenticated `/api/driver/events/stream` and `/api/driver/radio/events`; the first run also returned 502 for `/api/driver/nearby`.
+- An independent second E2E run reproduces 502 for the two SSE endpoints on a different random localhost port.
+- The prior duplicate “Слои” issue is gone; do not revisit it.
 
-Prepare one minimal follow-up candidate from PR #19 that fixes the actual duplicate control or identifies the unique intended visible control while retaining strict E2E coverage. Do not use `.first()` or weaken the test merely to hide a real duplicate UI problem. Do not change production, `main`, Navigation, secrets, runtime data or unrelated functionality.
+Diagnose and fix the actual proxy/backend lifecycle or request handling behind these 502 responses. Do not ignore HTTP 502, silence browser errors, weaken the strict zero-errors assertion, or accept a retry as a substitute for a fix. Keep genuine two-user SSE coverage.
 
-Record the exact new SHA in AI_HANDOFF.md. Codex will then rerun the full release protocol.
+Provide a new exact SHA from this candidate and record it in AI_HANDOFF.md. Codex will rerun the full protocol; production, main, Navigation, secrets and runtime data remain untouched.
