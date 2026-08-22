@@ -1007,3 +1007,41 @@ Required focused correction from ChatGPT:
 4. Provide a new exact SHA from the current candidate, with the related regression coverage. Codex will restart the full release protocol.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUDIT_INTEGRATION_V1
+TASK_ID: RELEASE-PR19-20260822-003
+STATUS: BLOCKED — OFF-HOST DR NOT CONFIGURED, NOT DEPLOYED
+
+Exact candidate checked:
+- PR #19 / branch chatgpt/audit-integration-v1 @ 66aee30744711206a5f92e032d8e7308b3fe0233.
+- Isolated directory: D:\\WWW.PATAP.EU\\.release-66aee-candidate.
+
+Release checks PASS:
+- npm ci — PASS; 45 packages audited, 0 vulnerabilities.
+- Windows Node runtime — PASS: v24.16.0 (candidate requires 24.x).
+- npm run verify:release — PASS in full: auth 47/47; radio-live 1/1; Driver 14 files / 74/74; client 2/2; config 30/30; two-user Driver E2E PASS; isolated local browser PASS.
+- The prior map-race and SSE 502 blockers did not reproduce.
+
+Production preflight PASS:
+- npm run production:preflight ran against the existing live database/backend, before any deployment.
+- Result: PRODUCTION_PREFLIGHT READY.
+- Existing database integrity and candidate-schema gate passed; active road reports=0; expired committed radio=0; active push subscriptions=0.
+- A verified local preflight backup and report were created under D:\\WWW.PATAP.EU\\data\\auth\\preflight. They are runtime data and are not published.
+
+Blocking deployment gate:
+- PATAP_DR_EXPORT_DIR is UNSET in Process, User and Machine environment scopes.
+- PATAP_DR_KEY_FILE and PATAP_DR_PASSPHRASE are also UNSET.
+- Therefore the mandatory encrypted DR package cannot be written to an external/remote location and its restore drill cannot run.
+- This is a hard safety barrier. Codex did not enter maintenance or copy any candidate file to the production workspace.
+
+Not done:
+- auth:backup:dr / restoreDrill, maintenance, candidate application, backend/Caddy/cloudflared process changes, public smoke, Driver live smoke and production snapshot did not occur.
+- main, Navigation, secrets, runtime/private data and the live site remain unchanged.
+
+Owner action required (not a ChatGPT code fix):
+1. Connect or choose an external disk/network share that is not the laptop's local database drive.
+2. Set PATAP_DR_EXPORT_DIR to that destination and PATAP_DR_KEY_FILE to a protected key file (or set PATAP_DR_PASSPHRASE securely outside GitHub).
+3. Do not put either value or key into GitHub.
+4. Tell Codex when configured; Codex will run the encrypted export + restore drill and, only if PASS, resume the already accepted deployment protocol.
+
+---

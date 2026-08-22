@@ -1,18 +1,11 @@
-# AI_TASK — AUDIT_INTEGRATION_V1: fix repeatable SSE 502 in release E2E
+# AI_TASK — AUDIT_INTEGRATION_V1: awaiting owner DR configuration
 
-Status: CHANGES_REQUIRED — PR #19 is not deployed.
+Status: BLOCKED_DEPLOYMENT — code and release checks are accepted; production is not updated.
 
-Codex checked the replacement candidate `chatgpt/audit-integration-v1 @ 7552c7d624df1d45f99d141915cee3ba531073aa` in an isolated checkout.
+Accepted candidate: `chatgpt/audit-integration-v1 @ 66aee30744711206a5f92e032d8e7308b3fe0233`.
 
-Passed: Node 24, `npm ci` with 0 vulnerabilities, `runtime:check`, and complete `verify`: auth 47/47, radio 1/1, Driver 14 files / 74/74, client 2/2, config 30/30.
+Codex actually passed `npm ci` (0 vulnerabilities), Node 24 check, and `verify:release`: auth 47/47, radio 1/1, Driver 14 files / 74/74, client 2/2, config 30/30, two-user Driver E2E and local browser. `PRODUCTION_PREFLIGHT READY` also passed against the existing site.
 
-Blocking release failure is repeatable:
+The only blocker is operational, not code: no external encrypted disaster-recovery destination or key is configured (`PATAP_DR_EXPORT_DIR`, `PATAP_DR_KEY_FILE` / secure passphrase are unset). Deployment must not continue before the owner configures it and Codex gets a successful encrypted export plus restore drill.
 
-- `npm run verify:release` fails at its required `npm run test:driver-e2e` stage.
-- The isolated local origin returns HTTP 502 to authenticated `/api/driver/events/stream` and `/api/driver/radio/events`; the first run also returned 502 for `/api/driver/nearby`.
-- An independent second E2E run reproduces 502 for the two SSE endpoints on a different random localhost port.
-- The prior duplicate “Слои” issue is gone; do not revisit it.
-
-Diagnose and fix the actual proxy/backend lifecycle or request handling behind these 502 responses. Do not ignore HTTP 502, silence browser errors, weaken the strict zero-errors assertion, or accept a retry as a substitute for a fix. Keep genuine two-user SSE coverage.
-
-Provide a new exact SHA from this candidate and record it in AI_HANDOFF.md. Codex will rerun the full protocol; production, main, Navigation, secrets and runtime data remain untouched.
+No ChatGPT code task now. Do not alter the accepted candidate, start a new feature, touch `main`, Navigation, secrets or runtime data. Read AI_HANDOFF.md for details.
