@@ -1,9 +1,13 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $root "patap-processes.ps1")
+
 $backendScript = Join-Path $root "start-backend.ps1"
 $originScript = Join-Path $root "start-origin.ps1"
 $tunnelScript = Join-Path $root "start-patap-tunnel.ps1"
+$caddyConfig = Join-Path $root "Caddyfile.tunnel"
+$tokenFile = Join-Path $env:LOCALAPPDATA "PatapLab\cloudflared\patap-lab-token.txt"
 
 function Get-OriginListener {
   Test-OriginReachable
@@ -19,19 +23,11 @@ function Test-OriginReachable {
 }
 
 function Test-CaddyOrigin {
-  return [bool](Test-OriginReachable) -and [bool](Get-Process caddy -ErrorAction SilentlyContinue)
+  return [bool](Test-OriginReachable) -and [bool](Get-PatapCaddyProcess $caddyConfig)
 }
 
 function Test-PatapTunnel {
-  $process = Get-CimInstance Win32_Process -Filter "Name = 'cloudflared.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like "*tunnel run*" -and $_.CommandLine -like "*patap-lab-token.txt*" } |
-    Select-Object -First 1
-
-  if ($process) {
-    return $true
-  }
-
-  return [bool](Get-Process cloudflared -ErrorAction SilentlyContinue)
+  return [bool](Get-PatapTunnelProcess $tokenFile)
 }
 
 function Test-BackendHealth {
@@ -49,17 +45,10 @@ function Test-BackendProcess {
     Select-Object -First 1)
 }
 
-if (-not (Test-Path -LiteralPath $backendScript)) {
-  throw "Backend script not found: $backendScript"
+foreach ($required in @($backendScript, $originScript, $tunnelScript, $caddyConfig)) {
+  if (-not (Test-Path -LiteralPath $required)) { throw "Required PaTaP file not found: $required" }
 }
-
-if (-not (Test-Path -LiteralPath $originScript)) {
-  throw "Origin script not found: $originScript"
-}
-
-if (-not (Test-Path -LiteralPath $tunnelScript)) {
-  throw "Tunnel script not found: $tunnelScript"
-}
+if (-not (Test-Path -LiteralPath $tokenFile -PathType Leaf)) { throw "Tunnel token file not found: $tokenFile" }
 
 if (-not (Test-BackendHealth)) {
   & $backendScript | Out-Null
