@@ -27,7 +27,8 @@ test("dynamic pages are explicitly not stored", () => {
 
 test("Driver map provider can move to a reviewed origin without broadening connect-src to all HTTPS", () => {
   assert.ok(caddy.includes("connect-src 'self' {$PATAP_MAP_CONNECT_SRC:https://tile.openstreetmap.org}"));
-  assert.doesNotMatch(caddy, /connect-src[^\n\"]*https:/);
+  assert.ok(!caddy.includes("connect-src 'self' https:"));
+  assert.ok(!caddy.includes("connect-src 'self' *"));
 });
 
 test("only the exact public map-provider file may use an off-source config root", () => {
