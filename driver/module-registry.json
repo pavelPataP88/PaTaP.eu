@@ -5,7 +5,7 @@
       "id": "map",
       "label": "Карта",
       "view": "map",
-      "entry": "./map/index.js?v=20260819-parking1",
+      "entry": "./map/provider-bootstrap.mjs?v=20260822-aud023-1",
       "enabled": true,
       "dependsOn": []
     },
@@ -75,4 +75,3 @@
     }
   ]
 }
-
