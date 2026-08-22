@@ -44,13 +44,18 @@ test("release verification requires Driver E2E plus isolated browser scenarios w
   assert.match(workflow, /windows-driver-e2e:/);
   assert.match(workflow, /runs-on:\s*windows-2025/);
   assert.match(workflow, /Windows Driver E2E[\s\S]*npm run test:driver-e2e/);
+  assert.match(driverE2e, /async function quiescePagesForBackendRestart[\s\S]*page\.close\(\)/);
+  assert.match(driverE2e, /async function restorePageAfterBackendRestart[\s\S]*context\.newPage\(\)/);
   const quiesceAt = driverE2e.indexOf("await quiescePagesForBackendRestart([pageA, pageB])");
   const stopAt = driverE2e.indexOf("await stopChild(auth.child)");
-  const restoreAt = driverE2e.indexOf("await restorePagesAfterBackendRestart([pageA, pageB], localUrl)");
-  assert.ok(quiesceAt >= 0 && quiesceAt < stopAt, "planned backend restart must quiesce browser streams before stop");
-  assert.ok(stopAt < restoreAt, "browser sessions must restore only after the restarted backend is healthy");
+  const healthAt = driverE2e.lastIndexOf("await waitForHealth(auth.baseUrl, replacementAuth)");
+  const restoreAt = driverE2e.indexOf("restorePageAfterBackendRestart(contextA");
+  assert.ok(quiesceAt >= 0 && quiesceAt < stopAt, "planned backend restart must close browser streams before stop");
+  assert.ok(stopAt < healthAt && healthAt < restoreAt, "new browser pages must be created only after restarted backend health passes");
   assert.match(driverE2e, /setTimeout\(resolve, 3500\)/);
+  assert.match(driverE2e, /res\.once\("close"[\s\S]*proxy\.destroy\(\)/);
   assert.match(driverE2e, /assert\.deepEqual\(errors, \[\]/);
+  assert.doesNotMatch(driverE2e, /about:blank/);
   assert.doesNotMatch(driverE2e, /https:\/\/(?:patap\.eu|driver\.patap\.eu)/);
 });
 
