@@ -19,6 +19,7 @@
     "recovery:verify:machine": "npm run runtime:check && node scripts/verify-machine-recovery.js",
     "recovery:restore:machine": "npm run runtime:check && node scripts/restore-machine-recovery.js",
     "production:preflight": "npm run runtime:check && node scripts/production-preflight.js",
+    "map:provider:check": "npm run runtime:check && node scripts/check-map-provider.js",
     "parking:import": "node scripts/import-parking.js",
     "parking:import-osm-country": "node scripts/import-osm-parking-country.js",
     "security:audit": "npm audit --audit-level=high",
@@ -33,7 +34,7 @@
     "test:public-smoke": "node scripts/run-public-smoke.js",
     "audit:performance": "node scripts/audit-interface-performance.js",
     "test:platformos": "node scripts/test-platformos-runtime.js",
-    "verify": "npm run runtime:check && node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config",
+    "verify": "npm run runtime:check && node scripts/verify.js && node scripts/test-platformos-runtime.js && npm run map:provider:check && npm run test:auth && npm run test:radio-live && npm run test:driver-modules && npm run test:client && npm run test:config",
     "verify:release": "npm run security:audit && npm run verify && npm run test:driver-e2e && npm run test:browser:local"
   },
   "devDependencies": {
