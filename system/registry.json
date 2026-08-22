@@ -36,7 +36,7 @@
       "status": "architecture-only",
       "enabled": false,
       "roles": ["Administrator", "Developer", "TruckDriver", "TaxiDriver"],
-      "description": "Independent future transport module with truck, taxi, cargo, parking, maps, radio, chat, and drivers areas."
+      "description": "Architecture-only future transport model. It is not the Driver runtime implementation and must stay disabled until an explicit per-domain migration is approved."
     },
     {
       "id": "library",

@@ -1312,3 +1312,22 @@ STATUS: DEPLOYED
 - No abuse strikes were created for real users. Navigation, main, password policy and interface were unchanged.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-028 PLATFORMOS_SCOPE_FREEZE_V1
+STATUS: DEPLOYED
+
+Exact deployed candidate:
+- PR #36 / `chatgpt/aud-028-platformos-scope-freeze-v1`.
+- Source SHA: `b14edfdac99084337fb37845461f21e6960fcbea`.
+- Base confirmed: `codex/local-workspace-snapshot @ 30a39f16f35b67a92637117d32f288d2e982804e`.
+
+Verification and deployment — PASS:
+- Static review confirmed no `driver/` or `server/` runtime files changed. Transport remains `architecture-only` and disabled; no Transport route, data migration or runtime activation occurred.
+- Exact Windows `npm ci`, `npm run test:platformos` and full `npm run verify:release` passed: audit 0, auth 57/57, Radio 1/1, Driver 86/86, client 2/2, config 42/42, Driver E2E and browser scenarios.
+- Production preflight READY; fresh encrypted off-host DR export and restore drill PASS.
+- Candidate source applied non-destructively, then root build and normal backend resume passed. Stack HEALTHY; patap.eu and driver.patap.eu both HTTP 200.
+
+Safety:
+- `main`, Navigation, password policy, users, SQLite, media, secrets, tokens, logs and runtime/private data were not changed or committed.
+
+---
