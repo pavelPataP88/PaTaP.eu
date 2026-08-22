@@ -1,78 +1,96 @@
-# AI_TASK — AUD-025/AUD-026 NAVIGATION_SCOPE_V1
+# AI_TASK — AUD-022/AUD-027 FINAL_AUDIT_CLOSE_V1
 
-Status: `DEPLOYED` — documentation/product-scope decision applied from `ddeda3b6789ed3ef599f0a638c37b80d13ce1bfb`.
+Status: `DEPLOYED` — final audit-close documentation applied from `c3cc77179f24dc6000c861a0885cf219b78c248d`.
 
 Authoritative production base:
-`codex/local-workspace-snapshot @ edeacb22ec6fbf8765ee816f053de54aa0fbc3ec`.
+`codex/local-workspace-snapshot @ 0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
 
 Working branch:
-`chatgpt/aud-025-026-navigation-scope-v1`.
+`chatgpt/aud-022-027-final-audit-close-v1`.
 
-## Owner decision
+## Goal
 
-For Driver V1, PaTaP will **not** build, self-host or deploy its own route-calculation/navigation engine.
+Formally close the final two items of the 30-point technical audit without changing product runtime:
 
-The existing historical Navigation Engine work remains preserved for possible future use, but it is intentionally deferred. It must not be rebased, merged, deployed or used as a release blocker unless the owner explicitly reopens that product direction later.
+- `AUD-022 PASSWORD_POLICY_V2`;
+- `AUD-027 DEFAULT_BRANCH_SOURCE_OF_TRUTH_V1`.
 
-Therefore:
+After this documentation/policy block is safely mirrored to production and recorded in `AI_HANDOFF.md`, the 30-point audit is closed 30/30. This does not mean every future product feature or real-device field test is complete.
 
-- `AUD-025 NAV_PROVIDER_LOCAL_V1` is superseded for V1 by this owner product decision;
-- `AUD-026 NAVIGATION_REBASE_V1` is superseded for V1 by this owner product decision;
-- `NAV_ROUTER_URL` is not required for Driver V1;
-- do not install or operate Valhalla for Driver V1;
-- do not substitute passenger-car routing for truck routing;
-- do not delete the historical Navigation branch/code.
+## AUD-022 — owner password-policy decision
 
-## V1 navigation direction
+The owner explicitly keeps the minimum registration password length at **6 characters** for Driver V1.
 
-PaTaP's V1 value is the driver network: Map/GPS, People, Chat, Radio, Parking, Road Reports and Events.
+This is an accepted product/security trade-off and must not be silently changed by an engineer or AI agent.
 
-When a user wants turn-by-turn navigation, PaTaP will later provide a small external-navigation handoff so the user can choose their preferred navigation app. The external app, not PaTaP, will calculate and own the route.
+Important boundary:
 
-Planned free/no-backend handoff targets include:
+- do not describe six characters as a universally strong password guarantee;
+- continue to encourage users to choose a longer, unique password where product copy permits;
+- current asynchronous scrypt hashing/verification remains unchanged;
+- existing auth/session/CSRF/rate-limit/admin controls remain unchanged;
+- no forced reset or migration of existing users is authorized;
+- raising the minimum later requires a new explicit owner decision.
 
-- Google Maps standard Maps URLs;
-- Waze standard deep links;
-- the device/system map handler where supported.
+Therefore `AUD-022` is closed by explicit owner risk acceptance, not by changing runtime behavior.
 
-No paid Maps/Navigation SDK, commercial routing provider, route telemetry integration or PaTaP-owned truck-routing guarantee is authorized in this block.
+## AUD-027 — Git source-of-truth decision
 
-The actual external-navigation UI/handoff is a separate future functional block. Do not redesign the interface inside this scope-close block.
+On 2026-08-22 GitHub `main` was safely fast-forwarded, without force/rewrite, from its stale ancestor to the exact verified production snapshot:
 
-## Historical Navigation preservation
+`0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
 
-Historical branch known from prior work:
-`chatgpt/navigation-engine-v1`.
+Immediately after that operation GitHub compare reported:
 
-It is evidence/prototype code only and is **not production source**. Preserve it as-is. Do not force-merge it into the current snapshot.
+- `main` vs production snapshot: `identical`;
+- ahead: 0;
+- behind: 0.
 
-A future owner decision may reopen one of these directions:
+The permanent policy is:
 
-1. keep external navigation only;
-2. integrate commercial navigation/routing services;
-3. build/revive PaTaP-owned routing with reviewed data/provider infrastructure.
+1. `codex/local-workspace-snapshot` is the evidence branch representing the last clean source copied from actually running production after a successful release.
+2. `main` is the normal stable/default GitHub branch and must track the latest verified production snapshot.
+3. After a successful production deployment and creation/verification of a new clean snapshot, `main` may be advanced only by a non-force fast-forward to that verified snapshot.
+4. Never force-push/rewrite `main` to resolve divergence.
+5. If `main` and the snapshot ever diverge, stop and investigate before changing either ref.
+6. New engineering branches must start from the latest verified production source; when `main` is identical to the snapshot, either ref points to the same source, but the snapshot remains the deployment evidence.
+7. GitHub is an engineering mirror; the Windows production working tree remains the actual running system.
 
-Until then, no internal route provider is a V1 requirement.
+Therefore `AUD-027` is closed.
+
+## Intentionally unchanged
+
+This block must not change:
+
+- Driver/server/runtime code;
+- password minimum in code (it remains 6);
+- password hashing parameters/format;
+- SQLite/schema/users/sessions;
+- Navigation/Valhalla/`NAV_ROUTER_URL`;
+- interface;
+- Caddy/tunnel/services;
+- runtime/private data.
 
 ## Mandatory Codex gate
 
-This block changes documentation/product scope only.
-
-1. Confirm exact base `edeacb22ec6fbf8765ee816f053de54aa0fbc3ec`.
-2. Confirm the PR changes only Markdown documentation and contains no runtime/private data.
-3. Confirm there is no Driver/server/Caddy/package/schema/config/runtime code change.
-4. Confirm no Navigation branch is merged/rebased and no `NAV_ROUTER_URL`/Valhalla configuration is introduced.
-5. `git diff --check` must pass.
-6. No backend restart, SQLite backup, DR cycle or dependency install is required for this docs-only scope decision.
-7. Apply only the documentation files to the production working tree using the normal recoverable source workflow.
-8. Confirm the running stack remains `HEALTHY` and both public domains remain HTTP 200; do not disturb the running services merely to prove a docs-only change.
-9. Create a new clean `codex/local-workspace-snapshot` from the actual production working tree.
-10. Append to `AI_HANDOFF.md`:
-   - `BLOCK: AUD-025/AUD-026 NAVIGATION_SCOPE_V1`
+1. Confirm exact base `0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
+2. Confirm the candidate changes Markdown documentation only.
+3. Confirm `main` currently resolves to that same base snapshot before applying this docs block; if it does not, report the exact difference rather than force-changing refs.
+4. `git diff --check` must PASS.
+5. Apply only the documentation files using the normal recoverable docs-only workflow.
+6. No backend restart, dependency install, SQLite operation or DR cycle is required solely for this docs-only policy block.
+7. Confirm the running stack remains `HEALTHY` and both public domains remain HTTP 200 without disturbing services.
+8. Create a new clean `codex/local-workspace-snapshot` from the actual production working tree.
+9. Append `AI_HANDOFF.md` evidence:
+   - `BLOCK: AUD-022/AUD-027 FINAL_AUDIT_CLOSE_V1`
    - `STATUS: DEPLOYED`
-   - both AUD-025 and AUD-026 superseded/closed for V1 by owner decision;
-   - internal Navigation preserved but deferred;
-   - Valhalla/`NAV_ROUTER_URL` not required for V1;
-   - no runtime/interface/password/main change.
+   - `AUDIT: 30/30 CLOSED`
+   - password minimum 6 retained by explicit owner decision;
+   - scrypt unchanged;
+   - main/source-of-truth policy recorded;
+   - no runtime/interface/Navigation change.
+10. Return the new clean production snapshot SHA.
 
-If the diff contains any runtime change, return `CHANGES_REQUIRED`; do not expand this block.
+After Codex produces and verifies the new snapshot, ChatGPT will fast-forward `main` to that new snapshot as the final GitHub synchronization step. No force push is allowed.
+
+If any runtime/code/config/private-data change appears, return `CHANGES_REQUIRED` and do not expand the block.

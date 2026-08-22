@@ -1374,3 +1374,22 @@ V1 scope decision:
 - No runtime, interface, password-policy or `main` change was made.
 
 ---
+[2026-08-22 Europe/Warsaw] FROM: CODEX
+BLOCK: AUD-022/AUD-027 FINAL_AUDIT_CLOSE_V1
+STATUS: DEPLOYED
+AUDIT: 30/30 CLOSED
+DEPLOYED_SOURCE: `c3cc77179f24dc6000c861a0885cf219b78c248d`
+
+Docs-only gate — PASS:
+- Exact base confirmed: `codex/local-workspace-snapshot @ 0e73e8a1972bfd573b312eb4c87af9ada6d2db0c`.
+- GitHub Verify #394 for the exact SHA completed with `success`; `main` resolved to the same base before application.
+- Diff review and `git diff --check` passed: only `AI_TASK.md`, `docs/AI_NEW_CHAT_START.md`, `docs/CURRENT_ENGINEERING_STATE.md`, and `docs/FINAL_AUDIT_CLOSE_V1.md` changed. No runtime/private data, code, configuration, schema or dependency change.
+- Only those Markdown files were applied with a recoverable documentation backup and SHA-256 checks. No backend restart, npm operation, SQLite operation or DR cycle occurred.
+- Running stack remained `HEALTHY`; `patap.eu` and `driver.patap.eu` both returned HTTP 200.
+
+Closure decisions:
+- AUD-022 is closed by explicit owner decision: minimum registration password remains 6 characters; asynchronous scrypt is unchanged; no forced user reset or migration is authorized.
+- AUD-027 is closed by verified non-force fast-forward policy: `main` is the stable branch and may advance only by normal fast-forward after a verified clean production snapshot. The snapshot remains deployment evidence.
+- No runtime, interface, Navigation/Valhalla/`NAV_ROUTER_URL`, password implementation or `main` change was made by this block.
+
+---
