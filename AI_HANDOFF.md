@@ -1080,6 +1080,6 @@ Manual/live scope not claimed:
 - No real user account was used by Codex after deployment. Login/session, profile edits, real-device GPS, Road Report creation, Chat, Radio, Parking and Event Center are covered by the two-user isolated Driver E2E but should still be manually exercised on real phones by the owner/test drivers.
 
 Safety:
-- GitHub snapshot contains only the actually applied source and documentation. It excludes SQLite/backups, users, GPS, messages, radio/media uploads, VAPID/auth/DR keys, tokens, logs, data/, var/ and node_modules.
+- The codex/local-workspace-snapshot branch is synchronized from the actually applied source and documentation. It excludes SQLite/backups, users, GPS, messages, radio/media uploads, VAPID/auth/DR keys, tokens, logs, data/, var/ and node_modules.
 
 ---
