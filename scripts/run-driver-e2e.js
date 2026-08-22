@@ -99,11 +99,6 @@ function spawnAuth(root, env) {
   return child;
 }
 
-function csrfFromCookie() {
-  const pair = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("patap_csrf="));
-  return pair ? decodeURIComponent(pair.slice("patap_csrf=".length)) : "";
-}
-
 async function browserApi(page, pathname, { method = "GET", body } = {}) {
   return page.evaluate(async ({ pathname, method, body, mutation }) => {
     const headers = { Accept: "application/json" };
@@ -199,12 +194,13 @@ async function registerDriver(page, localUrl, { username, email, password, nickn
   await form.locator("[name=driverType]").selectOption(driverType);
   await form.locator("button[type=submit]").click();
   await page.locator("#profile-view").waitFor({ state: "visible" });
-  await page.locator('[data-driver-target="map"]').waitFor();
+  await page.locator('[data-driver-target="map"]').waitFor({ state: "visible" });
   assert.equal(await page.locator("#driver-nav [data-driver-target]").count(), 6, "Driver bottom navigation must remain six views");
   await page.locator('[data-driver-target="map"]').click();
   await page.locator("#map-view").waitFor({ state: "visible" });
-  await page.locator("#gps-toggle").waitFor({ state: "visible" });
+  await page.locator("#gps-toggle").waitFor({ state: "attached" });
   assert.equal(await page.locator("#gps-toggle").isDisabled(), false, "GPS toggle is disabled after Driver registration");
+  await page.locator("label.switch-row").filter({ has: page.locator("#gps-toggle") }).waitFor({ state: "visible" });
 }
 
 async function loginDriver(page, username, password) {
@@ -217,7 +213,10 @@ async function loginDriver(page, username, password) {
 
 async function enableGps(page) {
   const toggle = page.locator("#gps-toggle");
-  if (!(await toggle.isChecked())) await toggle.check();
+  if (!(await toggle.isChecked())) {
+    const switchRow = page.locator("label.switch-row").filter({ has: toggle });
+    await switchRow.click();
+  }
   await waitUntil("GPS upload", async () => {
     const text = await page.locator("#gps-state").textContent();
     return /Driver включён/.test(text || "") ? text : false;
