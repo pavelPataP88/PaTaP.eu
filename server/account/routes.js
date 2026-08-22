@@ -1,6 +1,6 @@
 const { DATA_DIR, verifyPassword } = require("../auth/db");
 const { ensureAccountSchema } = require("./schema");
-const { exportAccountData, deleteAccountData } = require("./lifecycle");
+const { exportAccountData, deleteAccountData, cleanupDeletionQuarantine } = require("./lifecycle");
 
 const SESSION_COOKIE = "patap_session";
 const CSRF_COOKIE = "patap_csrf";
@@ -36,6 +36,7 @@ function clearAuthCookies(req, res) {
 
 function createAccountRoutes(options) {
   ensureAccountSchema(options.db, options.nowIso());
+  cleanupDeletionQuarantine(DATA_DIR);
 
   return async function handleAccountRoute(req, res, url, body) {
     if (!url.pathname.startsWith("/api/driver/account")) return false;
